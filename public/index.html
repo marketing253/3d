@@ -42,6 +42,7 @@
 
   <nav class="tabs" role="tablist">
     <button role="tab" id="tab-produtos" aria-selected="true" data-tab="produtos">Produtos e ranking</button>
+    <button role="tab" id="tab-financeiro" aria-selected="false" data-tab="financeiro">Financeiro</button>
     <button role="tab" id="tab-novo" aria-selected="false" data-tab="novo" class="edit-only">Cadastrar produto</button>
     <button role="tab" id="tab-tendencias" aria-selected="false" data-tab="tendencias">Em alta para vender</button>
     <button role="tab" id="tab-config" aria-selected="false" data-tab="config">Custos e taxas</button>
@@ -70,6 +71,41 @@
     </div>
     <div id="lista"></div>
     <p class="note" style="margin-top:14px"><strong>Lucro por hora de impressora</strong> mostra quanto cada produto rende por hora de máquina ocupada. Como você tem uma impressora só, priorize os produtos do topo. O lucro usa o seu preço de venda quando ele está preenchido. Sem preço preenchido, usa o preço sugerido.</p>
+  </section>
+
+  <!-- FINANCEIRO -->
+  <section class="panel" id="p-financeiro" hidden>
+    <div class="stack">
+      <div class="row spread">
+        <div class="row monthnav">
+          <button class="btn" id="finPrev" aria-label="Mês anterior">‹</button>
+          <h2 id="finMes" style="min-width:12ch;text-align:center">—</h2>
+          <button class="btn" id="finNext" aria-label="Próximo mês">›</button>
+          <button class="btn ghost" id="finHoje">Este mês</button>
+        </div>
+        <div class="row">
+          <button class="btn primary edit-only" data-novo="venda">+ Venda</button>
+          <button class="btn edit-only" data-novo="saida">+ Despesa</button>
+          <button class="btn edit-only" data-novo="entrada">+ Receita</button>
+          <a class="btn" id="finCsv" href="#" download>Exportar CSV</a>
+        </div>
+      </div>
+      <div class="card stack" id="finForm" hidden></div>
+      <div class="tiles" id="finTiles"></div>
+      <div class="card stack">
+        <div class="row spread"><h3>Entradas e saídas · últimos 12 meses</h3>
+          <div class="row legend"><span><i class="sw in"></i>Entradas</span><span><i class="sw out"></i>Saídas</span><button class="btn ghost" id="finTabela">Ver como tabela</button></div></div>
+        <div id="finChartWrap" style="position:relative"><div id="finChart" class="chart"></div><div class="tip" id="finTip" hidden></div></div>
+        <div id="finTable" class="tablewrap" hidden></div>
+        <p class="note" style="margin:0">Só entram valores já recebidos ou pagos. Clique em um mês para abrir.</p>
+      </div>
+      <div class="grid2">
+        <div class="card stack"><h3>Despesas por categoria</h3><div id="finCats" class="stack" style="gap:8px"></div></div>
+        <div class="card stack"><h3>Mais vendidos no mês</h3><div id="finTop"></div></div>
+      </div>
+      <div class="stack" style="gap:10px"><h3>Lançamentos do mês</h3><div id="finLista"></div></div>
+      <p class="note"><strong>Saldo</strong> é o dinheiro que entrou menos o que saiu: as vendas entram pelo valor que você recebe, já descontadas taxas e frete. <strong>Lucro das vendas</strong> desconta também o custo de produção de cada peça. Por isso, compras de filamento lançadas como despesa aparecem no saldo, mas não entram de novo no lucro.</p>
+    </div>
   </section>
 
   <!-- NOVO / EDITAR -->

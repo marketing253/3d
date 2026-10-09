@@ -285,6 +285,107 @@ app.delete("/api/produtos/:id", exigeLogin, exigeEdicao, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- financeiro ----------
+const DATA_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MES_RE = /^\d{4}-\d{2}$/;
+const n = v => { const x = Number(v); return Number.isFinite(x) ? Math.round(x * 100) / 100 : 0; };
+const txt = (v, max = 200) => String(v ?? "").trim().slice(0, max);
+function intervaloMes(mes) {
+  const [a, m] = mes.split("-").map(Number);
+  const fim = new Date(Date.UTC(a, m, 0)).getUTCDate();
+  return [`${mes}-01`, `${mes}-${String(fim).padStart(2, "0")}`];
+}
+function limpaVenda(b) {
+  if (!b || !DATA_RE.test(b.data)) return { erro: "Informe a data da venda." };
+  const descricao = txt(b.descricao, 150);
+  if (!descricao) return { erro: "Informe o produto vendido." };
+  const quantidade = n(b.quantidade);
+  if (quantidade <= 0) return { erro: "A quantidade precisa ser maior que zero." };
+  return { v: {
+    data: b.data, produto_id: b.produto_id ? txt(b.produto_id, 60) : null, descricao, quantidade,
+    preco_unit: n(b.preco_unit), canal: txt(b.canal, 80), taxas: n(b.taxas), frete: n(b.frete),
+    custo_unit: n(b.custo_unit), cliente: txt(b.cliente, 120), status: b.status === "pendente" ? "pendente" : "pago", obs: txt(b.obs, 500),
+  } };
+}
+function limpaLanc(b) {
+  if (!b || !DATA_RE.test(b.data)) return { erro: "Informe a data." };
+  const descricao = txt(b.descricao, 150);
+  if (!descricao) return { erro: "Informe a descrição." };
+  const valor = n(b.valor);
+  if (valor <= 0) return { erro: "O valor precisa ser maior que zero." };
+  if (!["entrada", "saida"].includes(b.tipo)) return { erro: "Tipo inválido." };
+  return { v: { data: b.data, tipo: b.tipo, descricao, categoria: txt(b.categoria, 60) || "Outros", valor, status: b.status === "pendente" ? "pendente" : "pago", obs: txt(b.obs, 500) } };
+}
+const COLS_V = ["data", "produto_id", "descricao", "quantidade", "preco_unit", "canal", "taxas", "frete", "custo_unit", "cliente", "status", "obs"];
+const COLS_L = ["data", "tipo", "descricao", "categoria", "valor", "status", "obs"];
+
+app.get("/api/financeiro", exigeLogin, (req, res) => {
+  const mes = MES_RE.test(req.query.mes || "") ? req.query.mes : new Date().toISOString().slice(0, 7);
+  const [de, ate] = intervaloMes(mes);
+  const vendas = db.prepare("SELECT * FROM vendas WHERE data BETWEEN ? AND ? ORDER BY data DESC, criado_em DESC").all(de, ate);
+  const lancamentos = db.prepare("SELECT * FROM lancamentos WHERE data BETWEEN ? AND ? ORDER BY data DESC, criado_em DESC").all(de, ate);
+  // série dos últimos 12 meses (somente valores pagos)
+  const [a, m] = mes.split("-").map(Number);
+  const ini = new Date(Date.UTC(a, m - 12, 1)).toISOString().slice(0, 10);
+  const serieV = db.prepare(`SELECT substr(data,1,7) mes, SUM(quantidade*preco_unit - taxas - frete) liquido, SUM(quantidade*preco_unit - taxas - frete - quantidade*custo_unit) lucro, SUM(quantidade) pecas
+    FROM vendas WHERE status='pago' AND data BETWEEN ? AND ? GROUP BY 1`).all(ini, ate);
+  const serieL = db.prepare(`SELECT substr(data,1,7) mes, tipo, SUM(valor) total FROM lancamentos WHERE status='pago' AND data BETWEEN ? AND ? GROUP BY 1,2`).all(ini, ate);
+  const serie = [];
+  for (let i = 11; i >= 0; i--) {
+    const k = new Date(Date.UTC(a, m - 1 - i, 1)).toISOString().slice(0, 7);
+    const sv = serieV.find(x => x.mes === k) || {};
+    const ent = (sv.liquido || 0) + (serieL.find(x => x.mes === k && x.tipo === "entrada")?.total || 0);
+    const sai = serieL.find(x => x.mes === k && x.tipo === "saida")?.total || 0;
+    serie.push({ mes: k, entradas: n(ent), saidas: n(sai), lucroVendas: n(sv.lucro || 0), pecas: sv.pecas || 0 });
+  }
+  const saldoAnterior = (() => {
+    const v = db.prepare("SELECT COALESCE(SUM(quantidade*preco_unit - taxas - frete),0) t FROM vendas WHERE status='pago' AND data < ?").get(de).t;
+    const e = db.prepare("SELECT COALESCE(SUM(valor),0) t FROM lancamentos WHERE status='pago' AND tipo='entrada' AND data < ?").get(de).t;
+    const s = db.prepare("SELECT COALESCE(SUM(valor),0) t FROM lancamentos WHERE status='pago' AND tipo='saida' AND data < ?").get(de).t;
+    return n(v + e - s);
+  })();
+  res.json({ mes, vendas, lancamentos, serie, saldoAnterior });
+});
+
+function crud(tabela, limpa, cols) {
+  app.post(`/api/${tabela}`, exigeLogin, exigeEdicao, (req, res) => {
+    const { v, erro } = limpa(req.body); if (erro) return res.status(400).json({ erro });
+    const id = crypto.randomUUID();
+    db.prepare(`INSERT INTO ${tabela} (id, ${cols.join(",")}, criado_por) VALUES (?, ${cols.map(() => "?").join(",")}, ?)`).run(id, ...cols.map(c => v[c]), req.usuario.id);
+    res.json({ id, ...v });
+  });
+  app.put(`/api/${tabela}/:id`, exigeLogin, exigeEdicao, (req, res) => {
+    const { v, erro } = limpa(req.body); if (erro) return res.status(400).json({ erro });
+    const r = db.prepare(`UPDATE ${tabela} SET ${cols.map(c => c + " = ?").join(",")} WHERE id = ?`).run(...cols.map(c => v[c]), req.params.id);
+    if (!r.changes) return res.status(404).json({ erro: "Registro não encontrado." });
+    res.json({ id: req.params.id, ...v });
+  });
+  app.delete(`/api/${tabela}/:id`, exigeLogin, exigeEdicao, (req, res) => {
+    db.prepare(`DELETE FROM ${tabela} WHERE id = ?`).run(req.params.id);
+    res.json({ ok: true });
+  });
+}
+crud("vendas", limpaVenda, COLS_V);
+crud("lancamentos", limpaLanc, COLS_L);
+
+app.get("/api/financeiro/csv", exigeLogin, (req, res) => {
+  const mes = MES_RE.test(req.query.mes || "") ? req.query.mes : new Date().toISOString().slice(0, 7);
+  const [de, ate] = intervaloMes(mes);
+  const linhas = [["Data", "Tipo", "Descrição", "Categoria/Canal", "Qtd", "Valor bruto", "Taxas", "Frete", "Valor líquido", "Custo", "Lucro", "Situação"]];
+  for (const v of db.prepare("SELECT * FROM vendas WHERE data BETWEEN ? AND ? ORDER BY data").all(de, ate)) {
+    const bruto = v.quantidade * v.preco_unit, liq = bruto - v.taxas - v.frete, custo = v.quantidade * v.custo_unit;
+    linhas.push([v.data, "Venda", v.descricao, v.canal, v.quantidade, bruto, v.taxas, v.frete, liq, custo, liq - custo, v.status]);
+  }
+  for (const l of db.prepare("SELECT * FROM lancamentos WHERE data BETWEEN ? AND ? ORDER BY data").all(de, ate)) {
+    const val = l.tipo === "entrada" ? l.valor : -l.valor;
+    linhas.push([l.data, l.tipo === "entrada" ? "Receita" : "Despesa", l.descricao, l.categoria, "", "", "", "", val, "", "", l.status]);
+  }
+  const fmt = x => typeof x === "number" ? String(Math.round(x * 100) / 100).replace(".", ",") : `"${String(x ?? "").replace(/"/g, '""')}"`;
+  res.set("Content-Type", "text/csv; charset=utf-8");
+  res.set("Content-Disposition", `attachment; filename="financeiro-${mes}.csv"`);
+  res.send("﻿" + linhas.map(l => l.map(fmt).join(";")).join("\r\n"));
+});
+
 // ---------- fotos ----------
 const TIPOS = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" };
 const upload = multer({

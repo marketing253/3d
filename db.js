@@ -40,6 +40,37 @@ CREATE TABLE IF NOT EXISTS produtos (
   atualizado_em TEXT NOT NULL DEFAULT (datetime('now')),
   atualizado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
 );
+CREATE TABLE IF NOT EXISTS vendas (
+  id TEXT PRIMARY KEY,
+  data TEXT NOT NULL,              -- AAAA-MM-DD
+  produto_id TEXT,
+  descricao TEXT NOT NULL,
+  quantidade REAL NOT NULL DEFAULT 1,
+  preco_unit REAL NOT NULL DEFAULT 0,
+  canal TEXT,
+  taxas REAL NOT NULL DEFAULT 0,
+  frete REAL NOT NULL DEFAULT 0,
+  custo_unit REAL NOT NULL DEFAULT 0,
+  cliente TEXT,
+  status TEXT NOT NULL DEFAULT 'pago' CHECK (status IN ('pago','pendente')),
+  obs TEXT,
+  criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+  criado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS vendas_data ON vendas(data);
+CREATE TABLE IF NOT EXISTS lancamentos (
+  id TEXT PRIMARY KEY,
+  data TEXT NOT NULL,
+  tipo TEXT NOT NULL CHECK (tipo IN ('entrada','saida')),
+  descricao TEXT NOT NULL,
+  categoria TEXT NOT NULL,
+  valor REAL NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pago' CHECK (status IN ('pago','pendente')),
+  obs TEXT,
+  criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+  criado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS lancamentos_data ON lancamentos(data);
 `);
 
 module.exports = { db, DATA_DIR };

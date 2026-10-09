@@ -99,10 +99,11 @@ let tab="produtos";
 function setTab(t){
   tab=t;
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===t)));
-  ["produtos","novo","tendencias","config","usuarios","conta"].forEach(x=>{$("#p-"+x).hidden=x!==t});
+  ["produtos","financeiro","novo","tendencias","config","usuarios","conta"].forEach(x=>{$("#p-"+x).hidden=x!==t});
   try{localStorage.setItem("prec3d.tab",t)}catch(e){}
   if(t==="config") renderConfig();
   if(t==="usuarios") carregaUsuarios();
+  if(t==="financeiro") carregaFin();
   if(t==="novo") renderFicha();
   window.scrollTo({top:0});
 }
@@ -161,6 +162,7 @@ function renderLista(){
       <td class="n"><div class="meter"><b style="width:${lh>0?Math.max(2,lh/maxLH*70):2}px"></b>${brl(lh)}</div></td>
       <td style="white-space:nowrap;text-align:right" data-id="${esc(p.id)}" class="edit-only">
         <button class="btn ghost" data-act="edit">Editar</button>
+        <button class="btn ghost" data-act="vender">Vendi</button>
         <button class="btn ghost" data-act="dup">Duplicar</button>
         <button class="btn ghost" data-act="del">Excluir</button></td></tr>`}).join("")}
   </tbody></table></div>`;
@@ -172,6 +174,7 @@ $("#lista").addEventListener("click",async e=>{
   if(act==="novo"){startForm(null);setTab("novo");return}
   const id=b.closest("[data-id]")?.dataset.id; const p=produtos.find(x=>x.id===id); if(!p) return;
   if(act==="edit"){startForm(p);setTab("novo")}
+  if(act==="vender"){setTab("financeiro");abreForm("venda",{produto_id:p.id});return}
   if(act==="dup"){const c=clone(p);delete c.id;c.nome=p.nome+" (cópia)";startForm(c);setTab("novo")}
   if(act==="del"){
     const td=b.parentElement;
@@ -437,6 +440,198 @@ function refreshAll(){
   if(tab==="config"&&!$("#p-config").contains(document.activeElement)) renderConfig();
   if(tab==="novo"&&draft){ if(!$("#form").contains(document.activeElement)) renderFilLines(); renderFicha(); }
 }
+
+/* ---------- financeiro ---------- */
+const hojeISO=()=>{const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)};
+let finMes=hojeISO().slice(0,7), fin=null, finForm=null;
+const MESES=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const nomeMes=(k,curto)=>{const [a,m]=k.split("-").map(Number);return curto?MESES[m-1].slice(0,3):`${MESES[m-1]} de ${a}`};
+const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
+const pl=(n,s,p)=>`${n.toLocaleString("pt-BR")} ${n===1?s:p}`;
+const addMes=(k,d)=>{const [a,m]=k.split("-").map(Number);const x=new Date(Date.UTC(a,m-1+d,1));return x.toISOString().slice(0,7)};
+const dataBRc=s=>s?s.split("-").reverse().join("/"):"";
+const CAT_SAIDA=["Filamento","Energia","Embalagem","Peças e manutenção","Frete e correios","Marketing e anúncios","Taxas e impostos","Equipamentos","Outros"];
+const CAT_ENTRADA=["Venda avulsa","Aporte","Reembolso","Outros"];
+const vendaTot=v=>{const bruto=v.quantidade*v.preco_unit, liq=bruto-v.taxas-v.frete, custo=v.quantidade*v.custo_unit;return {bruto,liq,custo,lucro:liq-custo}};
+
+async function carregaFin(){
+  try{ fin=await api("GET","/api/financeiro?mes="+finMes); renderFin() }catch(e){ if(e.status!==401) toast(e.message) }
+}
+function renderFin(){
+  $("#finMes").textContent=cap(nomeMes(finMes));
+  $("#finCsv").href="/api/financeiro/csv?mes="+finMes;
+  if(!fin) return;
+  const vs=fin.vendas, ls=fin.lancamentos;
+  let entradas=0,saidas=0,lucro=0,pecas=0,receber=0,pagar=0,bruto=0;
+  for(const v of vs){const t=vendaTot(v); if(v.status==="pago"){entradas+=t.liq;lucro+=t.lucro;pecas+=v.quantidade;bruto+=t.bruto} else receber+=t.liq}
+  for(const l of ls){ if(l.status==="pago"){ if(l.tipo==="entrada") entradas+=l.valor; else saidas+=l.valor } else { if(l.tipo==="entrada") receber+=l.valor; else pagar+=l.valor } }
+  const saldo=entradas-saidas, acumulado=fin.saldoAnterior+saldo;
+  $("#finTiles").innerHTML=`
+    <div class="tile"><span class="tl">Entradas</span><span class="tv num">${brl(entradas)}</span><span class="ts">${pl(vs.filter(v=>v.status==="pago").length,"venda","vendas")} · ${pl(pecas,"peça","peças")}</span></div>
+    <div class="tile"><span class="tl">Saídas</span><span class="tv num">${brl(saidas)}</span><span class="ts">${pl(ls.filter(l=>l.tipo==="saida"&&l.status==="pago").length,"despesa paga","despesas pagas")}</span></div>
+    <div class="tile main"><span class="tl">Saldo do mês</span><span class="tv num ${saldo<0?"neg":"pos"}">${brl(saldo)}</span><span class="ts">Acumulado: ${brl(acumulado)}</span></div>
+    <div class="tile"><span class="tl">Lucro das vendas</span><span class="tv num">${brl(lucro)}</span><span class="ts">${bruto>0?pct(lucro/bruto)+" do faturado":"sem vendas pagas"}</span></div>
+    <div class="tile"><span class="tl">A receber</span><span class="tv num sm">${brl(receber)}</span><span class="ts">vendas e receitas pendentes</span></div>
+    <div class="tile"><span class="tl">A pagar</span><span class="tv num sm">${brl(pagar)}</span><span class="ts">despesas pendentes</span></div>`;
+  renderFinChart();
+  // categorias de despesa
+  const cats={}; for(const l of ls) if(l.tipo==="saida") cats[l.categoria]=(cats[l.categoria]||0)+l.valor;
+  const ce=Object.entries(cats).sort((a,b)=>b[1]-a[1]); const cmax=Math.max(1,...ce.map(x=>x[1]));
+  $("#finCats").innerHTML=ce.length?ce.map(([c,v])=>`<div class="hb" title="${esc(c)}: ${brl(v)}"><span class="hbl">${esc(c)}</span><span class="hbt"><i style="width:${v/cmax*100}%"></i></span><span class="hbv num">${brl(v)}</span></div>`).join(""):`<p class="note">Nenhuma despesa neste mês.</p>`;
+  // mais vendidos
+  const top={}; for(const v of vs){const k=v.descricao;top[k]=top[k]||{q:0,l:0};top[k].q+=v.quantidade;top[k].l+=vendaTot(v).lucro}
+  const te=Object.entries(top).sort((a,b)=>b[1].q-a[1].q).slice(0,6);
+  $("#finTop").innerHTML=te.length?`<table class="mini"><thead><tr><th>Produto</th><th class="n">Qtd</th><th class="n">Lucro</th></tr></thead><tbody>${te.map(([k,x])=>`<tr><td>${esc(k)}</td><td class="n">${x.q.toLocaleString("pt-BR")}</td><td class="n">${brl(x.l)}</td></tr>`).join("")}</tbody></table>`:`<p class="note">Nenhuma venda neste mês.</p>`;
+  // lista
+  const itens=[...vs.map(v=>({k:"venda",d:v.data,o:v})),...ls.map(l=>({k:l.tipo,d:l.data,o:l}))].sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:0);
+  $("#finLista").innerHTML=itens.length?`<div class="tablewrap"><table style="min-width:720px"><thead><tr><th>Data</th><th>Descrição</th><th>Categoria / canal</th><th class="n">Valor</th><th>Situação</th><th class="edit-only"></th></tr></thead><tbody>
+  ${itens.map(({k,o})=>{
+    let desc,cat,val,sub="";
+    if(k==="venda"){const t=vendaTot(o);desc=`${esc(o.descricao)}${o.quantidade!==1?` <span class="pcat">× ${o.quantidade.toLocaleString("pt-BR")}</span>`:""}`;cat=`<span class="pill">Venda</span> ${esc(o.canal||"")}`;val=t.liq;sub=`<div class="pcat">lucro ${brl(t.lucro)}${o.cliente?" · "+esc(o.cliente):""}</div>`}
+    else{desc=esc(o.descricao);cat=esc(o.categoria);val=k==="entrada"?o.valor:-o.valor}
+    const pend=o.status==="pendente";
+    const stTxt=pend?(val>=0?"A receber":"A pagar"):(val>=0?"Recebido":"Pago");
+    return `<tr data-fk="${k}" data-fid="${esc(o.id)}"><td class="num">${dataBRc(o.data)}</td><td><div class="pname">${desc}</div>${sub}</td><td>${cat}</td>
+      <td class="n ${val<0?"neg":"pos"}">${val<0?"− ":"+ "}${brl(Math.abs(val))}</td>
+      <td><span class="pill ${pend?"":"good"}">${stTxt}</span></td>
+      <td class="edit-only fact" style="white-space:nowrap;text-align:right">${pend?'<button class="btn ghost" data-fa="quitar">Quitar</button>':""}<button class="btn ghost" data-fa="edit">Editar</button><button class="btn ghost" data-fa="del">Excluir</button></td></tr>`}).join("")}
+  </tbody></table></div>`:`<div class="card empty"><h2>Nada lançado em ${nomeMes(finMes)}</h2><p>Registre uma venda, uma despesa (filamento, luz, embalagem) ou uma receita para acompanhar o mês.</p></div>`;
+}
+function renderFinChart(){
+  const s=fin.serie, W=Math.max(320,Math.round($("#finChartWrap").clientWidth||720)), H=W<560?200:240, pl=56, pr=8, pt=12, pb=28;
+  const max=Math.max(1,...s.flatMap(x=>[x.entradas,x.saidas]));
+  const nice=v=>{const p=Math.pow(10,Math.floor(Math.log10(v)));const m=v/p;return (m<=1?1:m<=2?2:m<=5?5:10)*p};
+  const top=nice(max), steps=4, gw=(W-pl-pr)/s.length, bw=Math.min(18,(gw-10)/2);
+  const y=v=>pt+(H-pt-pb)*(1-v/top);
+  let g="";
+  for(let i=0;i<=steps;i++){const v=top*i/steps;g+=`<line x1="${pl}" x2="${W-pr}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${pl-6}" y="${y(v)+4}" class="ax" text-anchor="end">${v>=1000?(v/1000).toLocaleString("pt-BR")+" mil":v.toLocaleString("pt-BR")}</text>`}
+  const bar=(x,v,cls)=>{const h=Math.max(0,y(0)-y(v));if(h<=0)return "";const r=Math.min(4,h,bw/2);const yt=y(v);
+    return `<path class="${cls}" d="M${x},${y(0)} V${yt+r} Q${x},${yt} ${x+r},${yt} H${x+bw-r} Q${x+bw},${yt} ${x+bw},${yt+r} V${y(0)} Z"/>`};
+  s.forEach((m,i)=>{const cx=pl+gw*i+gw/2;const cur=m.mes===finMes;
+    g+=`<g class="col${cur?" cur":""}" data-i="${i}"><rect x="${pl+gw*i}" y="${pt}" width="${gw}" height="${H-pt-pb}" class="hit"/>${bar(cx-bw-1,m.entradas,"b-in")}${bar(cx+1,m.saidas,"b-out")}${(W>=560||i%2===1)?`<text x="${cx}" y="${H-8}" class="ax${cur?" axc":""}" text-anchor="middle">${nomeMes(m.mes,true)}</text>`:""}</g>`});
+  g+=`<line x1="${pl}" x2="${W-pr}" y1="${y(0)}" y2="${y(0)}" class="base"/>`;
+  $("#finChart").innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Entradas e saídas dos últimos 12 meses">${g}</svg>`;
+  $("#finTable").innerHTML=`<table class="mini"><thead><tr><th>Mês</th><th class="n">Entradas</th><th class="n">Saídas</th><th class="n">Saldo</th><th class="n">Lucro vendas</th></tr></thead><tbody>${s.slice().reverse().map(m=>`<tr><td>${nomeMes(m.mes)}</td><td class="n">${brl(m.entradas)}</td><td class="n">${brl(m.saidas)}</td><td class="n">${brl(m.entradas-m.saidas)}</td><td class="n">${brl(m.lucroVendas)}</td></tr>`).join("")}</tbody></table>`;
+}
+const tip=$("#finTip");
+$("#finChart").addEventListener("pointermove",e=>{
+  const c=e.target.closest(".col"); if(!c||!fin){tip.hidden=true;return}
+  const m=fin.serie[+c.dataset.i]; const box=$("#finChartWrap").getBoundingClientRect();
+  tip.innerHTML=`<b>${cap(nomeMes(m.mes))}</b><span><i class="sw in"></i>Entradas <b class="num">${brl(m.entradas)}</b></span><span><i class="sw out"></i>Saídas <b class="num">${brl(m.saidas)}</b></span><span>Saldo <b class="num">${brl(m.entradas-m.saidas)}</b></span>`;
+  tip.hidden=false; const x=Math.min(e.clientX-box.left+12, box.width-190); tip.style.left=Math.max(0,x)+"px"; tip.style.top=(e.clientY-box.top-10)+"px";
+});
+let rzT;window.addEventListener("resize",()=>{clearTimeout(rzT);rzT=setTimeout(()=>{if(fin&&tab==="financeiro")renderFinChart()},150)});
+$("#finChart").addEventListener("pointerleave",()=>tip.hidden=true);
+$("#finChart").addEventListener("click",e=>{const c=e.target.closest(".col");if(!c)return;finMes=fin.serie[+c.dataset.i].mes;carregaFin()});
+$("#finPrev").addEventListener("click",()=>{finMes=addMes(finMes,-1);fin=null;renderFin();carregaFin()});
+$("#finNext").addEventListener("click",()=>{finMes=addMes(finMes,1);fin=null;renderFin();carregaFin()});
+$("#finHoje").addEventListener("click",()=>{finMes=hojeISO().slice(0,7);carregaFin()});
+$("#finTabela").addEventListener("click",()=>{const t=$("#finTable");t.hidden=!t.hidden;$("#finTabela").textContent=t.hidden?"Ver como tabela":"Esconder tabela"});
+document.querySelectorAll("[data-novo]").forEach(b=>b.addEventListener("click",()=>abreForm(b.dataset.novo)));
+
+/* formulário de venda / lançamento */
+function opcoesCanal(sel){return cfg.canais.map(c=>`<option value="${esc(c.nome)}"${c.nome===sel?" selected":""}>${esc(c.nome)}</option>`).join("")}
+function abreForm(tipo,o){
+  o=o||{}; finForm={tipo,id:o.id||null,taxaManual:!!o.id,custoManual:!!o.id,precoManual:!!o.id};
+  const box=$("#finForm"); box.hidden=false;
+  const data=o.data||(finMes===hojeISO().slice(0,7)?hojeISO():finMes+"-01");
+  const st=o.status||"pago";
+  if(tipo==="venda"){
+    const prodOpts=`<option value="">Outro (digitar)</option>`+produtos.slice().sort((a,b)=>a.nome.localeCompare(b.nome)).map(p=>`<option value="${esc(p.id)}"${p.id===o.produto_id?" selected":""}>${esc(p.nome)}</option>`).join("");
+    box.innerHTML=`<form class="stack" id="ffVenda" autocomplete="off">
+      <div class="row spread"><h2>${o.id?"Editar venda":"Registrar venda"}</h2><button type="button" class="btn ghost" data-ff="fechar">Fechar</button></div>
+      <div class="fields">
+        <label class="f">Data<input type="date" id="fv-data" required value="${esc(data)}"></label>
+        <label class="f">Produto<select id="fv-prod">${prodOpts}</select></label>
+        <label class="f">Descrição<input id="fv-desc" required maxlength="150" value="${esc(o.descricao||"")}"></label>
+        <label class="f">Quantidade<input id="fv-qtd" type="number" min="1" step="1" value="${esc(o.quantidade||1)}"></label>
+        <label class="f">Canal<select id="fv-canal">${opcoesCanal(o.canal||cfg.canais[0]?.nome)}</select></label>
+        <label class="f">Preço por unidade<div class="unit pre"><span>R$</span><input id="fv-preco" type="number" min="0" step="0.01" value="${esc(o.preco_unit??"")}"></div></label>
+        <label class="f">Taxas da plataforma<span class="hint">Calculada pelo canal; pode ajustar</span><div class="unit pre"><span>R$</span><input id="fv-taxas" type="number" min="0" step="0.01" value="${esc(o.taxas??0)}"></div></label>
+        <label class="f">Frete pago por você<div class="unit pre"><span>R$</span><input id="fv-frete" type="number" min="0" step="0.01" value="${esc(o.frete??0)}"></div></label>
+        <label class="f">Custo por unidade<span class="hint">Vem do cadastro do produto</span><div class="unit pre"><span>R$</span><input id="fv-custo" type="number" min="0" step="0.01" value="${esc(o.custo_unit??0)}"></div></label>
+        <label class="f">Cliente<span class="hint">Opcional</span><input id="fv-cliente" maxlength="120" value="${esc(o.cliente||"")}"></label>
+        <label class="f">Situação<select id="fv-status"><option value="pago"${st==="pago"?" selected":""}>Recebido</option><option value="pendente"${st==="pendente"?" selected":""}>A receber</option></select></label>
+        <label class="f">Observação<input id="fv-obs" maxlength="500" value="${esc(o.obs||"")}"></label>
+      </div>
+      <div class="vresumo" id="fvResumo"></div>
+      <div class="row"><button class="btn primary" type="submit">${o.id?"Salvar alterações":"Registrar venda"}</button><span class="note" id="ffMsg"></span></div>
+    </form>`;
+    if(!o.id&&o.produto_id) aplicaProduto();
+    atualizaVenda();
+  }else{
+    const cats=tipo==="saida"?CAT_SAIDA:CAT_ENTRADA, ent=tipo==="entrada";
+    box.innerHTML=`<form class="stack" id="ffLanc" autocomplete="off">
+      <div class="row spread"><h2>${o.id?"Editar":"Nova"} ${ent?"receita":"despesa"}</h2><button type="button" class="btn ghost" data-ff="fechar">Fechar</button></div>
+      <div class="fields">
+        <label class="f">Data<input type="date" id="fl-data" required value="${esc(data)}"></label>
+        <label class="f">Descrição<input id="fl-desc" required maxlength="150" placeholder="${ent?"Ex.: venda na feira":"Ex.: 2 rolos PLA preto"}" value="${esc(o.descricao||"")}"></label>
+        <label class="f">Categoria<select id="fl-cat">${cats.map(c=>`<option${c===o.categoria?" selected":""}>${c}</option>`).join("")}</select></label>
+        <label class="f">Valor<div class="unit pre"><span>R$</span><input id="fl-valor" type="number" min="0.01" step="0.01" required value="${esc(o.valor??"")}"></div></label>
+        <label class="f">Situação<select id="fl-status"><option value="pago"${st==="pago"?" selected":""}>${ent?"Recebido":"Pago"}</option><option value="pendente"${st==="pendente"?" selected":""}>${ent?"A receber":"A pagar"}</option></select></label>
+        <label class="f">Observação<input id="fl-obs" maxlength="500" value="${esc(o.obs||"")}"></label>
+      </div>
+      <div class="row"><button class="btn primary" type="submit">Salvar</button><span class="note" id="ffMsg"></span></div>
+    </form>`;
+  }
+  box.scrollIntoView({behavior:"smooth",block:"start"});
+  box.querySelector("input:not([type=date]),select")?.focus();
+}
+function canalSel(){return cfg.canais.find(c=>c.nome===$("#fv-canal").value)||cfg.canais[0]}
+function aplicaProduto(){
+  const p=produtos.find(x=>x.id===$("#fv-prod").value); if(!p) return;
+  const r=calc(p); $("#fv-desc").value=p.nome;
+  if(!finForm.custoManual) $("#fv-custo").value=r.custo.toFixed(2);
+  if(!finForm.precoManual){const ch=r.canais.find(c=>c.nome===canalSel()?.nome);const pr=num(p.precoVenda)>0?num(p.precoVenda):ch?.sugerido;if(pr)$("#fv-preco").value=pr.toFixed(2)}
+}
+function atualizaVenda(){
+  if(!finForm||finForm.tipo!=="venda") return;
+  const q=num($("#fv-qtd").value), pr=num($("#fv-preco").value), c=canalSel();
+  if(!finForm.taxaManual&&c){const lim=num(c.fixaAbaixoDe);const fixa=(lim>0&&pr>=lim)?0:num(c.tarifaFixa);$("#fv-taxas").value=(q*(pr*num(c.comissaoPct)/100+fixa)+q*pr*num(cfg.impostoPct)/100).toFixed(2)}
+  const t=vendaTot({quantidade:q,preco_unit:pr,taxas:num($("#fv-taxas").value),frete:num($("#fv-frete").value),custo_unit:num($("#fv-custo").value)});
+  $("#fvResumo").innerHTML=`<span>Total <b class="num">${brl(t.bruto)}</b></span><span>Você recebe <b class="num">${brl(t.liq)}</b></span><span>Lucro <b class="num ${t.lucro<0?"neg":"pos"}">${brl(t.lucro)}</b></span>`;
+}
+$("#finForm").addEventListener("input",e=>{
+  if(!finForm) return; const id=e.target.id;
+  if(id==="fv-taxas") finForm.taxaManual=true;
+  if(id==="fv-custo") finForm.custoManual=true;
+  if(id==="fv-preco") finForm.precoManual=true;
+  if(id==="fv-prod"){finForm.custoManual=false;finForm.precoManual=false;aplicaProduto()}
+  if(id==="fv-canal"&&!finForm.precoManual) aplicaProduto();
+  atualizaVenda();
+});
+$("#finForm").addEventListener("change",e=>{ if(e.target.id==="fv-prod"||e.target.id==="fv-canal"){ if(e.target.id==="fv-prod"){finForm.custoManual=false;finForm.precoManual=false} aplicaProduto(); atualizaVenda() } });
+$("#finForm").addEventListener("click",e=>{ if(e.target.closest('[data-ff="fechar"]')) fechaForm() });
+function fechaForm(){finForm=null;$("#finForm").hidden=true;$("#finForm").innerHTML=""}
+$("#finForm").addEventListener("submit",async e=>{
+  e.preventDefault(); const m=$("#ffMsg"); const btn=e.submitter; if(btn) btn.disabled=true;
+  try{
+    let body,url;
+    if(finForm.tipo==="venda"){
+      body={data:$("#fv-data").value,produto_id:$("#fv-prod").value||null,descricao:$("#fv-desc").value,quantidade:num($("#fv-qtd").value),preco_unit:num($("#fv-preco").value),canal:$("#fv-canal").value,taxas:num($("#fv-taxas").value),frete:num($("#fv-frete").value),custo_unit:num($("#fv-custo").value),cliente:$("#fv-cliente").value,status:$("#fv-status").value,obs:$("#fv-obs").value};
+      url="/api/vendas";
+    }else{
+      body={data:$("#fl-data").value,tipo:finForm.tipo,descricao:$("#fl-desc").value,categoria:$("#fl-cat").value,valor:num($("#fl-valor").value),status:$("#fl-status").value,obs:$("#fl-obs").value};
+      url="/api/lancamentos";
+    }
+    if(finForm.id) await api("PUT",url+"/"+encodeURIComponent(finForm.id),body); else await api("POST",url,body);
+    toast(finForm.tipo==="venda"?"Venda registrada":"Lançamento salvo");
+    const mesNovo=body.data.slice(0,7); fechaForm(); finMes=mesNovo; carregaFin();
+  }catch(err){ m.textContent=err.message } finally{ if(btn) btn.disabled=false }
+});
+$("#finLista").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-fa]"); if(!b) return;
+  const tr=b.closest("[data-fid]"), k=tr.dataset.fk, id=tr.dataset.fid;
+  const o=(k==="venda"?fin.vendas:fin.lancamentos).find(x=>x.id===id); if(!o) return;
+  const url=(k==="venda"?"/api/vendas/":"/api/lancamentos/")+encodeURIComponent(id);
+  const a=b.dataset.fa;
+  if(a==="edit") abreForm(k==="venda"?"venda":o.tipo,o);
+  if(a==="quitar"){ try{ await api("PUT",url,{...o,status:"pago"}); toast("Marcado como quitado"); carregaFin() }catch(err){ toast(err.message) } }
+  if(a==="del") tr.querySelector(".fact").innerHTML=`<span class="confirm">Excluir? <button class="btn danger" data-fa="delok">Excluir</button><button class="btn ghost" data-fa="no">Manter</button></span>`;
+  if(a==="no") renderFin();
+  if(a==="delok"){ try{ await api("DELETE",url); toast("Excluído"); carregaFin() }catch(err){ toast(err.message) } }
+});
+
 /* ---------- login ---------- */
 function showAuth(){
   $("#appScreen").hidden=true; $("#authScreen").hidden=false;
