@@ -71,6 +71,34 @@ CREATE TABLE IF NOT EXISTS lancamentos (
   criado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS lancamentos_data ON lancamentos(data);
+CREATE TABLE IF NOT EXISTS pedidos (
+  id TEXT PRIMARY KEY,
+  numero INTEGER NOT NULL,
+  dados TEXT NOT NULL,             -- JSON: cliente, itens, valores
+  status TEXT NOT NULL DEFAULT 'orcamento',
+  prazo TEXT,
+  filamento_baixado INTEGER NOT NULL DEFAULT 0,
+  estoque_baixado INTEGER NOT NULL DEFAULT 0,
+  criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+  atualizado_em TEXT NOT NULL DEFAULT (datetime('now')),
+  criado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS pedidos_status ON pedidos(status);
+CREATE TABLE IF NOT EXISTS rolos (
+  id TEXT PRIMARY KEY,
+  filamento_id TEXT NOT NULL,
+  cor TEXT NOT NULL,
+  peso REAL NOT NULL DEFAULT 1000,
+  restante REAL NOT NULL DEFAULT 1000,
+  preco REAL NOT NULL DEFAULT 0,
+  data_compra TEXT,
+  ativo INTEGER NOT NULL DEFAULT 1,
+  criado_em TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `);
+
+// colunas adicionadas em versões novas
+const colunasVendas = db.prepare("PRAGMA table_info(vendas)").all().map(c => c.name);
+if (!colunasVendas.includes("pedido_id")) db.exec("ALTER TABLE vendas ADD COLUMN pedido_id TEXT");
 
 module.exports = { db, DATA_DIR };

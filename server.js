@@ -352,6 +352,7 @@ function crud(tabela, limpa, cols) {
     const { v, erro } = limpa(req.body); if (erro) return res.status(400).json({ erro });
     const id = crypto.randomUUID();
     db.prepare(`INSERT INTO ${tabela} (id, ${cols.join(",")}, criado_por) VALUES (?, ${cols.map(() => "?").join(",")}, ?)`).run(id, ...cols.map(c => v[c]), req.usuario.id);
+    if (tabela === "vendas" && req.body.baixarEstoque && v.produto_id) ajustaEstoque(v.produto_id, -v.quantidade);
     res.json({ id, ...v });
   });
   app.put(`/api/${tabela}/:id`, exigeLogin, exigeEdicao, (req, res) => {
@@ -425,6 +426,206 @@ function limpaFotosOrfas() {
 }
 limpaFotosOrfas();
 setInterval(limpaFotosOrfas, 6 * 60 * 60 * 1000).unref();
+
+
+// ---------- estoque de peças prontas ----------
+function ajustaEstoque(produtoId, delta) {
+  const r = db.prepare("SELECT dados FROM produtos WHERE id = ?").get(produtoId);
+  if (!r) return null;
+  const p = JSON.parse(r.dados);
+  p.estoque = Math.max(0, Math.round((Number(p.estoque) || 0) + delta));
+  db.prepare("UPDATE produtos SET dados = ? WHERE id = ?").run(JSON.stringify(p), produtoId);
+  return p.estoque;
+}
+app.post("/api/produtos/:id/estoque", exigeLogin, exigeEdicao, (req, res) => {
+  const delta = Number(req.body?.delta);
+  if (!Number.isFinite(delta)) return res.status(400).json({ erro: "Quantidade inválida." });
+  const e = ajustaEstoque(req.params.id, delta);
+  if (e === null) return res.status(404).json({ erro: "Produto não encontrado." });
+  res.json({ estoque: e });
+});
+
+// ---------- rolos de filamento ----------
+function limpaRolo(b) {
+  if (!b || !txt(b.filamento_id, 60)) return { erro: "Escolha o tipo de filamento." };
+  const cor = txt(b.cor, 60); if (!cor) return { erro: "Informe a cor do rolo." };
+  const peso = n(b.peso) || 1000;
+  const restante = b.restante === undefined || b.restante === "" ? peso : Math.max(0, n(b.restante));
+  return { v: { filamento_id: txt(b.filamento_id, 60), cor, peso, restante, preco: n(b.preco), data_compra: DATA_RE.test(b.data_compra || "") ? b.data_compra : null, ativo: b.ativo === false || b.ativo === 0 ? 0 : 1 } };
+}
+const COLS_R = ["filamento_id", "cor", "peso", "restante", "preco", "data_compra", "ativo"];
+app.get("/api/rolos", exigeLogin, (req, res) => {
+  res.json(db.prepare("SELECT * FROM rolos ORDER BY ativo DESC, data_compra, criado_em").all());
+});
+app.post("/api/rolos", exigeLogin, exigeEdicao, (req, res) => {
+  const { v, erro } = limpaRolo(req.body); if (erro) return res.status(400).json({ erro });
+  const id = crypto.randomUUID();
+  db.transaction(() => {
+    db.prepare(`INSERT INTO rolos (id, ${COLS_R.join(",")}) VALUES (?, ${COLS_R.map(() => "?").join(",")})`).run(id, ...COLS_R.map(c => v[c]));
+    if (req.body.lancarDespesa && v.preco > 0) {
+      db.prepare("INSERT INTO lancamentos (id, data, tipo, descricao, categoria, valor, status, criado_por) VALUES (?, ?, 'saida', ?, 'Filamento', ?, 'pago', ?)")
+        .run(crypto.randomUUID(), v.data_compra || new Date().toISOString().slice(0, 10), `Rolo ${txt(req.body.nomeFilamento, 60)} ${v.cor}`.trim(), v.preco, req.usuario.id);
+    }
+  })();
+  res.json({ id, ...v });
+});
+app.put("/api/rolos/:id", exigeLogin, exigeEdicao, (req, res) => {
+  const { v, erro } = limpaRolo(req.body); if (erro) return res.status(400).json({ erro });
+  const r = db.prepare(`UPDATE rolos SET ${COLS_R.map(c => c + " = ?").join(",")} WHERE id = ?`).run(...COLS_R.map(c => v[c]), req.params.id);
+  if (!r.changes) return res.status(404).json({ erro: "Rolo não encontrado." });
+  res.json({ id: req.params.id, ...v });
+});
+app.post("/api/rolos/:id/uso", exigeLogin, exigeEdicao, (req, res) => {
+  const g = n(req.body?.gramas);
+  const r = db.prepare("SELECT restante FROM rolos WHERE id = ?").get(req.params.id);
+  if (!r) return res.status(404).json({ erro: "Rolo não encontrado." });
+  const restante = Math.max(0, n(r.restante - g));
+  db.prepare("UPDATE rolos SET restante = ? WHERE id = ?").run(restante, req.params.id);
+  res.json({ restante });
+});
+app.delete("/api/rolos/:id", exigeLogin, exigeEdicao, (req, res) => {
+  db.prepare("DELETE FROM rolos WHERE id = ?").run(req.params.id);
+  res.json({ ok: true });
+});
+// desconta gramas dos rolos ativos daquele tipo, do mais antigo para o mais novo
+function baixaFilamento(filamentoId, gramas) {
+  let falta = gramas;
+  const rolos = db.prepare("SELECT id, restante FROM rolos WHERE ativo = 1 AND filamento_id = ? AND restante > 0 ORDER BY data_compra, criado_em").all(filamentoId);
+  for (const r of rolos) {
+    if (falta <= 0) break;
+    const usa = Math.min(r.restante, falta);
+    db.prepare("UPDATE rolos SET restante = ? WHERE id = ?").run(n(r.restante - usa), r.id);
+    falta -= usa;
+  }
+  return falta; // gramas que não havia em estoque
+}
+
+// ---------- pedidos ----------
+const STATUS_PEDIDO = ["orcamento", "aprovado", "imprimindo", "pronto", "entregue", "cancelado"];
+function limpaPedido(b) {
+  if (!b) return { erro: "Pedido inválido." };
+  const cliente = txt(b.cliente, 120); if (!cliente) return { erro: "Informe o nome do cliente." };
+  const itens = (Array.isArray(b.itens) ? b.itens : []).slice(0, 50).map(i => ({
+    produto_id: i.produto_id ? txt(i.produto_id, 60) : null,
+    descricao: txt(i.descricao, 150),
+    quantidade: Math.max(0, n(i.quantidade)),
+    preco_unit: n(i.preco_unit),
+    custo_unit: n(i.custo_unit),
+    horas_unit: n(i.horas_unit),
+    personalizacao: txt(i.personalizacao, 300),
+    doEstoque: !!i.doEstoque,
+    fil: (Array.isArray(i.fil) ? i.fil : []).slice(0, 8).map(f => ({ filId: txt(f.filId, 60), g: n(f.g) })),
+  })).filter(i => i.descricao && i.quantidade > 0);
+  if (!itens.length) return { erro: "Adicione pelo menos um item com quantidade." };
+  const data = DATA_RE.test(b.data || "") ? b.data : new Date().toISOString().slice(0, 10);
+  return { v: {
+    cliente, whatsapp: txt(b.whatsapp, 30).replace(/[^\d+]/g, ""), canal: txt(b.canal, 80), data,
+    prazo: DATA_RE.test(b.prazo || "") ? b.prazo : null, itens,
+    desconto: n(b.desconto), freteCliente: n(b.freteCliente), freteVoce: n(b.freteVoce), taxas: n(b.taxas), sinal: n(b.sinal),
+    obs: txt(b.obs, 1000),
+  } };
+}
+function linhaPedido(r) { return { ...JSON.parse(r.dados), id: r.id, numero: r.numero, status: r.status, prazo: r.prazo, criadoEm: r.criado_em, atualizadoEm: r.atualizado_em }; }
+app.get("/api/pedidos", exigeLogin, (req, res) => {
+  res.json(db.prepare("SELECT * FROM pedidos ORDER BY numero DESC LIMIT 1000").all().map(linhaPedido));
+});
+app.post("/api/pedidos", exigeLogin, exigeEdicao, (req, res) => {
+  const { v, erro } = limpaPedido(req.body); if (erro) return res.status(400).json({ erro });
+  const status = STATUS_PEDIDO.includes(req.body.status) && !["entregue", "pronto"].includes(req.body.status) ? req.body.status : "orcamento";
+  const id = crypto.randomUUID();
+  const numero = (db.prepare("SELECT COALESCE(MAX(numero),0) m FROM pedidos").get().m) + 1;
+  db.prepare("INSERT INTO pedidos (id, numero, dados, status, prazo, criado_por) VALUES (?, ?, ?, ?, ?, ?)").run(id, numero, JSON.stringify(v), status, v.prazo, req.usuario.id);
+  res.json(linhaPedido(db.prepare("SELECT * FROM pedidos WHERE id = ?").get(id)));
+});
+app.put("/api/pedidos/:id", exigeLogin, exigeEdicao, (req, res) => {
+  const atual = db.prepare("SELECT status FROM pedidos WHERE id = ?").get(req.params.id);
+  if (!atual) return res.status(404).json({ erro: "Pedido não encontrado." });
+  if (atual.status === "entregue") return res.status(400).json({ erro: "Pedido entregue não pode ser alterado. Volte o status antes." });
+  const { v, erro } = limpaPedido(req.body); if (erro) return res.status(400).json({ erro });
+  db.prepare("UPDATE pedidos SET dados = ?, prazo = ?, atualizado_em = datetime('now') WHERE id = ?").run(JSON.stringify(v), v.prazo, req.params.id);
+  res.json(linhaPedido(db.prepare("SELECT * FROM pedidos WHERE id = ?").get(req.params.id)));
+});
+app.post("/api/pedidos/:id/status", exigeLogin, exigeEdicao, (req, res) => {
+  const novo = req.body?.status;
+  if (!STATUS_PEDIDO.includes(novo)) return res.status(400).json({ erro: "Status inválido." });
+  const r = db.prepare("SELECT * FROM pedidos WHERE id = ?").get(req.params.id);
+  if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  const p = JSON.parse(r.dados);
+  const avisos = [];
+  db.transaction(() => {
+    const ordem = s => STATUS_PEDIDO.indexOf(s);
+    // chegou em "pronto" (ou além): baixa filamento das peças impressas, uma vez só
+    if (novo !== "cancelado" && ordem(novo) >= ordem("pronto") && !r.filamento_baixado) {
+      for (const it of p.itens) {
+        if (it.doEstoque) continue;
+        for (const f of it.fil || []) {
+          const falta = baixaFilamento(f.filId, f.g * it.quantidade);
+          if (falta > 1) avisos.push(`Faltaram ${Math.round(falta)} g de filamento cadastrado para "${it.descricao}". Confira os rolos em Estoque.`);
+        }
+      }
+      db.prepare("UPDATE pedidos SET filamento_baixado = 1 WHERE id = ?").run(r.id);
+    }
+    if (novo === "entregue" && r.status !== "entregue") {
+      // gera as vendas no financeiro
+      const hoje = new Date().toISOString().slice(0, 10);
+      const bruto = p.itens.reduce((s, i) => s + i.quantidade * i.preco_unit, 0) || 1;
+      const desconto = p.desconto || 0;
+      p.itens.forEach((it, idx) => {
+        const parte = (it.quantidade * it.preco_unit) / bruto;
+        const precoLiq = it.quantidade > 0 ? (it.quantidade * it.preco_unit - desconto * parte) / it.quantidade : 0;
+        const extraFrete = idx === 0 ? (p.freteCliente || 0) : 0; // frete cobrado do cliente entra na 1ª linha
+        db.prepare(`INSERT INTO vendas (id, data, produto_id, descricao, quantidade, preco_unit, canal, taxas, frete, custo_unit, cliente, status, obs, criado_por, pedido_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pago', ?, ?, ?)`).run(
+          crypto.randomUUID(), hoje, it.produto_id, it.descricao, it.quantidade, n(precoLiq + extraFrete / it.quantidade), p.canal,
+          n((p.taxas || 0) * parte), idx === 0 ? n(p.freteVoce || 0) : 0, it.custo_unit, p.cliente, `Pedido #${r.numero}`, req.usuario.id, r.id);
+      });
+      if (!r.estoque_baixado) {
+        for (const it of p.itens) if (it.doEstoque && it.produto_id) ajustaEstoque(it.produto_id, -it.quantidade);
+        db.prepare("UPDATE pedidos SET estoque_baixado = 1 WHERE id = ?").run(r.id);
+      }
+    }
+    if (r.status === "entregue" && novo !== "entregue") {
+      db.prepare("DELETE FROM vendas WHERE pedido_id = ?").run(r.id);
+      avisos.push("As vendas deste pedido foram retiradas do financeiro.");
+    }
+    db.prepare("UPDATE pedidos SET status = ?, atualizado_em = datetime('now') WHERE id = ?").run(novo, r.id);
+  })();
+  res.json({ pedido: linhaPedido(db.prepare("SELECT * FROM pedidos WHERE id = ?").get(r.id)), avisos });
+});
+app.delete("/api/pedidos/:id", exigeLogin, exigeEdicao, (req, res) => {
+  const r = db.prepare("SELECT status FROM pedidos WHERE id = ?").get(req.params.id);
+  if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  if (r.status === "entregue") return res.status(400).json({ erro: "Pedido entregue não pode ser excluído. Volte o status antes." });
+  db.prepare("DELETE FROM pedidos WHERE id = ?").run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ---------- catálogo público (sem login) ----------
+const limitePublico = rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: "draft-7", legacyHeaders: false });
+function produtosPublicos() {
+  return db.prepare("SELECT id, dados, foto FROM produtos ORDER BY criado_em").all()
+    .map(r => ({ id: r.id, p: JSON.parse(r.dados), foto: r.foto }))
+    .filter(x => x.p.catalogo && Number(x.p.precoCatalogo) > 0);
+}
+app.get("/api/publico/catalogo", limitePublico, (req, res) => {
+  const c = db.prepare("SELECT dados FROM config WHERE id = 1").get();
+  const loja = (c && JSON.parse(c.dados).loja) || {};
+  res.set("Cache-Control", "public, max-age=60");
+  res.json({
+    loja: { nome: txt(loja.nome, 80) || "Impressões 3D", whatsapp: txt(loja.whatsapp, 30).replace(/\D/g, ""), instagram: txt(loja.instagram, 60), pagamento: txt(loja.pagamento, 200), prazoDias: Number(loja.prazoDias) || 0, sobre: txt(loja.sobre, 400) },
+    produtos: produtosPublicos().map(({ id, p, foto }) => ({
+      id, nome: p.nome, categoria: p.categoria || "", descricao: txt(p.descricaoCatalogo, 400), preco: n(p.precoCatalogo),
+      prontaEntrega: (Number(p.estoque) || 0) > 0, foto: foto ? "/fotos-publicas/" + foto : null, personalizavel: !!p.personalizavel,
+    })),
+  });
+});
+app.get("/fotos-publicas/:nome", limitePublico, (req, res) => {
+  const nome = req.params.nome;
+  if (!FOTO_RE.test(nome) || !produtosPublicos().some(x => x.foto === nome)) return res.status(404).end();
+  res.set("Cache-Control", "public, max-age=3600");
+  res.sendFile(path.join(FOTOS_DIR, nome), err => { if (err && !res.headersSent) res.status(404).end(); });
+});
+app.get("/catalogo", (req, res) => res.sendFile(path.join(__dirname, "public", "catalogo.html")));
 
 // ---------- páginas ----------
 app.use(express.static(path.join(__dirname, "public"), { index: "index.html", maxAge: "1h" }));

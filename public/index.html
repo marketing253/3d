@@ -42,6 +42,9 @@
 
   <nav class="tabs" role="tablist">
     <button role="tab" id="tab-produtos" aria-selected="true" data-tab="produtos">Produtos e ranking</button>
+    <button role="tab" id="tab-pedidos" aria-selected="false" data-tab="pedidos">Pedidos</button>
+    <button role="tab" id="tab-fila" aria-selected="false" data-tab="fila">Fila da impressora</button>
+    <button role="tab" id="tab-estoque" aria-selected="false" data-tab="estoque">Estoque</button>
     <button role="tab" id="tab-financeiro" aria-selected="false" data-tab="financeiro">Financeiro</button>
     <button role="tab" id="tab-novo" aria-selected="false" data-tab="novo" class="edit-only">Cadastrar produto</button>
     <button role="tab" id="tab-tendencias" aria-selected="false" data-tab="tendencias">Em alta para vender</button>
@@ -71,6 +74,45 @@
     </div>
     <div id="lista"></div>
     <p class="note" style="margin-top:14px"><strong>Lucro por hora de impressora</strong> mostra quanto cada produto rende por hora de máquina ocupada. Como você tem uma impressora só, priorize os produtos do topo. O lucro usa o seu preço de venda quando ele está preenchido. Sem preço preenchido, usa o preço sugerido.</p>
+  </section>
+
+  <!-- PEDIDOS -->
+  <section class="panel" id="p-pedidos" hidden>
+    <div class="stack">
+      <div class="row spread">
+        <input id="pedBusca" type="search" placeholder="Buscar cliente, nº ou produto" style="max-width:320px">
+        <button class="btn primary edit-only" id="btnNovoPed">+ Novo pedido</button>
+      </div>
+      <div class="row chips" id="pedChips"></div>
+      <div class="card stack" id="pedForm" hidden></div>
+      <div class="card stack" id="pedMsgBox" hidden></div>
+      <div id="pedLista"></div>
+      <p class="note">Fluxo: <strong>Orçamento → Aprovado → Imprimindo → Pronto → Entregue</strong>. Ao marcar <strong>Pronto</strong>, o filamento usado sai dos rolos em Estoque. Ao marcar <strong>Entregue</strong>, a venda entra no Financeiro. Se voltar o status de um pedido entregue, a venda é retirada.</p>
+    </div>
+  </section>
+
+  <!-- FILA -->
+  <section class="panel" id="p-fila" hidden>
+    <div class="stack">
+      <div class="tiles" id="filaTiles"></div>
+      <div id="filaLista"></div>
+      <div id="filaExtra"></div>
+      <p class="note">A fila usa os pedidos <strong>aprovados</strong> e <strong>imprimindo</strong>, em ordem de prazo, e as horas de impressão de cada produto. Ajuste quantas horas a impressora roda por dia em <strong>Custos e taxas → Sua loja</strong>.</p>
+    </div>
+  </section>
+
+  <!-- ESTOQUE -->
+  <section class="panel" id="p-estoque" hidden>
+    <div class="stack">
+      <div class="row spread"><h2>Rolos de filamento</h2><button class="btn primary edit-only" id="btnNovoRolo">+ Rolo</button></div>
+      <div id="rolAviso"></div>
+      <div class="tiles" id="rolTiles"></div>
+      <div class="card stack" id="rolForm" hidden></div>
+      <div><div id="rolLista"></div><div id="rolAcabados" style="margin-top:12px"></div></div>
+      <div class="stack" style="gap:10px;margin-top:10px"><h2>Peças prontas (pronta entrega)</h2>
+        <p class="note" style="margin:0">Imprimiu a mais para ter à pronta entrega? Some aqui. As vendas e os pedidos marcados como "da pronta entrega" descontam sozinhos.</p>
+        <div id="pecasLista"></div></div>
+    </div>
   </section>
 
   <!-- FINANCEIRO -->
@@ -163,6 +205,17 @@
           </div>
         </div>
 
+        <div class="card stack">
+          <h3>Catálogo e pronta entrega</h3>
+          <label class="chk"><input type="checkbox" id="f-catshow"> Mostrar no catálogo público</label>
+          <label class="chk"><input type="checkbox" id="f-pers"> Aceita personalização (nome, cor, texto)</label>
+          <div class="fields">
+            <label class="f wide">Descrição no catálogo<input id="f-catdesc" maxlength="400" placeholder="Ex.: Chaveiro com o nome que você quiser, em 2 cores"></label>
+            <label class="f">Preço no catálogo<span class="hint">Vazio usa seu preço ou o sugerido</span><div class="unit pre"><span>R$</span><input id="f-catpreco" type="number" min="0" step="0.01"></div></label>
+            <label class="f">Peças prontas em estoque<div class="unit"><input id="f-estoque" type="number" min="0" step="1" value="0"><span>un.</span></div></label>
+          </div>
+        </div>
+
         <div class="row">
           <button class="btn primary" type="submit" id="btnSalvar">Salvar produto</button>
           <button class="btn" type="button" id="btnCancelar">Cancelar</button>
@@ -197,6 +250,11 @@
   <section class="panel" id="p-config" hidden>
     <div class="stack">
       <p class="note">Estes valores entram no custo de todos os produtos. Os números iniciais são estimativas. <strong>Troque pelos seus:</strong> a tarifa de luz está na sua conta de energia, e o preço do filamento é o que você pagou no rolo.</p>
+      <div class="card stack">
+        <h3>Sua loja e catálogo</h3>
+        <div class="fields" id="cfgLoja"></div>
+        <div class="stack" style="gap:6px"><span class="tl">Link do catálogo público (coloque na bio do Instagram)</span><div class="row" id="catLink"></div></div>
+      </div>
       <div class="card stack">
         <h3>Impressora e energia</h3>
         <div class="fields" id="cfgMaquina"></div>
