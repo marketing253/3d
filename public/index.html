@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Precificador de Impressões 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div class="wrap auth" id="authScreen" hidden>
+  <div class="card stack">
+    <h1><small>Bambu Lab A1 Combo · bancada de produção</small>Precificador de Impressões 3D</h1>
+    <form id="formLogin" hidden>
+      <label class="f">Usuário<input id="lg-usuario" required autocomplete="username" autocapitalize="none"></label>
+      <label class="f">Senha<input id="lg-senha" type="password" required autocomplete="current-password"></label>
+      <p class="err" id="lgErr" role="alert"></p>
+      <button class="btn primary" type="submit">Entrar</button>
+      <p class="note" style="margin:0">Esqueceu a senha? Peça ao administrador para criar uma nova.</p>
+    </form>
+    <form id="formSetup" hidden>
+      <p class="note" style="margin:0"><strong>Primeiro acesso.</strong> Crie a conta de administrador. Depois você adiciona outras pessoas na aba Usuários.</p>
+      <label class="f">Seu nome<input id="st-nome" required maxlength="80"></label>
+      <label class="f">Usuário<span class="hint">De 3 a 40 letras ou números, sem espaços</span><input id="st-usuario" required pattern="[A-Za-z0-9._\-]{3,40}" autocomplete="username" autocapitalize="none"></label>
+      <label class="f">Senha<span class="hint">Mínimo 8 caracteres</span><input id="st-senha" type="password" required minlength="8" autocomplete="new-password"></label>
+      <label class="f">Repita a senha<input id="st-senha2" type="password" required minlength="8" autocomplete="new-password"></label>
+      <p class="err" id="stErr" role="alert"></p>
+      <button class="btn primary" type="submit">Criar administrador e entrar</button>
+    </form>
+    <p class="note" id="authLoading">Carregando…</p>
+  </div>
+</div>
+
+
+<div class="wrap" id="appScreen" hidden>
+  <header class="top">
+    <h1><small>Bambu Lab A1 Combo · bancada de produção</small>Precificador de Impressões 3D</h1>
+    <div class="userchip" id="userchip"></div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-produtos" aria-selected="true" data-tab="produtos">Produtos e ranking</button>
+    <button role="tab" id="tab-novo" aria-selected="false" data-tab="novo" class="edit-only">Cadastrar produto</button>
+    <button role="tab" id="tab-tendencias" aria-selected="false" data-tab="tendencias">Em alta para vender</button>
+    <button role="tab" id="tab-config" aria-selected="false" data-tab="config">Custos e taxas</button>
+    <button role="tab" id="tab-usuarios" aria-selected="false" data-tab="usuarios" hidden>Usuários</button>
+    <button role="tab" id="tab-conta" aria-selected="false" data-tab="conta">Minha conta</button>
+  </nav>
+
+  <!-- PRODUTOS -->
+  <section class="panel" id="p-produtos">
+    <div class="row spread" style="margin-bottom:14px">
+      <div class="row">
+        <label class="f" style="flex-direction:row;align-items:center;gap:8px">Ordenar por
+          <select id="sortBy" style="width:auto">
+            <option value="lucroH">Lucro por hora de impressora</option>
+            <option value="lucro">Lucro por unidade</option>
+            <option value="margem">Margem %</option>
+            <option value="custo">Menor custo</option>
+            <option value="nome">Nome</option>
+          </select>
+        </label>
+        <label class="f" style="flex-direction:row;align-items:center;gap:8px">Canal
+          <select id="rankCanal" style="width:auto"></select>
+        </label>
+      </div>
+      <button class="btn primary edit-only" id="btnNovo">+ Novo produto</button>
+    </div>
+    <div id="lista"></div>
+    <p class="note" style="margin-top:14px"><strong>Lucro por hora de impressora</strong> mostra quanto cada produto rende por hora de máquina ocupada. Como você tem uma impressora só, priorize os produtos do topo. O lucro usa o seu preço de venda quando ele está preenchido. Sem preço preenchido, usa o preço sugerido.</p>
+  </section>
+
+  <!-- NOVO / EDITAR -->
+  <section class="panel" id="p-novo" hidden>
+    <div class="grid-form">
+      <form class="stack" id="form" autocomplete="off">
+        <div class="card stack">
+          <div class="row spread"><h2 id="formTitle">Novo produto</h2><button type="button" class="btn ghost" id="btnLimpar">Limpar</button></div>
+          <div class="fields">
+            <label class="f" style="grid-column:1/-1">Nome do produto<input id="f-nome" required placeholder="Ex.: Chaveiro com nome 2 cores"></label>
+            <label class="f">Categoria<input id="f-cat" list="cats" placeholder="Ex.: Personalizados"></label>
+            <label class="f">Peças por impressão<span class="hint">Quantas cabem na mesa de uma vez</span><input id="f-unid" type="number" min="1" step="1" value="1"></label>
+          </div>
+        </div>
+
+        <div class="card stack">
+          <h3>Arquivo e foto</h3>
+          <label class="f">Link do modelo<span class="hint">Cole o link da página do modelo no MakerWorld, Printables ou Thingiverse, ou o link do arquivo no seu Drive</span>
+            <input id="f-link" type="url" inputmode="url" placeholder="https://makerworld.com/pt/models/…"></label>
+          <div class="fotobox" id="fotoBox">
+            <div class="fotoprev" id="fotoPrev"><span>Sem foto</span></div>
+            <div class="stack" style="gap:8px;min-width:0">
+              <div class="row">
+                <label class="btn" for="f-foto" id="fotoBtn" tabindex="0">Escolher foto</label>
+                <input id="f-foto" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+                <button type="button" class="btn ghost" id="fotoRm" hidden>Remover foto</button>
+              </div>
+              <span class="note" id="fotoMsg">Use a imagem do modelo ou uma foto da peça pronta. Você também pode colar uma imagem copiada (Ctrl+V) nesta tela.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card stack">
+          <div class="row spread"><h3>Filamento usado (por impressão)</h3><button type="button" class="btn ghost" id="btnAddFil">+ Cor / material</button></div>
+          <p class="note" style="margin:0">Copie os gramas do Bambu Studio depois de fatiar. Em impressão colorida, use o total, que já inclui a purga na troca de cor.</p>
+          <div class="stack" id="filLines" style="gap:8px"></div>
+        </div>
+
+        <div class="card stack">
+          <h3>Tempo</h3>
+          <div class="fields">
+            <label class="f">Tempo de impressão<div class="unit"><input id="f-h" type="number" min="0" step="1" value="0"><span>h</span></div></label>
+            <label class="f">&nbsp;<div class="unit"><input id="f-m" type="number" min="0" max="59" step="1" value="0"><span>min</span></div></label>
+            <label class="f">Trabalho manual<span class="hint">Tirar suportes, montar, embalar</span><div class="unit"><input id="f-manual" type="number" min="0" step="1" value="0"><span>min</span></div></label>
+          </div>
+        </div>
+
+        <div class="card stack">
+          <h3>Outros custos e preço</h3>
+          <div class="fields">
+            <label class="f">Embalagem por unidade<div class="unit pre"><span>R$</span><input id="f-emb" type="number" min="0" step="0.01" value="0"></div></label>
+            <label class="f">Outros por unidade<span class="hint">Argola, ímã, adesivo…</span><div class="unit pre"><span>R$</span><input id="f-out" type="number" min="0" step="0.01" value="0"></div></label>
+            <label class="f">Margem de lucro<span class="hint">Vazio usa o padrão</span><div class="unit"><input id="f-margem" type="number" min="0" max="90" step="1" placeholder=""><span>%</span></div></label>
+            <label class="f">Seu preço de venda<span class="hint">Opcional, para conferir o lucro</span><div class="unit pre"><span>R$</span><input id="f-preco" type="number" min="0" step="0.01" placeholder="—"></div></label>
+          </div>
+        </div>
+
+        <div class="row">
+          <button class="btn primary" type="submit" id="btnSalvar">Salvar produto</button>
+          <button class="btn" type="button" id="btnCancelar">Cancelar</button>
+          <span class="note" id="saveMsg"></span>
+        </div>
+      </form>
+
+      <aside class="card stack sticky" id="ficha" aria-live="polite"></aside>
+    </div>
+  </section>
+
+  <!-- TENDÊNCIAS -->
+  <section class="panel" id="p-tendencias" hidden>
+    <div class="stack">
+      <div class="stack" style="gap:8px">
+        <h2>Produtos impressos em 3D que mais vendem no Brasil</h2>
+        <p class="note">Categorias com boa saída no Mercado Livre, na Shopee e no Instagram, que a A1 Combo faz bem com PLA e PETG. As faixas de preço são <strong>referências de mercado até meados de 2026</strong>. Antes de definir o seu preço, confira os concorrentes atuais nos links abaixo. Clique em <strong>Cadastrar</strong> para calcular o custo de um item.</p>
+        <div class="links">
+          <a href="https://www.mercadolivre.com.br/mais-vendidos" target="_blank" rel="noopener">Mais vendidos do Mercado Livre ↗</a>
+          <a href="https://lista.mercadolivre.com.br/impressao-3d" target="_blank" rel="noopener">Busca "impressão 3D" no Mercado Livre ↗</a>
+          <a href="https://shopee.com.br/search?keyword=impress%C3%A3o%203d" target="_blank" rel="noopener">Busca "impressão 3D" na Shopee ↗</a>
+          <a href="https://makerworld.com/" target="_blank" rel="noopener">MakerWorld: modelos em alta ↗</a>
+        </div>
+      </div>
+      <div class="row" id="trendFilter"></div>
+      <div class="trend-grid" id="trends"></div>
+      <p class="note"><strong>Licença:</strong> só venda modelos próprios, modelos com licença comercial (no MakerWorld, procure "Commercial use allowed") ou modelos comprados com direito de revenda. Personagens de filmes, jogos e times exigem licença da marca, e os anúncios podem ser derrubados.</p>
+    </div>
+  </section>
+
+  <!-- CONFIG -->
+  <section class="panel" id="p-config" hidden>
+    <div class="stack">
+      <p class="note">Estes valores entram no custo de todos os produtos. Os números iniciais são estimativas. <strong>Troque pelos seus:</strong> a tarifa de luz está na sua conta de energia, e o preço do filamento é o que você pagou no rolo.</p>
+      <div class="card stack">
+        <h3>Impressora e energia</h3>
+        <div class="fields" id="cfgMaquina"></div>
+      </div>
+      <div class="card stack">
+        <h3>Perdas, mão de obra e lucro</h3>
+        <div class="fields" id="cfgNegocio"></div>
+      </div>
+      <div class="card stack">
+        <div class="row spread"><h3>Filamentos (preço do rolo de 1 kg)</h3><button class="btn ghost edit-only" id="btnAddFilCfg">+ Filamento</button></div>
+        <div class="stack" id="cfgFil" style="gap:8px"></div>
+      </div>
+      <div class="card stack">
+        <div class="row spread"><h3>Canais de venda e taxas</h3><button class="btn ghost edit-only" id="btnAddCanal">+ Canal</button></div>
+        <p class="note" style="margin:0">As taxas do Mercado Livre e da Shopee mudam com frequência e variam por categoria e tipo de anúncio. <strong>Confira na sua conta de vendedor</strong> e ajuste aqui. A coluna "Fixa abaixo de" serve para tarifas fixas que só valem até certo preço (0 = vale sempre).</p>
+        <div class="tablewrap"><table class="chtable" style="min-width:620px">
+          <thead><tr><th>Canal</th><th class="n">Comissão %</th><th class="n">Tarifa fixa R$</th><th class="n">Fixa abaixo de R$</th><th></th></tr></thead>
+          <tbody id="cfgCanais"></tbody>
+        </table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- USUÁRIOS (admin) -->
+  <section class="panel" id="p-usuarios" hidden>
+    <div class="stack">
+      <div class="card stack narrow">
+        <h2>Adicionar pessoa</h2>
+        <form class="stack" id="formUser" autocomplete="off">
+          <div class="fields">
+            <label class="f">Nome<input id="nu-nome" required maxlength="80"></label>
+            <label class="f">Usuário<span class="hint">Usado para entrar. Sem espaços.</span><input id="nu-usuario" required pattern="[A-Za-z0-9._\-]{3,40}" autocapitalize="none"></label>
+            <label class="f">Senha inicial<span class="hint">Mínimo 8 caracteres</span><input id="nu-senha" type="password" required minlength="8" autocomplete="new-password"></label>
+            <label class="f">Acesso<select id="nu-papel">
+              <option value="editor">Editor: cadastra e edita</option>
+              <option value="leitura">Leitura: só consulta</option>
+              <option value="admin">Administrador: tudo + usuários</option></select></label>
+          </div>
+          <div class="row"><button class="btn primary" type="submit">Adicionar</button><span class="note" id="nuMsg"></span></div>
+        </form>
+      </div>
+      <div id="listaUsuarios"></div>
+    </div>
+  </section>
+
+  <!-- MINHA CONTA -->
+  <section class="panel" id="p-conta" hidden>
+    <div class="card stack narrow">
+      <h2>Trocar minha senha</h2>
+      <form class="stack" id="formSenha">
+        <label class="f">Senha atual<input id="ms-atual" type="password" required autocomplete="current-password"></label>
+        <label class="f">Nova senha<span class="hint">Mínimo 8 caracteres</span><input id="ms-nova" type="password" required minlength="8" autocomplete="new-password"></label>
+        <label class="f">Repita a nova senha<input id="ms-nova2" type="password" required minlength="8" autocomplete="new-password"></label>
+        <div class="row"><button class="btn primary" type="submit">Trocar senha</button><span class="note" id="msMsg"></span></div>
+      </form>
+    </div>
+  </section>
+</div>
+
+<datalist id="cats"></datalist>
+<div class="toast" id="toast" hidden></div>
+
+<script src="/app.js"></script>
+</body>
+</html>

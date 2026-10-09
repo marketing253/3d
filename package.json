@@ -1,0 +1,24 @@
+{
+  "name": "precificador-3d",
+  "version": "1.0.0",
+  "description": "Cadastro e precificação de produtos impressos em 3D, com login",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "criar-admin": "node scripts/criar-usuario.js --admin",
+    "criar-usuario": "node scripts/criar-usuario.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "bcryptjs": "2.4.3",
+    "better-sqlite3": "11.8.1",
+    "express": "4.21.2",
+    "express-rate-limit": "7.5.0",
+    "express-session": "1.18.1",
+    "helmet": "8.1.0",
+    "multer": "2.0.2"
+  }
+}

@@ -1,0 +1,16 @@
+# /etc/systemd/system/precificador.service
+[Unit]
+Description=Precificador 3D
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/precificador
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

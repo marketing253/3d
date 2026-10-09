@@ -1,0 +1,45 @@
+// Banco de dados SQLite: usuários, sessões, configuração e produtos.
+const path = require("path");
+const fs = require("fs");
+const Database = require("better-sqlite3");
+
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
+fs.mkdirSync(DATA_DIR, { recursive: true });
+fs.mkdirSync(path.join(DATA_DIR, "fotos"), { recursive: true });
+
+const db = new Database(path.join(DATA_DIR, "precificador.db"));
+db.pragma("journal_mode = WAL");
+db.pragma("foreign_keys = ON");
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS usuarios (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  nome TEXT NOT NULL,
+  senha_hash TEXT NOT NULL,
+  papel TEXT NOT NULL CHECK (papel IN ('admin','editor','leitura')),
+  criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+  ultimo_login TEXT
+);
+CREATE TABLE IF NOT EXISTS sessoes (
+  sid TEXT PRIMARY KEY,
+  sess TEXT NOT NULL,
+  expira INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sessoes_expira ON sessoes(expira);
+CREATE TABLE IF NOT EXISTS config (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  dados TEXT NOT NULL,
+  atualizado_em TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS produtos (
+  id TEXT PRIMARY KEY,
+  dados TEXT NOT NULL,
+  foto TEXT,
+  criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+  atualizado_em TEXT NOT NULL DEFAULT (datetime('now')),
+  atualizado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
+);
+`);
+
+module.exports = { db, DATA_DIR };
