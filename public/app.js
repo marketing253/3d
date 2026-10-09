@@ -598,7 +598,7 @@ function renderPfItens(){
       <label class="f">Descrição<input data-if="descricao" maxlength="150" value="${esc(it.descricao)}"></label>
       <label class="f">Qtd<input data-if="quantidade" type="number" min="1" step="1" value="${esc(it.quantidade)}"></label>
       <label class="f">Preço un.<div class="unit pre"><span>R$</span><input data-if="preco_unit" type="number" min="0" step="0.01" value="${esc(it.preco_unit)}"></div></label>
-      <label class="f">Tempo un.<span class="hint">horas</span><div class="unit"><input data-if="horas_unit" type="number" min="0" step="0.05" value="${esc(it.horas_unit?+(+it.horas_unit).toFixed(2):"")}" placeholder="0"><span>h</span></div></label>
+      <label class="f">Tempo un.<div class="unit"><input data-if="horas_unit" type="number" min="0" step="0.05" value="${esc(it.horas_unit?+(+it.horas_unit).toFixed(2):"")}" placeholder="0"><span>h</span></div></label>
       <label class="f wide">Personalização<input data-if="personalizacao" maxlength="300" placeholder="Nomes, cores, texto…" value="${esc(it.personalizacao)}"></label>
       <div class="pfi-x">${est>0||it.doEstoque?`<label class="chk"><input type="checkbox" data-if="doEstoque"${it.doEstoque?" checked":""}> Da pronta entrega</label>`:""}
         <button type="button" class="btn ghost" data-pfa="rmItem" ${pedForm.d.itens.length<2?"disabled":""} aria-label="Remover item">✕</button></div>
@@ -688,7 +688,7 @@ $("#pedMsgBox").addEventListener("click",async e=>{
 /* ---------- fila da impressora ---------- */
 const soProntaEntrega=p=>(p.itens||[]).length>0&&(p.itens||[]).every(i=>i.doEstoque);
 function filaOrdenada(excluiId){
-  return pedidos.filter(p=>["aprovado","imprimindo"].includes(p.status)&&p.id!==excluiId&&!soProntaEntrega(p))
+  return pedidos.filter(p=>["aprovado","imprimindo"].includes(p.status)&&p.id!==excluiId)
     .sort((a,b)=>(a.status==="imprimindo"?0:1)-(b.status==="imprimindo"?0:1)||(a.prazo||"9999").localeCompare(b.prazo||"9999")||a.numero-b.numero);
 }
 function horasDia(){return Math.max(1,Math.min(24,num(cfg.loja.horasDia)||16))}
@@ -703,11 +703,11 @@ function renderFila(){
     const fim=addDias(hojeISO(),Math.max(0,Math.ceil(acum/hd)-1));const late=p.prazo&&fim>p.prazo;if(late)atrasos++;
     return `<tr data-pid="${esc(p.id)}" class="${i===0?"agora":""}"><td class="num">${i+1}</td>
       <td><div class="pname">#${p.numero} · ${esc(p.cliente)}</div><div class="pcat clip">${esc(resumoItens(p))}</div></td>
-      <td class="n">${t.horas>0?fmtH(t.horas):'<span class="pill warn" title="Edite o pedido e informe o tempo de impressão dos itens">sem tempo</span>'}</td><td class="n num">${Math.round(t.gramas)} g</td>
+      <td class="n">${soProntaEntrega(p)?'<span class="pill good">pronta entrega</span>':t.horas>0?fmtH(t.horas):'<span class="pill warn" title="Edite o pedido e informe o tempo de impressão dos itens">sem tempo</span>'}</td><td class="n num">${Math.round(t.gramas)} g</td>
       <td>${prazoPill(p)}</td>
       <td><span class="num">${ddmm(fim)}</span> ${late?'<span class="pill bad">depois do prazo</span>':'<span class="pill good">no prazo</span>'}</td>
       <td><span class="pill ${ST_CLS[p.status]}">${ST[p.status]}</span></td>
-      <td class="pact">${p.status==="aprovado"?'<button class="btn sm primary edit-only" data-fa2="imprimindo">Começar</button>':'<button class="btn sm primary edit-only" data-fa2="pronto">Pronto</button>'}</td></tr>`});
+      <td class="pact"><button class="btn sm ghost edit-only" data-fa2="editar">Editar</button> ${p.status==="aprovado"?'<button class="btn sm primary edit-only" data-fa2="imprimindo">Começar</button>':'<button class="btn sm primary edit-only" data-fa2="pronto">Pronto</button>'}</td></tr>`});
   $("#filaTiles").innerHTML=`
     <div class="tile"><span class="tl">Na fila</span><span class="tv num">${f.length}</span><span class="ts">${f.length===1?"pedido para imprimir":"pedidos para imprimir"}</span></div>
     <div class="tile"><span class="tl">Horas de impressão</span><span class="tv num">${fmtH(acum)||"0 min"}</span><span class="ts">${hd} h por dia de impressora</span></div>
@@ -715,10 +715,12 @@ function renderFila(){
     <div class="tile"><span class="tl">Risco de atraso</span><span class="tv num ${atrasos?"neg":""}">${atrasos}</span><span class="ts">${atrasos?"pedidos ficam prontos depois do prazo":"tudo dentro do prazo"}</span></div>`;
   $("#filaLista").innerHTML=f.length?`<div class="tablewrap"><table style="min-width:820px"><thead><tr><th>#</th><th>Pedido</th><th class="n">Máquina</th><th class="n">Filamento</th><th>Prazo</th><th>Previsão</th><th>Status</th><th></th></tr></thead><tbody>${linhas.join("")}</tbody></table></div>`
     :`<div class="card empty"><h2>A impressora está livre</h2><p>Os pedidos aprovados aparecem aqui em ordem de prazo, com a previsão de quando cada um fica pronto.</p></div>`;
-  const pend=pedidos.filter(p=>["aprovado","imprimindo"].includes(p.status)&&soProntaEntrega(p));
-  $("#filaExtra").innerHTML=pend.length?`<p class="note"><strong>${pend.length} pedido(s) só com pronta entrega</strong> não ocupam a impressora: ${pend.map(p=>"#"+p.numero).join(", ")}.</p>`:"";
+  const semTempo=f.filter(p=>!soProntaEntrega(p)&&totPed(p).horas===0);
+  $("#filaExtra").innerHTML=semTempo.length?`<p class="note"><strong>${semTempo.length===1?"1 pedido está":semTempo.length+" pedidos estão"} sem tempo de impressão</strong> (${semTempo.map(p=>"#"+p.numero).join(", ")}). Clique em Editar no pedido e preencha "Tempo un." de cada item para a previsão ficar certa.</p>`:"";
 }
-$("#filaLista").addEventListener("click",e=>{const b=e.target.closest("[data-fa2]");if(!b)return;const p=pedidos.find(x=>x.id===b.closest("[data-pid]").dataset.pid);if(p)mudaStatus(p,b.dataset.fa2)});
+$("#filaLista").addEventListener("click",e=>{const b=e.target.closest("[data-fa2]");if(!b)return;const p=pedidos.find(x=>x.id===b.closest("[data-pid]").dataset.pid);if(!p)return;
+  if(b.dataset.fa2==="editar"){setTab("pedidos");abrePedido(p);return}
+  mudaStatus(p,b.dataset.fa2)});
 
 /* ---------- estoque ---------- */
 let rolos=[], roloForm=false;
@@ -790,7 +792,7 @@ $("#pecasLista").addEventListener("click",async e=>{
 });
 
 /* ---------- sua loja (config) ---------- */
-const LOJA=[["nome","Nome da loja","text","Ex.: Freire 3D"],["whatsapp","WhatsApp da loja","tel","Recebe os pedidos do catálogo"],["instagram","Instagram","text","@sualoja"],["pagamento","Formas de pagamento","text","Pix, cartão ou dinheiro"],["prazoDias","Prazo padrão (dias)","number","Usado em pedidos novos"],["horasDia","Horas de impressora por dia","number","Para calcular a fila"],["sobre","Texto do catálogo","text","Uma frase sobre a loja"]];
+const LOJA=[["nome","Nome da loja","text","Ex.: Freire 3D"],["whatsapp","WhatsApp da loja","tel","Recebe os pedidos do catálogo"],["instagram","Instagram","text","@sualoja"],["pagamento","Formas de pagamento","text","Pix, cartão ou dinheiro"],["prazoDias","Prazo padrão (dias)","number","Usado em pedidos novos"],["horasDia","Impressora por dia (h)","number","Horas ligada; usado na fila"],["sobre","Texto do catálogo","text","Uma frase sobre a loja"]];
 function renderLoja(){
   $("#cfgLoja").innerHTML=LOJA.map(([k,l,t,h])=>`<label class="f${k==="sobre"?" wide":""}">${l}<span class="hint">${h}</span><input id="lj-${k}" data-l="${k}" type="${t==="number"?"number":t}" ${t==="number"?'min="0" step="1"':""} value="${esc(cfg.loja[k]??"")}"></label>`).join("");
   const url=location.origin+"/catalogo";

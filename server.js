@@ -628,7 +628,8 @@ app.get("/fotos-publicas/:nome", limitePublico, (req, res) => {
 app.get("/catalogo", (req, res) => res.sendFile(path.join(__dirname, "public", "catalogo.html")));
 
 // ---------- páginas ----------
-app.use(express.static(path.join(__dirname, "public"), { index: "index.html", maxAge: "1h" }));
+// sem cache longo: depois de um deploy o navegador sempre pega a versão nova (usa ETag para não baixar à toa)
+app.use(express.static(path.join(__dirname, "public"), { index: "index.html", setHeaders: res => res.setHeader("Cache-Control", "no-cache") }));
 app.use("/api", (req, res) => res.status(404).json({ erro: "Rota não encontrada." }));
 app.use((err, req, res, next) => {
   console.error(err);
