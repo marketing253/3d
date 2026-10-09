@@ -102,6 +102,8 @@ function setTab(t){
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===t)));
   ["produtos","pedidos","fila","estoque","financeiro","novo","tendencias","config","usuarios","conta"].forEach(x=>{$("#p-"+x).hidden=x!==t});
   try{localStorage.setItem("prec3d.tab",t)}catch(e){}
+  const tb=$("#tab-"+t); if(tb) $("#pageTitle").textContent=tb.textContent.trim();
+  document.body.classList.remove("navopen"); $("#menuBtn").setAttribute("aria-expanded","false");
   if(t==="config") renderConfig();
   if(t==="usuarios") carregaUsuarios();
   if(t==="financeiro") carregaFin();
@@ -126,6 +128,8 @@ $("#userchip").addEventListener("click",async e=>{
   me=null;produtos=[];draft=null;editingId=null;showAuth();
 });
 
+$("#menuBtn").addEventListener("click",()=>{const o=document.body.classList.toggle("navopen");$("#menuBtn").setAttribute("aria-expanded",String(o))});
+$("#scrim").addEventListener("click",()=>{document.body.classList.remove("navopen");$("#menuBtn").setAttribute("aria-expanded","false")});
 /* ---------- lista / ranking ---------- */
 function renderRankCanal(){
   const sel=$("#rankCanal"), cur=sel.value;

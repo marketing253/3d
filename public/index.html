@@ -34,24 +34,32 @@
 </div>
 
 
-<div class="wrap" id="appScreen" hidden>
-  <header class="top">
-    <h1><small>Bambu Lab A1 Combo · bancada de produção</small>Precificador de Impressões 3D</h1>
+<div class="shell" id="appScreen" hidden>
+  <aside class="side" id="side">
+    <div class="brand"><small>Bambu Lab A1 Combo</small>Precificador 3D</div>
+    <nav class="tabs" role="tablist" aria-label="Menu" aria-orientation="vertical">
+      <span class="navgrp">Operação</span>
+      <button role="tab" id="tab-produtos" aria-selected="true" data-tab="produtos"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6l7-3 7 3-7 3-7-3zm0 0v8l7 3 7-3V6M10 9v8"/></svg>Produtos e ranking</button>
+      <button role="tab" id="tab-pedidos" aria-selected="false" data-tab="pedidos"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h10v14l-2.5-1.5L10 17l-2.5-1.5L5 17V3zm3 4h4m-4 3h4"/></svg>Pedidos</button>
+      <button role="tab" id="tab-fila" aria-selected="false" data-tab="fila"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h7"/></svg>Fila da impressora</button>
+      <button role="tab" id="tab-estoque" aria-selected="false" data-tab="estoque"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="2.5"/></svg>Estoque</button>
+      <button role="tab" id="tab-financeiro" aria-selected="false" data-tab="financeiro"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 16h14M5 13V9m4 4V6m4 7v-5m4 5V4"/></svg>Financeiro</button>
+      <span class="navgrp">Catálogo</span>
+      <button role="tab" id="tab-novo" aria-selected="false" data-tab="novo" class="edit-only"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>Cadastrar produto</button>
+      <button role="tab" id="tab-tendencias" aria-selected="false" data-tab="tendencias"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 14l5-5 3 3 6-6m0 0h-4m4 0v4"/></svg>Em alta para vender</button>
+      <span class="navgrp">Ajustes</span>
+      <button role="tab" id="tab-config" aria-selected="false" data-tab="config"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6h8m3 0h1M4 14h2m3 0h7M12 4v4M7 12v4"/></svg>Custos e taxas</button>
+      <button role="tab" id="tab-usuarios" aria-selected="false" data-tab="usuarios" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8" cy="7" r="3"/><path d="M2 17c0-3 3-5 6-5s6 2 6 5m1-9a2.5 2.5 0 010 5m2 4c0-2-1-3.5-2.5-4"/></svg>Usuários</button>
+      <button role="tab" id="tab-conta" aria-selected="false" data-tab="conta"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="5" y="9" width="10" height="8" rx="1.5"/><path d="M7 9V6.5a3 3 0 016 0V9"/></svg>Minha conta</button>
+    </nav>
     <div class="userchip" id="userchip"></div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+  <div class="main">
+  <header class="top">
+    <button class="btn menubtn" id="menuBtn" type="button" aria-label="Abrir menu" aria-controls="side" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg></button>
+    <h1 id="pageTitle">Produtos e ranking</h1>
   </header>
-
-  <nav class="tabs" role="tablist">
-    <button role="tab" id="tab-produtos" aria-selected="true" data-tab="produtos">Produtos e ranking</button>
-    <button role="tab" id="tab-pedidos" aria-selected="false" data-tab="pedidos">Pedidos</button>
-    <button role="tab" id="tab-fila" aria-selected="false" data-tab="fila">Fila da impressora</button>
-    <button role="tab" id="tab-estoque" aria-selected="false" data-tab="estoque">Estoque</button>
-    <button role="tab" id="tab-financeiro" aria-selected="false" data-tab="financeiro">Financeiro</button>
-    <button role="tab" id="tab-novo" aria-selected="false" data-tab="novo" class="edit-only">Cadastrar produto</button>
-    <button role="tab" id="tab-tendencias" aria-selected="false" data-tab="tendencias">Em alta para vender</button>
-    <button role="tab" id="tab-config" aria-selected="false" data-tab="config">Custos e taxas</button>
-    <button role="tab" id="tab-usuarios" aria-selected="false" data-tab="usuarios" hidden>Usuários</button>
-    <button role="tab" id="tab-conta" aria-selected="false" data-tab="conta">Minha conta</button>
-  </nav>
 
   <!-- PRODUTOS -->
   <section class="panel" id="p-produtos">
@@ -312,6 +320,7 @@
       </form>
     </div>
   </section>
+</div>
 </div>
 
 <datalist id="cats"></datalist>
