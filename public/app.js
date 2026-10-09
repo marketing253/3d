@@ -598,6 +598,7 @@ function renderPfItens(){
       <label class="f">Descrição<input data-if="descricao" maxlength="150" value="${esc(it.descricao)}"></label>
       <label class="f">Qtd<input data-if="quantidade" type="number" min="1" step="1" value="${esc(it.quantidade)}"></label>
       <label class="f">Preço un.<div class="unit pre"><span>R$</span><input data-if="preco_unit" type="number" min="0" step="0.01" value="${esc(it.preco_unit)}"></div></label>
+      <label class="f">Tempo un.<span class="hint">horas</span><div class="unit"><input data-if="horas_unit" type="number" min="0" step="0.05" value="${esc(it.horas_unit?+(+it.horas_unit).toFixed(2):"")}" placeholder="0"><span>h</span></div></label>
       <label class="f wide">Personalização<input data-if="personalizacao" maxlength="300" placeholder="Nomes, cores, texto…" value="${esc(it.personalizacao)}"></label>
       <div class="pfi-x">${est>0||it.doEstoque?`<label class="chk"><input type="checkbox" data-if="doEstoque"${it.doEstoque?" checked":""}> Da pronta entrega</label>`:""}
         <button type="button" class="btn ghost" data-pfa="rmItem" ${pedForm.d.itens.length<2?"disabled":""} aria-label="Remover item">✕</button></div>
@@ -627,7 +628,7 @@ $("#pedForm").addEventListener("input",e=>{
   if(row&&el.dataset.if){const it=pedForm.d.itens[+row.dataset.ii];const k=el.dataset.if;
     if(k==="produto_id"){ const p=produtos.find(x=>x.id===el.value); pedForm.d.itens[+row.dataset.ii]=p?{...itemDeProduto(p,pedForm.d.canal,num(it.quantidade)||1),personalizacao:it.personalizacao}:{...it,produto_id:null,fil:[],custo_unit:0,horas_unit:0}; renderPfItens() }
     else if(k==="doEstoque") it.doEstoque=el.checked;
-    else it[k]=["quantidade","preco_unit"].includes(k)?num(el.value):el.value;
+    else it[k]=["quantidade","preco_unit","horas_unit"].includes(k)?num(el.value):el.value;
   }
   if(el.id==="pf-canal") pedForm.taxaManual=false;
   atualizaPf();
@@ -685,8 +686,9 @@ $("#pedMsgBox").addEventListener("click",async e=>{
 });
 
 /* ---------- fila da impressora ---------- */
+const soProntaEntrega=p=>(p.itens||[]).length>0&&(p.itens||[]).every(i=>i.doEstoque);
 function filaOrdenada(excluiId){
-  return pedidos.filter(p=>["aprovado","imprimindo"].includes(p.status)&&p.id!==excluiId&&totPed(p).horas>0)
+  return pedidos.filter(p=>["aprovado","imprimindo"].includes(p.status)&&p.id!==excluiId&&!soProntaEntrega(p))
     .sort((a,b)=>(a.status==="imprimindo"?0:1)-(b.status==="imprimindo"?0:1)||(a.prazo||"9999").localeCompare(b.prazo||"9999")||a.numero-b.numero);
 }
 function horasDia(){return Math.max(1,Math.min(24,num(cfg.loja.horasDia)||16))}
@@ -701,19 +703,19 @@ function renderFila(){
     const fim=addDias(hojeISO(),Math.max(0,Math.ceil(acum/hd)-1));const late=p.prazo&&fim>p.prazo;if(late)atrasos++;
     return `<tr data-pid="${esc(p.id)}" class="${i===0?"agora":""}"><td class="num">${i+1}</td>
       <td><div class="pname">#${p.numero} · ${esc(p.cliente)}</div><div class="pcat clip">${esc(resumoItens(p))}</div></td>
-      <td class="n">${fmtH(t.horas)}</td><td class="n num">${Math.round(t.gramas)} g</td>
+      <td class="n">${t.horas>0?fmtH(t.horas):'<span class="pill warn" title="Edite o pedido e informe o tempo de impressão dos itens">sem tempo</span>'}</td><td class="n num">${Math.round(t.gramas)} g</td>
       <td>${prazoPill(p)}</td>
       <td><span class="num">${ddmm(fim)}</span> ${late?'<span class="pill bad">depois do prazo</span>':'<span class="pill good">no prazo</span>'}</td>
       <td><span class="pill ${ST_CLS[p.status]}">${ST[p.status]}</span></td>
       <td class="pact">${p.status==="aprovado"?'<button class="btn sm primary edit-only" data-fa2="imprimindo">Começar</button>':'<button class="btn sm primary edit-only" data-fa2="pronto">Pronto</button>'}</td></tr>`});
   $("#filaTiles").innerHTML=`
-    <div class="tile"><span class="tl">Na fila</span><span class="tv num">${f.length}</span><span class="ts">${f.length===1?"pedido aprovado":"pedidos aprovados"}</span></div>
+    <div class="tile"><span class="tl">Na fila</span><span class="tv num">${f.length}</span><span class="ts">${f.length===1?"pedido para imprimir":"pedidos para imprimir"}</span></div>
     <div class="tile"><span class="tl">Horas de impressão</span><span class="tv num">${fmtH(acum)||"0 min"}</span><span class="ts">${hd} h por dia de impressora</span></div>
     <div class="tile main"><span class="tl">Fila livre em</span><span class="tv num">${acum>=hd?ddmm(addDias(hojeISO(),Math.floor(acum/hd))):"hoje"}</span><span class="ts">prazo para prometer a um pedido novo</span></div>
     <div class="tile"><span class="tl">Risco de atraso</span><span class="tv num ${atrasos?"neg":""}">${atrasos}</span><span class="ts">${atrasos?"pedidos ficam prontos depois do prazo":"tudo dentro do prazo"}</span></div>`;
   $("#filaLista").innerHTML=f.length?`<div class="tablewrap"><table style="min-width:820px"><thead><tr><th>#</th><th>Pedido</th><th class="n">Máquina</th><th class="n">Filamento</th><th>Prazo</th><th>Previsão</th><th>Status</th><th></th></tr></thead><tbody>${linhas.join("")}</tbody></table></div>`
     :`<div class="card empty"><h2>A impressora está livre</h2><p>Os pedidos aprovados aparecem aqui em ordem de prazo, com a previsão de quando cada um fica pronto.</p></div>`;
-  const pend=pedidos.filter(p=>["aprovado","imprimindo"].includes(p.status)&&totPed(p).horas===0);
+  const pend=pedidos.filter(p=>["aprovado","imprimindo"].includes(p.status)&&soProntaEntrega(p));
   $("#filaExtra").innerHTML=pend.length?`<p class="note"><strong>${pend.length} pedido(s) só com pronta entrega</strong> não ocupam a impressora: ${pend.map(p=>"#"+p.numero).join(", ")}.</p>`:"";
 }
 $("#filaLista").addEventListener("click",e=>{const b=e.target.closest("[data-fa2]");if(!b)return;const p=pedidos.find(x=>x.id===b.closest("[data-pid]").dataset.pid);if(p)mudaStatus(p,b.dataset.fa2)});
