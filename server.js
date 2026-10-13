@@ -626,7 +626,7 @@ app.post("/api/compras", exigeLogin, exigeEdicao, (req, res) => {
   for (const b of lista.slice(0, 50)) {
     const { v, erro } = limpaCompra(b); if (erro) return res.status(400).json({ erro });
     const id = crypto.randomUUID();
-    db.prepare("INSERT INTO compras (id, dados) VALUES (?, ?)").run(id, JSON.stringify(v));
+    db.prepare("INSERT INTO compras (id, dados, status) VALUES (?, ?, ?)").run(id, JSON.stringify(v), v.cotacoes.some(c => c.preco > 0) ? "cotado" : "planejado");
     criados.push(linhaCompra(db.prepare("SELECT * FROM compras WHERE id = ?").get(id)));
   }
   res.json(criados);

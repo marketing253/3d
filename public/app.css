@@ -249,3 +249,4 @@ tr.feito td.pact{opacity:1}
 .buyrow .chk{font-size:13px}
 table.cmpt{table-layout:fixed;min-width:880px}
 table.cmpt td{overflow-wrap:anywhere}
+table.cmpt td.n{white-space:nowrap}

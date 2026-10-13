@@ -809,28 +809,27 @@ const CMP_CATS=["Equipamento","Filamento","Embalagem","Ferramenta","Outros"];
 const CMP_CAT_NOME={Equipamento:"Equipamentos",Filamento:"Filamentos",Embalagem:"Caixas e embalagens",Ferramenta:"Ferramentas e peças",Outros:"Outros"};
 const CMP_PRI={essencial:["Essencial","bad"],importante:["Importante","warn"],depois:["Pode esperar",""]};
 const CMP_ST={planejado:["Sem cotação",""],cotado:["Cotado","acc"],comprado:["Comprado","good"]};
+// Primeira compra: preços pesquisados no Buscapé em 13/10/2026 (referência; confira antes de comprar)
 const SUGESTAO=[
-  ["Impressora Bambu Lab A1 Combo","Equipamento",1,"essencial","Com AMS lite para 4 cores"],
-  ["Placa PEI texturizada extra","Equipamento",1,"importante","Reserva para não parar a produção"],
-  ["Bico 0.4 mm de reserva (hotend)","Equipamento",1,"importante",""],
-  ["Secador de filamento","Equipamento",1,"importante","Essencial para PETG e TPU"],
-  ["Impressora térmica de etiquetas","Equipamento",1,"essencial","Para etiquetas de envio do Mercado Livre e Shopee (100×150 mm)"],
-  ["Rolo de etiquetas térmicas 100×150 mm","Embalagem",2,"essencial","Confira o tamanho aceito pela sua impressora"],
-  ["PLA Básico preto 1 kg","Filamento",2,"essencial",""],
-  ["PLA Básico branco 1 kg","Filamento",2,"essencial",""],
-  ["PLA Matte (cor da moda) 1 kg","Filamento",1,"importante",""],
-  ["PLA colorido (vermelho/azul/amarelo) 1 kg","Filamento",2,"importante","Para peças em várias cores"],
-  ["PETG 1 kg","Filamento",1,"depois","Peças que pegam calor ou umidade"],
-  ["Caixas de papelão pequenas","Embalagem",50,"essencial","Para chaveiros e peças pequenas"],
-  ["Caixas de papelão médias","Embalagem",30,"importante","Vasos, suportes e kits"],
-  ["Saquinhos plásticos / zip","Embalagem",200,"essencial",""],
-  ["Plástico bolha ou papel de seda","Embalagem",1,"importante",""],
-  ["Fita adesiva para caixas","Embalagem",4,"essencial",""],
-  ["Adesivos com logo / cartão de agradecimento","Embalagem",100,"depois","Ajuda nas avaliações e na recompra"],
-  ["Kit de ferramentas (espátula, alicate de corte, estilete, lixas)","Ferramenta",1,"essencial",""],
-  ["Álcool isopropílico (limpar a mesa)","Ferramenta",1,"essencial",""],
-  ["Sílica gel e potes herméticos","Ferramenta",1,"importante","Guardar filamento longe da umidade"],
+  ["Impressora Bambu Lab A1 Combo", "Equipamento", 1, "essencial", "Com AMS lite (4 cores). Confira se é Bivolt e se tem garantia no Brasil.", "Amazon", 4406.0, "https://www.buscape.com.br/search?q=bambu%20lab%20a1%20combo"],
+  ["Impressora térmica de etiquetas 100×150", "Equipamento", 1, "essencial", "USB/Bluetooth, para etiquetas de envio do Mercado Livre e Shopee", "Magazine Luiza", 407.03, "https://www.buscape.com.br/search?q=impressora%20termica%20etiqueta%20100x150"],
+  ["Etiquetas térmicas 10×15 (rolo com 500)", "Embalagem", 1, "essencial", "Confira o tamanho de rolo aceito pela impressora", "Buscapé", 53.24, "https://www.buscape.com.br/search?q=etiqueta%20adesiva%20termica%2010x15%20500"],
+  ["PLA preto 1 kg (Voolt)", "Filamento", 2, "essencial", "Cor que mais vende", "Buscapé", 139.32, "https://www.buscape.com.br/search?q=filamento%20pla%20preto%201kg%20voolt"],
+  ["PLA Lite branco 1 kg (Bambu Lab)", "Filamento", 1, "essencial", "", "Buscapé", 167.35, "https://www.buscape.com.br/search?q=filamento%20bambu%20lab%20pla%20lite%201kg"],
+  ["PLA Matte 1 kg (Flashforge) – cores da moda", "Filamento", 2, "importante", "Bege, verde-sálvia, lavanda…", "Buscapé", 132.91, "https://www.buscape.com.br/search?q=filamento%20pla%20matte%201kg"],
+  ["PETG 1 kg (MasterPrint)", "Filamento", 1, "depois", "Para peças que pegam calor/umidade", "Buscapé", 67.85, "https://www.buscape.com.br/search?q=filamento%20petg%201kg"],
+  ["Hotend / bico 0.4 mm de reserva (compatível A1)", "Equipamento", 1, "importante", "Para não parar se entupir", "Buscapé", 85.99, "https://www.buscape.com.br/search?q=hotend%20bambu%20lab%20a1%200.4"],
+  ["Placa PEI texturizada extra (256×256)", "Equipamento", 1, "depois", "Procure 'placa PEI Bambu Lab A1' (não a da A1 Mini)", "", 0, "https://www.buscape.com.br/search?q=placa%20pei%20bambu%20lab%20a1%20256"],
+  ["Secador de filamento SUNLU S1 Plus", "Equipamento", 1, "depois", "Necessário quando começar com PETG/TPU", "Buscapé", 373.07, "https://www.buscape.com.br/search?q=sunlu%20filadryer"],
+  ["Alicate de corte rente 5\"", "Ferramenta", 1, "essencial", "Tirar suportes e rebarbas", "Amazon", 23.41, "https://www.buscape.com.br/search?q=alicate%20de%20corte%20rente%205"],
+  ["Álcool isopropílico 1 L", "Ferramenta", 1, "essencial", "Limpar a mesa antes de imprimir", "Buscapé", 39.94, "https://www.buscape.com.br/search?q=alcool%20isopropilico%201%20litro"],
+  ["Caixas de papelão 17×14×5 cm", "Embalagem", 25, "essencial", "Kit com 25. Em lojas de embalagem da sua cidade costuma sair mais barato", "Buscapé", 5.42, "https://www.buscape.com.br/search?q=caixa%20papelao%20envio%2017x14x5"],
+  ["Saquinhos plásticos 10×15 (pacote 100)", "Embalagem", 1, "essencial", "", "Buscapé", 15.2, "https://www.buscape.com.br/search?q=saco%20plastico%2010x15%20100%20unidades"],
+  ["Plástico bolha 50 cm × 20 m", "Embalagem", 1, "importante", "", "Buscapé", 28.41, "https://www.buscape.com.br/search?q=plastico%20bolha%20rolo%2050cm"],
+  ["Fita adesiva transparente 48 mm × 100 m", "Embalagem", 2, "essencial", "", "Buscapé", 14.25, "https://www.buscape.com.br/search?q=fita%20adesiva%20transparente%2048mm%20100m"],
+  ["Adesivos com logo / cartão de agradecimento", "Embalagem", 100, "depois", "Ajuda nas avaliações e na recompra", "", 0, ""]
 ];
+const SUGESTAO_ANTIGA=["Impressora Bambu Lab A1 Combo", "Placa PEI texturizada extra", "Bico 0.4 mm de reserva (hotend)", "Secador de filamento", "Impressora térmica de etiquetas", "Rolo de etiquetas térmicas 100×150 mm", "PLA Básico preto 1 kg", "PLA Básico branco 1 kg", "PLA Matte (cor da moda) 1 kg", "PLA colorido (vermelho/azul/amarelo) 1 kg", "PETG 1 kg", "Caixas de papelão pequenas", "Caixas de papelão médias", "Saquinhos plásticos / zip", "Plástico bolha ou papel de seda", "Fita adesiva para caixas", "Adesivos com logo / cartão de agradecimento", "Kit de ferramentas (espátula, alicate de corte, estilete, lixas)", "Álcool isopropílico (limpar a mesa)", "Sílica gel e potes herméticos"];
 let compras=[], cmpFiltro="todos", cmpForm=null;
 async function carregaCompras(){ try{ compras=await api("GET","/api/compras"); renderCompras() }catch(e){ if(e.status!==401) toast(e.message) } }
 const melhorCot=c=>{const v=(c.cotacoes||[]).filter(x=>num(x.preco)>0);return v.length?v.reduce((a,b)=>num(b.preco)<num(a.preco)?b:a):null};
@@ -846,16 +845,15 @@ function renderCompras(){
     <div class="tile"><span class="tl">Essenciais pendentes</span><span class="tv num ${essPend?"neg":""}">${essPend}</span><span class="ts">${essPend?"compre estes primeiro":"tudo essencial comprado"}</span></div>`;
   const chips=[["todos","Todos"],["pendentes","Falta comprar"],["comprado","Comprados"],...CMP_CATS.map(k=>[k,CMP_CAT_NOME[k]])];
   $("#cmpChips").innerHTML=chips.map(([k,n])=>`<button class="chip${cmpFiltro===k?" on":""}" data-cf="${k}">${n}</button>`).join("");
-  $("#cmpSugestao").hidden=compras.length>0;
   const lst=compras.filter(c=>cmpFiltro==="todos"||(cmpFiltro==="pendentes"&&c.status!=="comprado")||c.status===cmpFiltro||c.categoria===cmpFiltro);
-  if(!compras.length){ $("#cmpLista").innerHTML=`<div class="card empty"><h2>Sua lista de compras está vazia</h2><p>Comece com a lista sugerida para quem está montando a operação (impressora, filamentos, caixas, embalagens, impressora térmica e ferramentas). Depois é só colocar os preços que você encontrar.</p><button class="btn primary edit-only" data-cmpa="sugestao">Usar lista sugerida</button></div>`; return }
+  if(!compras.length){ $("#cmpLista").innerHTML=`<div class="card empty"><h2>Sua lista de compras está vazia</h2><p>Comece com a lista da primeira compra: impressora A1 Combo, impressora térmica, filamentos, caixas, embalagens e ferramentas, já com preço de referência.</p><button class="btn primary edit-only" data-cmpa="sugestao">Ver lista da primeira compra</button></div>`; return }
   if(!lst.length){ $("#cmpLista").innerHTML=`<div class="card empty"><h2>Nada neste filtro</h2></div>`; return }
   const ordemPri={essencial:0,importante:1,depois:2};
   $("#cmpLista").innerHTML=`<div class="stack" style="gap:26px">`+CMP_CATS.map(cat=>{
     const its=lst.filter(c=>c.categoria===cat).sort((a,b)=>(a.status==="comprado")-(b.status==="comprado")||ordemPri[a.prioridade]-ordemPri[b.prioridade]); if(!its.length) return "";
     const sub=its.reduce((s,c)=>s+totalItem(c),0);
     return `<div class="stack" style="gap:8px"><div class="row spread"><h3>${CMP_CAT_NOME[cat]}</h3><span class="num">${brl(sub)}</span></div>
-    <div class="tablewrap"><table class="cmpt"><colgroup><col><col style="width:56px"><col style="width:180px"><col style="width:100px"><col style="width:112px"><col style="width:112px"><col style="width:186px"></colgroup><thead><tr><th>Item</th><th class="n">Qtd</th><th>Melhor preço</th><th class="n">Total</th><th>Prioridade</th><th>Situação</th><th></th></tr></thead><tbody>
+    <div class="tablewrap"><table class="cmpt"><colgroup><col><col style="width:50px"><col style="width:190px"><col style="width:120px"><col style="width:112px"><col style="width:104px"><col style="width:180px"></colgroup><thead><tr><th>Item</th><th class="n">Qtd</th><th>Melhor preço</th><th class="n">Total</th><th>Prioridade</th><th>Situação</th><th></th></tr></thead><tbody>
     ${its.map(c=>{const m=melhorCot(c);const pr=CMP_PRI[c.prioridade]||CMP_PRI.importante;const st=CMP_ST[c.status]||CMP_ST.planejado;const nc=(c.cotacoes||[]).filter(x=>num(x.preco)>0).length;
       return `<tr data-cid="${esc(c.id)}" class="${c.status==="comprado"?"feito":""}"><td><div class="pname">${esc(c.nome)}</div>${c.obs?`<div class="pcat">${esc(c.obs)}</div>`:""}</td>
       <td class="n num">${num(c.quantidade).toLocaleString("pt-BR")}</td>
@@ -866,10 +864,32 @@ function renderCompras(){
     </tbody></table></div></div>`}).join("")+`</div>`;
 }
 $("#cmpChips").addEventListener("click",e=>{const b=e.target.closest("[data-cf]");if(!b)return;cmpFiltro=b.dataset.cf;renderCompras()});
-async function usarSugestao(){
-  try{ const r=await api("POST","/api/compras",{itens:SUGESTAO.map(([nome,categoria,quantidade,prioridade,obs])=>({nome,categoria,quantidade,prioridade,obs,cotacoes:[]}))}); compras=compras.concat(r); renderCompras(); toast("Lista sugerida adicionada. Agora coloque os preços.") }catch(e){ toast(e.message) }
+function planoSugestao(){
+  const trocar=compras.filter(c=>SUGESTAO_ANTIGA.includes(c.nome)&&c.status!=="comprado"&&!melhorCot(c));
+  const nomes=new Set(compras.filter(c=>!trocar.includes(c)).map(c=>c.nome.toLowerCase()));
+  const novos=SUGESTAO.filter(s=>!nomes.has(s[0].toLowerCase()));
+  return {novos,trocar};
 }
-$("#cmpSugestao").addEventListener("click",usarSugestao);
+async function usarSugestao(){
+  const {novos,trocar}=planoSugestao();
+  if(!novos.length){toast("A lista da primeira compra já está toda aqui.");return}
+  try{
+    for(const c of trocar) await api("DELETE","/api/compras/"+encodeURIComponent(c.id));
+    const r=await api("POST","/api/compras",{itens:novos.map(([nome,categoria,quantidade,prioridade,obs,loja,preco,link])=>({nome,categoria,quantidade,prioridade,obs,cotacoes:preco>0?[{loja,preco,link}]:(link?[{loja:"",preco:"",link}]:[])}))});
+    compras=compras.filter(c=>!trocar.includes(c)).concat(r);
+    await carregaCompras(); $("#cmpSugBox").hidden=true;
+    toast(`Lista da primeira compra adicionada (${r.length} itens com preço de referência).`);
+  }catch(e){ toast(e.message) }
+}
+$("#cmpSugestao").addEventListener("click",()=>{
+  const {novos,trocar}=planoSugestao(), box=$("#cmpSugBox");
+  const tot=novos.reduce((s,x)=>s+x[2]*x[6],0), ess=novos.filter(x=>x[3]==="essencial").reduce((s,x)=>s+x[2]*x[6],0);
+  box.hidden=false;
+  box.innerHTML=novos.length?`<div class="row spread"><h2>Lista da primeira compra</h2><button class="btn ghost" data-sg="fechar">Fechar</button></div>
+    <p class="note" style="margin:0">Vou adicionar <strong>${pl(novos.length,"item","itens")}</strong> com preço de referência pesquisado no Buscapé em 13/10/2026: total <strong>${brl(tot)}</strong>, sendo <strong>${brl(ess)}</strong> só com o essencial.${trocar.length?` Também vou tirar ${pl(trocar.length,"item antigo","itens antigos")} da lista sugerida anterior que ainda estavam sem preço.`:""} Os preços mudam todo dia: use como ponto de partida e atualize as cotações.</p>
+    <div class="row"><button class="btn primary" data-sg="ok">Adicionar à lista</button></div>`:`<div class="row spread"><span class="note">A lista da primeira compra já está toda aqui.</span><button class="btn ghost" data-sg="fechar">Fechar</button></div>`;
+});
+$("#cmpSugBox").addEventListener("click",e=>{const b=e.target.closest("[data-sg]");if(!b)return;if(b.dataset.sg==="ok")usarSugestao();else $("#cmpSugBox").hidden=true});
 $("#cmpNovo").addEventListener("click",()=>abreCompra(null));
 function abreCompra(c){
   cmpForm={id:c?.id||null,d:c?clone(c):{nome:"",categoria:"Equipamento",quantidade:1,prioridade:"importante",cotacoes:[],obs:""}};
@@ -928,7 +948,7 @@ $("#cmpForm").addEventListener("submit",async e=>{
 });
 $("#cmpLista").addEventListener("click",async e=>{
   const b=e.target.closest("[data-cmpa]"); if(!b) return;
-  if(b.dataset.cmpa==="sugestao") return usarSugestao();
+  if(b.dataset.cmpa==="sugestao") return $("#cmpSugestao").click();
   const tr=b.closest("[data-cid]"), c=compras.find(x=>x.id===tr?.dataset.cid); if(!c) return;
   const a=b.dataset.cmpa;
   if(a==="editar") return abreCompra(c);
