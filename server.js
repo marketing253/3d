@@ -527,7 +527,7 @@ function limpaPedido(b) {
     obs: txt(b.obs, 1000), ...(b.origem === "catalogo" ? { origem: "catalogo" } : {}),
   } };
 }
-function linhaPedido(r) { return { ...JSON.parse(r.dados), id: r.id, numero: r.numero, status: r.status, prazo: r.prazo, criadoEm: r.criado_em, atualizadoEm: r.atualizado_em }; }
+function linhaPedido(r) { return { ...JSON.parse(r.dados), id: r.id, numero: r.numero, status: r.status, prazo: r.prazo, token: r.token || null, criadoEm: r.criado_em, atualizadoEm: r.atualizado_em }; }
 app.get("/api/pedidos", exigeLogin, (req, res) => {
   res.json(db.prepare("SELECT * FROM pedidos ORDER BY numero DESC LIMIT 1000").all().map(linhaPedido));
 });
@@ -878,7 +878,84 @@ app.get("/fotos-publicas/:nome", limitePublico, (req, res) => {
   res.set("Cache-Control", "public, max-age=3600");
   res.sendFile(path.join(FOTOS_DIR, nome), err => { if (err && !res.headersSent) res.status(404).end(); });
 });
-app.get("/catalogo", (req, res) => res.sendFile(path.join(__dirname, "public", "catalogo.html")));
+// ---------- link do pedido para o cliente ----------
+const TOKEN_RE = /^[a-f0-9]{32}$/;
+const origemUrl = req => (req.secure ? "https" : "http") + "://" + req.get("host");
+const htmlCache = {};
+function paginaComMeta(arquivo, meta) {
+  const html = htmlCache[arquivo] ||= fs.readFileSync(path.join(__dirname, "public", arquivo), "utf8");
+  const tags = [
+    `<meta property="og:type" content="website">`,
+    `<meta property="og:title" content="${escH(meta.titulo)}">`,
+    meta.descricao ? `<meta property="og:description" content="${escH(meta.descricao)}">` : "",
+    meta.imagem ? `<meta property="og:image" content="${escH(meta.imagem)}">` : "",
+  ].join("\n");
+  return html.replace("</head>", tags + "\n</head>");
+}
+app.post("/api/pedidos/:id/link", exigeLogin, exigeEdicao, (req, res) => {
+  const r = db.prepare("SELECT id, token FROM pedidos WHERE id = ?").get(req.params.id);
+  if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  let token = r.token;
+  if (!token) { token = crypto.randomBytes(16).toString("hex"); db.prepare("UPDATE pedidos SET token = ? WHERE id = ?").run(token, r.id); }
+  res.json({ token, url: origemUrl(req) + "/pedido/" + token });
+});
+function pedidoPorToken(token) {
+  if (!TOKEN_RE.test(token || "")) return null;
+  const r = db.prepare("SELECT * FROM pedidos WHERE token = ?").get(token);
+  if (!r || r.status === "cancelado") return null;
+  return r;
+}
+function fotoDoItem(i) {
+  if (!i.produto_id) return null;
+  const pr = db.prepare("SELECT foto FROM produtos WHERE id = ?").get(i.produto_id);
+  return pr && pr.foto && FOTO_RE.test(pr.foto) ? pr.foto : null;
+}
+app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
+  const r = pedidoPorToken(req.params.token); if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  const p = JSON.parse(r.dados), L = lojaConfig();
+  const bruto = p.itens.reduce((s, i) => s + i.quantidade * i.preco_unit, 0);
+  const total = bruto - (p.desconto || 0) + (p.freteCliente || 0);
+  const receber = Math.max(0, total - (p.sinal || 0));
+  const pix = receber > 0 && r.status !== "entregue" ? await pixPara(receber, "PED" + r.numero) : null;
+  res.set("Cache-Control", "no-store");
+  res.json({
+    loja: { nome: txt(L.nome, 80) || "Impressões 3D", whatsapp: txt(L.whatsapp, 30).replace(/\D/g, ""), instagram: txt(L.instagram, 60), pagamento: txt(L.pagamento, 200) },
+    numero: r.numero, status: r.status, prazo: r.prazo, data: p.data, cliente: String(p.cliente || "").split(" ")[0],
+    itens: p.itens.map((i, k) => ({ descricao: i.descricao, quantidade: i.quantidade, preco: i.preco_unit, personalizacao: i.personalizacao || "",
+      foto: fotoDoItem(i) ? `/pedido/${r.token}/foto/${k}` : null })),
+    desconto: n(p.desconto), frete: n(p.freteCliente), total, sinal: n(p.sinal), receber,
+    pix: pix ? { payload: pix.payload, svg: pix.svg } : null,
+  });
+});
+app.get("/pedido/:token/foto/:i", limitePublico, (req, res) => {
+  const r = pedidoPorToken(req.params.token); if (!r) return res.status(404).end();
+  const item = JSON.parse(r.dados).itens[Number(req.params.i)];
+  const foto = item && fotoDoItem(item); if (!foto) return res.status(404).end();
+  res.set("Cache-Control", "private, max-age=3600");
+  res.sendFile(path.join(FOTOS_DIR, foto), err => { if (err && !res.headersSent) res.status(404).end(); });
+});
+app.get("/pedido/:token", limitePublico, (req, res) => {
+  const r = pedidoPorToken(req.params.token);
+  if (!r) return res.status(404).send("Pedido não encontrado. Peça um novo link para a loja.");
+  const p = JSON.parse(r.dados), L = lojaConfig();
+  const total = p.itens.reduce((s, i) => s + i.quantidade * i.preco_unit, 0) - (p.desconto || 0) + (p.freteCliente || 0);
+  const k = p.itens.findIndex(i => fotoDoItem(i));
+  res.set("Cache-Control", "no-store");
+  res.type("html").send(paginaComMeta("pedido.html", {
+    titulo: `Pedido #${r.numero} · ${txt(L.nome, 80) || "Impressões 3D"}`,
+    descricao: p.itens.map(i => `${i.quantidade}× ${i.descricao}`).join(", ").slice(0, 180) + ` · Total ${brlS(total)}`,
+    imagem: k >= 0 ? `${origemUrl(req)}/pedido/${r.token}/foto/${k}` : null,
+  }));
+});
+
+app.get("/catalogo", (req, res) => {
+  const id = String(req.query.p || "");
+  const x = id ? produtosPublicos().find(y => y.id === id) : null;
+  const L = lojaConfig(), loja = txt(L.nome, 80) || "Impressões 3D";
+  res.type("html").send(paginaComMeta("catalogo.html", x
+    ? { titulo: `${x.p.nome} · ${brlS(x.p.precoCatalogo)}`, descricao: txt(x.p.descricaoCatalogo, 180) || `Peça impressa em 3D da ${loja}`, imagem: x.foto ? `${origemUrl(req)}/fotos-publicas/${x.foto}` : null }
+    : { titulo: `${loja} · Catálogo`, descricao: txt(L.sobre, 180) || "Peças impressas em 3D sob encomenda e à pronta entrega." }));
+});
 
 // ---------- páginas ----------
 // sem cache longo: depois de um deploy o navegador sempre pega a versão nova (usa ETag para não baixar à toa)

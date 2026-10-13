@@ -4,6 +4,7 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const brl=v=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 let dados=null, cat="Todos", carrinho={};
+let foco=new URLSearchParams(location.search).get("p");
 let cli={nome:"",whatsapp:""};
 try{ carrinho=JSON.parse(localStorage.getItem("cat3d.carrinho")||"{}")||{} }catch(e){ carrinho={} }
 try{ cli={...cli,...JSON.parse(localStorage.getItem("cat3d.cliente")||"{}")} }catch(e){}
@@ -28,7 +29,9 @@ function render(){
   const ps=dados.produtos;
   const cats=["Todos",...new Set(ps.map(p=>p.categoria).filter(Boolean))];
   $("#cats").innerHTML=cats.length>2?cats.map(c=>`<button class="chip${c===cat?" on":""}" data-c="${esc(c)}">${esc(c)}</button>`).join(""):"";
-  const lst=ps.filter(p=>cat==="Todos"||p.categoria===cat);
+  if(foco&&!ps.some(p=>p.id===foco)) foco=null;
+  const lst=foco?ps.filter(p=>p.id===foco):ps.filter(p=>cat==="Todos"||p.categoria===cat);
+  if(foco) $("#cats").innerHTML=`<button class="chip on" data-todos>← Ver todos os produtos (${ps.length})</button>`;
   $("#grid").innerHTML=lst.length?lst.map(p=>{const q=carrinho[p.id]?.q||0;return `<article class="prod" data-id="${esc(p.id)}">
     <div class="ph">${p.foto?`<img src="${esc(p.foto)}" alt="${esc(p.nome)}" loading="lazy">`:"3D"}</div>
     <div class="bd"><div class="row" style="gap:6px">${p.prontaEntrega?'<span class="pill good">Pronta entrega</span>':""}${p.personalizavel?'<span class="pill acc">Personalizável</span>':""}</div>
@@ -55,7 +58,8 @@ function renderCarrinho(){
   const num=String(dados.loja.whatsapp||"").replace(/\D/g,""); const wa=num?(num.length<=11?"55"+num:num):"";
   $("#enviar").href="https://wa.me/"+wa+"?text="+encodeURIComponent(texto());
 }
-$("#cats").addEventListener("click",e=>{const b=e.target.closest("[data-c]");if(!b)return;cat=b.dataset.c;render()});
+$("#cats").addEventListener("click",e=>{if(e.target.closest("[data-todos]")){foco=null;try{history.replaceState(null,"","/catalogo")}catch(err){}render();return}
+  const b=e.target.closest("[data-c]");if(!b)return;cat=b.dataset.c;render()});
 $("#grid").addEventListener("click",e=>{
   const b=e.target.closest("[data-d]"); if(!b) return; const id=b.closest("[data-id]").dataset.id;
   const c=carrinho[id]||{q:0,pers:""}; c.q=Math.max(0,Math.min(999,c.q+Number(b.dataset.d)));

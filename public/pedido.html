@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Seu pedido</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/app.css">
+<style>
+body{padding-block:0 40px}
+.ped{max-width:620px;margin:0 auto;padding:28px 16px;display:flex;flex-direction:column;gap:16px}
+.ped h1{font-size:clamp(26px,6vw,36px)}
+.passos{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.passos div{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted);text-align:center}
+.passos i{height:6px;border-radius:3px;background:var(--sunken)}
+.passos .on{color:var(--accent);font-weight:600}.passos .on i{background:var(--accent)}
+.it{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.it:last-child{border-bottom:0}
+.it .ph{width:64px;height:64px;border-radius:8px;background:var(--sunken);display:grid;place-items:center;color:var(--muted);font:600 11px var(--mono);overflow:hidden}
+.it .ph img{width:100%;height:100%;object-fit:cover}
+.it b{display:block}
+.lin{display:flex;justify-content:space-between;gap:10px;font-size:14.5px;padding:3px 0}
+.lin.tot{font-size:18px;font-weight:700;border-top:1px solid var(--line);padding-top:10px;margin-top:4px}
+.lin.falta{font-size:20px;font-weight:800;color:var(--accent)}
+.pixw{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.pixw .qr{background:#fff;padding:8px;border-radius:10px;border:1px solid var(--line)}
+.pixw .qr svg{width:180px;height:180px;display:block}
+.pixw .cod{flex:1 1 220px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.pixw textarea{font:12px var(--mono);word-break:break-all;resize:none}
+.cta{display:flex;flex-direction:column;gap:8px}
+.cta .btn{justify-content:center;padding:13px 16px;font-size:15px}
+</style>
+</head>
+<body>
+<main class="ped" id="ped"><p class="note">Carregando seu pedido…</p></main>
+<div class="toast" id="toast" hidden></div>
+<script src="/pedido.js"></script>
+</body>
+</html>

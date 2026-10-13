@@ -109,4 +109,8 @@ CREATE TABLE IF NOT EXISTS rolos (
 const colunasVendas = db.prepare("PRAGMA table_info(vendas)").all().map(c => c.name);
 if (!colunasVendas.includes("pedido_id")) db.exec("ALTER TABLE vendas ADD COLUMN pedido_id TEXT");
 
+const colunasPedidos = db.prepare("PRAGMA table_info(pedidos)").all().map(c => c.name);
+if (!colunasPedidos.includes("token")) db.exec("ALTER TABLE pedidos ADD COLUMN token TEXT");
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS pedidos_token ON pedidos(token)");
+
 module.exports = { db, DATA_DIR };

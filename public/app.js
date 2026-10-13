@@ -174,6 +174,7 @@ function renderLista(){
       <td style="white-space:nowrap;text-align:right" data-id="${esc(p.id)}" class="edit-only">
         <button class="btn ghost" data-act="edit">Editar</button>
         <button class="btn ghost" data-act="vender">Vendi</button>
+        ${p.catalogo&&num(p.precoCatalogo)>0?'<button class="btn ghost" data-act="link" title="Copiar o link deste produto no catálogo para mandar ao cliente">Link</button>':""}
         <button class="btn ghost" data-act="dup">Duplicar</button>
         <button class="btn ghost" data-act="del">Excluir</button></td></tr>`}).join("")}
   </tbody></table></div>`;
@@ -186,6 +187,7 @@ $("#lista").addEventListener("click",async e=>{
   const id=b.closest("[data-id]")?.dataset.id; const p=produtos.find(x=>x.id===id); if(!p) return;
   if(act==="edit"){startForm(p);setTab("novo")}
   if(act==="vender"){setTab("financeiro");abreForm("venda",{produto_id:p.id});return}
+  if(act==="link"){const u=location.origin+"/catalogo?p="+encodeURIComponent(p.id);try{await navigator.clipboard.writeText(u);toast("Link do produto copiado. Cole no WhatsApp do cliente.")}catch(err){toast(u)}return}
   if(act==="dup"){const c=clone(p);delete c.id;c.nome=p.nome+" (cópia)";startForm(c);setTab("novo")}
   if(act==="del"){
     const td=b.parentElement;
@@ -671,20 +673,28 @@ function textoMsg(p,tipo){
   if(tipo==="cobranca") return `Olá, ${nome}! Passando para lembrar do pedido #${p.numero} da ${loja}.\nValor em aberto: *${brl(t.receber)}*${pag}\n\nQualquer dúvida, estou à disposição.`;
   return `Olá, ${nome}! Obrigado pela compra na ${loja}. Espero que goste das peças!${cfg.loja.instagram?`\nSe puder, marque a gente no Instagram: ${cfg.loja.instagram}`:""}\n\nPrecisando de mais alguma coisa, é só chamar.`;
 }
-let msgPix=null;
+let msgPix=null, msgLink=null;
+async function linkDe(p){
+  if(p.token) return location.origin+"/pedido/"+p.token;
+  if(!podeEditar()) return null;
+  try{ const r=await api("POST","/api/pedidos/"+encodeURIComponent(p.id)+"/link"); p.token=r.token;
+    const x=pedidos.find(y=>y.id===p.id); if(x) x.token=r.token; return location.origin+"/pedido/"+r.token }catch(e){ return null }
+}
 async function abreMsg(p,tipo){
   msgPed=p; tipo=tipo||({orcamento:"orcamento",aprovado:"confirmado",imprimindo:"confirmado",pronto:"pronto",entregue:"obrigado"}[p.status]||"orcamento");
   const box=$("#pedMsgBox"); box.hidden=false;
   const usaPix=["orcamento","pronto","cobranca"].includes(tipo);
-  const pix=usaPix?await pixDe(p):null; if(msgPed!==p) return;
-  msgPix=pix&&pix.payload?pix:null;
-  let txt=textoMsg(p,tipo); if(msgPix) txt+=`\n\nPix copia e cola (${brl(totPed(p).receber)}):\n${msgPix.payload}`;
+  const [pix,link]=await Promise.all([usaPix?pixDe(p):null,linkDe(p)]); if(msgPed!==p) return;
+  msgPix=pix&&pix.payload?pix:null; msgLink=link;
+  let txt=textoMsg(p,tipo);
+  if(link&&tipo!=="obrigado") txt+=`\n\n${tipo==="orcamento"?"Veja o orçamento com fotos e valores":"Acompanhe seu pedido"}: ${link}`;
+  if(msgPix) txt+=`\n\nPix copia e cola (${brl(totPed(p).receber)}):\n${msgPix.payload}`;
   box.innerHTML=`<div class="row spread"><h2>Mensagem para ${esc(p.cliente)} · pedido #${p.numero}</h2><button class="btn ghost" data-ma="fechar">Fechar</button></div>
     <div class="row">${[["orcamento","Orçamento"],["confirmado","Confirmação"],["pronto","Pedido pronto"],["cobranca","Cobrança"],["obrigado","Agradecimento"]].map(([k,n])=>`<button class="chip${k===tipo?" on":""}" data-mt="${k}">${n}</button>`).join("")}</div>
     <div class="msgwrap"><textarea id="msgTxt" rows="12">${esc(txt)}</textarea>
     ${msgPix?`<div class="pixbox"><div class="qr">${msgPix.svg}</div><span class="pcat">Pix de ${brl(totPed(p).receber)}</span><button class="btn sm" data-ma="pix">Copiar Pix</button></div>`:""}</div>
     ${usaPix&&pix&&pix.erro?`<p class="note" style="margin:0">${esc(pix.erro)}</p>`:""}
-    <div class="row"><button class="btn primary" data-ma="copiar">Copiar texto</button><a class="btn" id="msgWa" target="_blank" rel="noopener" href="#">Abrir no WhatsApp ↗</a><a class="btn ghost" href="/imprimir/pedido/${encodeURIComponent(p.id)}" target="_blank" rel="noopener">Imprimir etiqueta 10×15</a><span class="note">${p.whatsapp?"":"Sem número cadastrado: o WhatsApp vai pedir para escolher o contato."}</span></div>`;
+    <div class="row"><button class="btn primary" data-ma="copiar">Copiar texto</button><a class="btn" id="msgWa" target="_blank" rel="noopener" href="#">Abrir no WhatsApp ↗</a>${link?`<button class="btn" data-ma="link">Copiar link do pedido</button><a class="btn ghost" href="${esc(link)}" target="_blank" rel="noopener">Ver como o cliente vê ↗</a>`:""}<a class="btn ghost" href="/imprimir/pedido/${encodeURIComponent(p.id)}" target="_blank" rel="noopener">Imprimir etiqueta 10×15</a><span class="note">${p.whatsapp?"":"Sem número cadastrado: o WhatsApp vai pedir para escolher o contato."}</span></div>`;
   const upd=()=>{$("#msgWa").href=waLink(p.whatsapp,$("#msgTxt").value)}; upd();
   $("#msgTxt").addEventListener("input",upd);
   box.scrollIntoView({behavior:"smooth",block:"start"});
@@ -693,6 +703,7 @@ $("#pedMsgBox").addEventListener("click",async e=>{
   const c=e.target.closest("[data-mt]"); if(c&&msgPed) return abreMsg(msgPed,c.dataset.mt);
   const b=e.target.closest("[data-ma]"); if(!b) return;
   if(b.dataset.ma==="fechar"){$("#pedMsgBox").hidden=true;msgPed=null}
+  if(b.dataset.ma==="link"&&msgLink){try{await navigator.clipboard.writeText(msgLink);toast("Link do pedido copiado")}catch(err){toast(msgLink)}}
   if(b.dataset.ma==="pix"&&msgPix){try{await navigator.clipboard.writeText(msgPix.payload);toast("Código Pix copiado")}catch(err){toast("Não deu para copiar. Copie do texto da mensagem.")}}
   if(b.dataset.ma==="copiar"){const t=$("#msgTxt");try{await navigator.clipboard.writeText(t.value);toast("Mensagem copiada")}catch(err){t.select();toast("Selecionei o texto: use Ctrl+C")}}
 });
