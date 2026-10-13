@@ -12,7 +12,7 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const DEFAULTS={
   tarifaKwh:0.90, consumoW:100, valorImpressora:4500, vidaUtilH:5000, manutencaoH:0.30,
   falhaPct:10, maoObraH:20, impostoPct:0, margemPct:40,
-  loja:{nome:"",whatsapp:"",instagram:"",pagamento:"Pix, cartão ou dinheiro",prazoDias:5,horasDia:16,sobre:""},
+  loja:{nome:"",whatsapp:"",instagram:"",pagamento:"Pix, cartão ou dinheiro",prazoDias:5,horasDia:16,sobre:"",metaLucro:0,pixChave:"",pixNome:"",pixCidade:""},
   filamentos:[
     {id:"pla-nac",nome:"PLA Básico nacional",precoKg:95},
     {id:"pla-matte",nome:"PLA Matte",precoKg:115},
@@ -96,11 +96,11 @@ function calc(p,C){
 
 
 /* ---------- abas ---------- */
-let tab="produtos";
+let tab="hoje";
 function setTab(t){
   tab=t;
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===t)));
-  ["produtos","pedidos","fila","estoque","compras","financeiro","novo","tendencias","config","usuarios","conta"].forEach(x=>{$("#p-"+x).hidden=x!==t});
+  ["hoje","produtos","pedidos","clientes","fila","estoque","compras","financeiro","novo","tendencias","config","usuarios","conta"].forEach(x=>{$("#p-"+x).hidden=x!==t});
   try{localStorage.setItem("prec3d.tab",t)}catch(e){}
   const tb=$("#tab-"+t); if(tb) $("#pageTitle").textContent=tb.textContent.trim();
   document.body.classList.remove("navopen"); $("#menuBtn").setAttribute("aria-expanded","false");
@@ -111,6 +111,9 @@ function setTab(t){
   if(t==="estoque") carregaRolos();
   if(t==="compras") carregaCompras();
   if(t==="novo") renderFicha();
+  if(t==="hoje"){ renderHoje(); carregaHoje() }
+  if(t==="clientes"){ renderClientes(); carregaClientes() }
+  if(t==="conta") carregaBackups();
   window.scrollTo({top:0});
 }
 document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("click",()=>{
@@ -481,7 +484,7 @@ const resumoItens=p=>(p.itens||[]).map(i=>`${num(i.quantidade).toLocaleString("p
 /* ---------- pedidos ---------- */
 let pedidos=[], pedFiltro="ativos", pedBusca="", pedForm=null, pedCarregado=false;
 async function carregaPedidos(){
-  try{ pedidos=await api("GET","/api/pedidos"); pedCarregado=true; renderPedidos(); renderFila() }catch(e){ if(e.status!==401) toast(e.message) }
+  try{ pedidos=await api("GET","/api/pedidos"); pedCarregado=true; renderPedidos(); renderFila(); atualizaBadge(); recalcCatalogo() }catch(e){ if(e.status!==401) toast(e.message) }
 }
 function filtraPed(){
   const b=pedBusca.trim().toLowerCase();
@@ -511,7 +514,7 @@ function renderPedidos(){
   $("#pedLista").innerHTML=`<div class="tablewrap"><table style="min-width:860px"><thead><tr><th>Nº</th><th>Cliente</th><th>Itens</th><th>Prazo</th><th class="n">Total</th><th>Status</th><th></th></tr></thead><tbody>
   ${lst.map(p=>{const t=totPed(p);const nx=ST_NEXT[p.status];
     return `<tr data-pid="${esc(p.id)}"><td class="num">#${p.numero}</td>
-      <td><div class="pname">${esc(p.cliente)}</div><div class="pcat">${esc(p.canal||"")}${p.whatsapp?" · "+esc(p.whatsapp):""}</div></td>
+      <td><div class="pname">${esc(p.cliente)}${p.origem==="catalogo"?' <span class="pill acc">catálogo</span>':""}</div><div class="pcat">${esc(p.canal||"")}${p.whatsapp?" · "+esc(p.whatsapp):""}</div></td>
       <td style="max-width:260px"><div class="clip">${esc(resumoItens(p))}</div><div class="pcat">${t.horas?fmtH(t.horas)+" de máquina":"pronta entrega"}</div></td>
       <td>${prazoPill(p)}</td>
       <td class="n">${brl(t.total)}${num(p.sinal)>0&&p.status!=="entregue"?`<div class="pcat">falta ${brl(t.receber)}</div>`:""}</td>
@@ -668,13 +671,20 @@ function textoMsg(p,tipo){
   if(tipo==="cobranca") return `Olá, ${nome}! Passando para lembrar do pedido #${p.numero} da ${loja}.\nValor em aberto: *${brl(t.receber)}*${pag}\n\nQualquer dúvida, estou à disposição.`;
   return `Olá, ${nome}! Obrigado pela compra na ${loja}. Espero que goste das peças!${cfg.loja.instagram?`\nSe puder, marque a gente no Instagram: ${cfg.loja.instagram}`:""}\n\nPrecisando de mais alguma coisa, é só chamar.`;
 }
-function abreMsg(p,tipo){
+let msgPix=null;
+async function abreMsg(p,tipo){
   msgPed=p; tipo=tipo||({orcamento:"orcamento",aprovado:"confirmado",imprimindo:"confirmado",pronto:"pronto",entregue:"obrigado"}[p.status]||"orcamento");
   const box=$("#pedMsgBox"); box.hidden=false;
+  const usaPix=["orcamento","pronto","cobranca"].includes(tipo);
+  const pix=usaPix?await pixDe(p):null; if(msgPed!==p) return;
+  msgPix=pix&&pix.payload?pix:null;
+  let txt=textoMsg(p,tipo); if(msgPix) txt+=`\n\nPix copia e cola (${brl(totPed(p).receber)}):\n${msgPix.payload}`;
   box.innerHTML=`<div class="row spread"><h2>Mensagem para ${esc(p.cliente)} · pedido #${p.numero}</h2><button class="btn ghost" data-ma="fechar">Fechar</button></div>
     <div class="row">${[["orcamento","Orçamento"],["confirmado","Confirmação"],["pronto","Pedido pronto"],["cobranca","Cobrança"],["obrigado","Agradecimento"]].map(([k,n])=>`<button class="chip${k===tipo?" on":""}" data-mt="${k}">${n}</button>`).join("")}</div>
-    <textarea id="msgTxt" rows="12">${esc(textoMsg(p,tipo))}</textarea>
-    <div class="row"><button class="btn primary" data-ma="copiar">Copiar texto</button><a class="btn" id="msgWa" target="_blank" rel="noopener" href="#">Abrir no WhatsApp ↗</a><span class="note">${p.whatsapp?"":"Sem número cadastrado: o WhatsApp vai pedir para escolher o contato."}</span></div>`;
+    <div class="msgwrap"><textarea id="msgTxt" rows="12">${esc(txt)}</textarea>
+    ${msgPix?`<div class="pixbox"><div class="qr">${msgPix.svg}</div><span class="pcat">Pix de ${brl(totPed(p).receber)}</span><button class="btn sm" data-ma="pix">Copiar Pix</button></div>`:""}</div>
+    ${usaPix&&pix&&pix.erro?`<p class="note" style="margin:0">${esc(pix.erro)}</p>`:""}
+    <div class="row"><button class="btn primary" data-ma="copiar">Copiar texto</button><a class="btn" id="msgWa" target="_blank" rel="noopener" href="#">Abrir no WhatsApp ↗</a><a class="btn ghost" href="/imprimir/pedido/${encodeURIComponent(p.id)}" target="_blank" rel="noopener">Imprimir etiqueta 10×15</a><span class="note">${p.whatsapp?"":"Sem número cadastrado: o WhatsApp vai pedir para escolher o contato."}</span></div>`;
   const upd=()=>{$("#msgWa").href=waLink(p.whatsapp,$("#msgTxt").value)}; upd();
   $("#msgTxt").addEventListener("input",upd);
   box.scrollIntoView({behavior:"smooth",block:"start"});
@@ -683,6 +693,7 @@ $("#pedMsgBox").addEventListener("click",async e=>{
   const c=e.target.closest("[data-mt]"); if(c&&msgPed) return abreMsg(msgPed,c.dataset.mt);
   const b=e.target.closest("[data-ma]"); if(!b) return;
   if(b.dataset.ma==="fechar"){$("#pedMsgBox").hidden=true;msgPed=null}
+  if(b.dataset.ma==="pix"&&msgPix){try{await navigator.clipboard.writeText(msgPix.payload);toast("Código Pix copiado")}catch(err){toast("Não deu para copiar. Copie do texto da mensagem.")}}
   if(b.dataset.ma==="copiar"){const t=$("#msgTxt");try{await navigator.clipboard.writeText(t.value);toast("Mensagem copiada")}catch(err){t.select();toast("Selecionei o texto: use Ctrl+C")}}
 });
 
@@ -793,7 +804,7 @@ $("#pecasLista").addEventListener("click",async e=>{
 });
 
 /* ---------- sua loja (config) ---------- */
-const LOJA=[["nome","Nome da loja","text","Ex.: Freire 3D"],["whatsapp","WhatsApp da loja","tel","Recebe os pedidos do catálogo"],["instagram","Instagram","text","@sualoja"],["pagamento","Formas de pagamento","text","Pix, cartão ou dinheiro"],["prazoDias","Prazo padrão (dias)","number","Usado em pedidos novos"],["horasDia","Impressora por dia (h)","number","Horas ligada; usado na fila"],["sobre","Texto do catálogo","text","Uma frase sobre a loja"]];
+const LOJA=[["nome","Nome da loja","text","Ex.: Freire 3D"],["whatsapp","WhatsApp da loja","tel","Recebe os pedidos do catálogo"],["instagram","Instagram","text","@sualoja"],["pagamento","Formas de pagamento","text","Pix, cartão ou dinheiro"],["prazoDias","Prazo padrão (dias)","number","Usado em pedidos novos"],["horasDia","Impressora por dia (h)","number","Horas ligada; usado na fila"],["sobre","Texto do catálogo","text","Uma frase sobre a loja"],["metaLucro","Meta de lucro por mês (R$)","number","Aparece na tela Hoje"],["pixChave","Chave Pix","text","CPF, CNPJ, e-mail, celular (+55…) ou aleatória"],["pixNome","Nome no Pix","text","Como aparece no banco (vazio = nome da loja)"],["pixCidade","Cidade no Pix","text","Ex.: São Paulo"]];
 function renderLoja(){
   $("#cfgLoja").innerHTML=LOJA.map(([k,l,t,h])=>`<label class="f${k==="sobre"?" wide":""}">${l}<span class="hint">${h}</span><input id="lj-${k}" data-l="${k}" type="${t==="number"?"number":t}" ${t==="number"?'min="0" step="1"':""} value="${esc(cfg.loja[k]??"")}"></label>`).join("");
   const url=location.origin+"/catalogo";
@@ -801,7 +812,7 @@ function renderLoja(){
   $("#copCat").addEventListener("click",async()=>{try{await navigator.clipboard.writeText(url);toast("Link copiado")}catch(e){toast(url)}});
   if(!podeEditar()) $("#cfgLoja").querySelectorAll("input").forEach(i=>i.disabled=true);
 }
-$("#cfgLoja").addEventListener("input",e=>{const k=e.target.dataset.l;if(!k)return;cfg.loja[k]=["prazoDias","horasDia"].includes(k)?num(e.target.value):e.target.value;saveCfg()});
+$("#cfgLoja").addEventListener("input",e=>{const k=e.target.dataset.l;if(!k)return;cfg.loja[k]=["prazoDias","horasDia","metaLucro"].includes(k)?num(e.target.value):e.target.value;for(const x in pixCache)delete pixCache[x];saveCfg()});
 
 
 /* ---------- compras e orçamento ---------- */
@@ -1167,6 +1178,167 @@ $("#finLista").addEventListener("click",async e=>{
 });
 
 /* ---------- login ---------- */
+/* ---------- pedidos do catálogo: completa custo e tempo ---------- */
+let recalcAndando=false;
+async function recalcCatalogo(){
+  if(recalcAndando||!carregado||!podeEditar()) return;
+  const lst=pedidos.filter(p=>(p.itens||[]).some(i=>i.recalc)); if(!lst.length) return;
+  recalcAndando=true;
+  try{
+    for(const p of lst){
+      const d=clone(p);
+      d.itens=d.itens.map(i=>{ if(!i.recalc) return i; const {recalc,...it}=i;
+        const prod=produtos.find(x=>x.id===it.produto_id); if(!prod) return it;
+        const b=itemDeProduto(prod,d.canal,it.quantidade);
+        return {...it,custo_unit:b.custo_unit,horas_unit:b.horas_unit,fil:b.fil}; });
+      try{ const r=await api("PUT","/api/pedidos/"+encodeURIComponent(p.id),d); const i=pedidos.findIndex(x=>x.id===p.id); if(i>=0) pedidos[i]=r }catch(e){}
+    }
+    renderPedidos(); renderFila(); if(tab==="hoje") renderHoje();
+  }finally{ recalcAndando=false }
+}
+function atualizaBadge(){
+  const n=pedidos.filter(p=>p.origem==="catalogo"&&p.status==="orcamento").length;
+  const b=$("#badgeCat"); if(b){ b.hidden=!n; b.textContent=n; b.title=n+" pedido(s) novo(s) do catálogo" }
+}
+
+/* ---------- Pix ---------- */
+const pixCache={};
+async function pixDe(p){
+  const v=+totPed(p).receber.toFixed(2); if(!(v>0)) return null;
+  const k=p.id+"|"+v; if(pixCache[k]) return pixCache[k];
+  try{ const r=await api("GET",`/api/pix?valor=${v}&txid=PED${p.numero}`); pixCache[k]=r; return r }
+  catch(e){ return {erro:e.message} }
+}
+
+/* ---------- Hoje ---------- */
+let resumo=null, finHoje=null;
+async function carregaHoje(){
+  try{
+    const [ps,rs,fh,rz]=await Promise.all([api("GET","/api/pedidos"),api("GET","/api/rolos"),api("GET","/api/financeiro?mes="+hojeISO().slice(0,7)),api("GET","/api/resumo")]);
+    pedidos=ps; pedCarregado=true; rolos=rs; finHoje=fh; resumo=rz;
+    renderHoje(); atualizaBadge(); recalcCatalogo();
+  }catch(e){ if(e.status!==401) toast(e.message) }
+}
+function canalDireto(){ return cfg.canais.find(c=>c.id==="direta")||cfg.canais[0] }
+function topLucro(){
+  const cd=canalDireto(); if(!cd) return [];
+  return produtos.map(p=>{const r=calc(p);const ch=r.canais.find(c=>c.id===cd.id);
+      const preco=num(p.precoCatalogo)>0?num(p.precoCatalogo):ch?.usado; const l=preco?lucroCanal(preco,r.custo,cd,cfg.impostoPct).lucro:null;
+      return {p,lucro:l}}).filter(x=>x.lucro>0).sort((a,b)=>b.lucro-a.lucro).slice(0,3);
+}
+function renderHoje(){
+  const box=$("#hojeBox"); if(!box) return;
+  if(!finHoje||!resumo){ box.innerHTML=`<p class="note">Carregando…</p>`; return }
+  const hoje=hojeISO(), amanha=addDias(hoje,1);
+  let bruto=0,lucro=0,pecas=0,receber=0,pagar=0; const contas=[];
+  for(const v of finHoje.vendas){const t=vendaTot(v); if(v.status==="pago"){bruto+=t.bruto;lucro+=t.lucro;pecas+=v.quantidade} else {receber+=t.liq;contas.push(["receber",v.descricao+(v.cliente?" · "+v.cliente:""),t.liq,v.data])}}
+  for(const l of finHoje.lancamentos) if(l.status!=="pago"){ if(l.tipo==="entrada") receber+=l.valor; else pagar+=l.valor; contas.push([l.tipo==="entrada"?"receber":"pagar",l.descricao,l.valor,l.data]) }
+  const ativos=pedidos.filter(p=>!["entregue","cancelado"].includes(p.status));
+  const urgentes=ativos.filter(p=>p.status!=="orcamento"&&p.prazo&&p.prazo<=amanha).sort((a,b)=>a.prazo.localeCompare(b.prazo));
+  const novosCat=pedidos.filter(p=>p.origem==="catalogo"&&p.status==="orcamento");
+  const prontos=pedidos.filter(p=>p.status==="pronto");
+  const f=filaOrdenada(), horasFila=f.reduce((s,p)=>s+totPed(p).horas,0);
+  const acabando=rolos.filter(r=>r.ativo&&r.restante<150);
+  const L=cfg.loja, meta=num(L.metaLucro);
+  const dt=new Date(hoje+"T12:00:00"), diaMes=dt.getDate(), diasNoMes=new Date(dt.getFullYear(),dt.getMonth()+1,0).getDate();
+  const nomeDia=cap(dt.toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"}));
+  const linhaPed=(p,extra)=>`<li data-hp="${esc(p.id)}"><span><b class="num">#${p.numero}</b> ${esc(p.cliente)} <span class="pcat">· ${esc(resumoItens(p))}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap">${extra||""}</span></li>`;
+
+  // meta
+  let metaHtml;
+  if(meta>0){
+    const pc=Math.max(0,Math.min(100,lucro/meta*100)), falta=Math.max(0,meta-lucro);
+    const ritmo=diaMes>0?lucro/diaMes*diasNoMes:0, diasRest=diasNoMes-diaMes+1;
+    const top=topLucro();
+    metaHtml=`<div class="card stack"><div class="row spread"><h3>Meta do mês</h3><span class="num">${brl(lucro)} de ${brl(meta)}</span></div>
+      <div class="rbar big"><i style="width:${pc}%"></i></div>
+      ${falta>0?`<p style="margin:0">Faltam <b>${brl(falta)}</b> de lucro em ${diasRest} ${diasRest===1?"dia":"dias"} (${brl(falta/diasRest)} por dia). No ritmo atual, o mês fecha em <b>${brl(ritmo)}</b>.</p>
+        ${top.length?`<p class="note" style="margin:0">Para bater a meta, venda mais uma destas opções (lucro na venda direta):</p><ul class="hlist">${top.map(x=>`<li><span>${esc(x.p.nome)} <span class="pcat">· ${brl(x.lucro)} de lucro cada</span></span><b class="num">${Math.ceil(falta/x.lucro)} peças</b></li>`).join("")}</ul>`:""}`
+        :`<p style="margin:0" class="pos"><b>Meta batida!</b> Você já passou ${brl(lucro-meta)} da meta.</p>`}</div>`;
+  } else metaHtml=`<div class="card stack"><h3>Meta do mês</h3><p class="note" style="margin:0">Defina quanto quer lucrar por mês e o sistema mostra quanto falta e quantas peças vender.</p><div><button class="btn edit-only" data-hg="config">Definir meta</button></div></div>`;
+
+  // retorno do investimento
+  const inv=resumo.investimento, rec=resumo.lucroTotal;
+  let payHtml;
+  if(inv>0){
+    const pc=Math.max(0,Math.min(100,rec/inv*100)), falta=Math.max(0,inv-rec);
+    const ult=(resumo.porMes||[]).slice(0,3).map(m=>num(m.lucro)); const media=ult.length?ult.reduce((a,b)=>a+b,0)/ult.length:0;
+    const meses=falta>0&&media>0?Math.ceil(falta/media):null;
+    payHtml=`<div class="card stack"><div class="row spread"><h3>Retorno do investimento</h3><span class="num">${pct(rec/inv)}</span></div>
+      <div class="rbar big"><i style="width:${pc}%"></i></div>
+      <p style="margin:0">Você investiu <b>${brl(inv)}</b> em equipamentos e materiais e já lucrou <b>${brl(Math.max(0,rec))}</b> com vendas.</p>
+      ${falta<=0?`<p class="pos" style="margin:0"><b>Investimento pago!</b> Daqui para frente é lucro.</p>`
+        :meses?`<p class="note" style="margin:0">Faltam ${brl(falta)}. Com o lucro médio de ${brl(media)} por mês, o investimento se paga em cerca de <b>${meses} ${meses===1?"mês":"meses"}</b>.</p>`
+        :`<p class="note" style="margin:0">Faltam ${brl(falta)}. A previsão aparece depois das primeiras vendas.</p>`}</div>`;
+  } else payHtml=`<div class="card stack"><h3>Retorno do investimento</h3><p class="note" style="margin:0">Quando marcar os itens de <b>Compras e orçamento</b> como comprados, o sistema mostra quanto já voltou do que você investiu e em quantos meses se paga.</p><div><button class="btn" data-hg="compras">Abrir compras</button></div></div>`;
+
+  const avisos=[];
+  if(novosCat.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Pedidos novos do catálogo <span class="pill acc">${novosCat.length}</span></h3><button class="btn sm" data-hg="pedidos">Ver pedidos</button></div><ul class="hlist">${novosCat.map(p=>linhaPed(p,`<span class="num">${brl(totPed(p).total)}</span><button class="btn sm primary" data-hm="orcamento">Responder</button>`)).join("")}</ul></div>`);
+  if(urgentes.length) avisos.push(`<div class="card stack"><h3>Prazo vencendo</h3><ul class="hlist">${urgentes.map(p=>linhaPed(p,`${prazoPill(p)}<span class="pill ${ST_CLS[p.status]}">${ST[p.status]}</span>`)).join("")}</ul></div>`);
+  if(prontos.length) avisos.push(`<div class="card stack"><h3>Prontos para entregar</h3><ul class="hlist">${prontos.map(p=>linhaPed(p,`${totPed(p).receber>0?`<span class="num">falta ${brl(totPed(p).receber)}</span>`:""}<button class="btn sm" data-hm="pronto">Avisar cliente</button>`)).join("")}</ul></div>`);
+  if(acabando.length) avisos.push(`<div class="warnbox">Filamento acabando: ${acabando.map(r=>`${esc(nomeFil(r.filamento_id))} ${esc(r.cor)} (${Math.round(r.restante)} g)`).join(", ")}.</div>`);
+  if(contas.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Contas em aberto no mês</h3><button class="btn sm" data-hg="financeiro">Financeiro</button></div><ul class="hlist">${contas.sort((a,b)=>String(a[3]).localeCompare(String(b[3]))).map(c=>`<li><span>${esc(c[1])} <span class="pcat">· ${ddmm(c[3])}</span></span><span class="num ${c[0]==="pagar"?"neg":"pos"}">${c[0]==="pagar"?"pagar ":"receber "}${brl(c[2])}</span></li>`).join("")}</ul></div>`);
+
+  box.innerHTML=`<div class="row spread"><p style="margin:0;color:var(--muted)">${esc(nomeDia)}</p><div class="row" style="gap:8px"><button class="btn primary edit-only" data-hg="novoPed">+ Novo pedido</button><button class="btn edit-only" data-hg="venda">Registrar venda</button></div></div>
+    <div class="tiles">
+      <div class="tile main"><span class="tl">Lucro no mês</span><span class="tv num ${lucro<0?"neg":""}">${brl(lucro)}</span><span class="ts">${brl(bruto)} vendidos · ${pecas.toLocaleString("pt-BR")} ${pecas===1?"peça":"peças"}</span></div>
+      <div class="tile"><span class="tl">Na fila</span><span class="tv num">${f.length}</span><span class="ts">${!f.length?"impressora livre":horasFila>0?fmtH(horasFila)+" de impressão":"sem tempo informado"}</span></div>
+      <div class="tile"><span class="tl">A receber</span><span class="tv num">${brl(receber)}</span><span class="ts">vendas e entradas pendentes</span></div>
+      <div class="tile"><span class="tl">A pagar</span><span class="tv num ${pagar>0?"neg":""}">${brl(pagar)}</span><span class="ts">despesas pendentes do mês</span></div>
+    </div>
+    ${avisos.join("")||`<div class="card"><p style="margin:0">Nada urgente hoje. Nenhum pedido com prazo vencendo, nenhum filamento acabando.</p></div>`}
+    <div class="grid2">${metaHtml}${payHtml}</div>`;
+}
+$("#hojeBox").addEventListener("click",e=>{
+  const g=e.target.closest("[data-hg]");
+  if(g){ const a=g.dataset.hg;
+    if(a==="novoPed"){ setTab("pedidos"); abrePedido(null); return }
+    if(a==="venda"){ setTab("financeiro"); setTimeout(()=>abreForm("venda"),50); return }
+    setTab(a); return }
+  const m=e.target.closest("[data-hm]"); if(!m) return;
+  const p=pedidos.find(x=>x.id===m.closest("[data-hp]")?.dataset.hp); if(!p) return;
+  setTab("pedidos"); abreMsg(p,m.dataset.hm);
+});
+
+/* ---------- clientes ---------- */
+let clientes=null, cliBusca="";
+async function carregaClientes(){ try{ clientes=await api("GET","/api/clientes"); renderClientes() }catch(e){ if(e.status!==401) toast(e.message) } }
+function renderClientes(){
+  if(!clientes){ $("#cliLista").innerHTML=`<div class="card empty"><h2>Carregando…</h2></div>`; return }
+  const b=cliBusca.trim().toLowerCase(), bd=soDig(cliBusca);
+  const lst=clientes.filter(c=>!b||c.nome.toLowerCase().includes(b)||(bd&&soDig(c.whatsapp).includes(bd)));
+  const total=clientes.reduce((s,c)=>s+c.total,0), recorr=clientes.filter(c=>c.compras>1).length;
+  $("#cliResumo").textContent=clientes.length?`${clientes.length} ${clientes.length===1?"cliente":"clientes"} · ${recorr} compraram mais de uma vez · ${brl(total)} no total`:"";
+  if(!lst.length){ $("#cliLista").innerHTML=`<div class="card empty"><h2>${clientes.length?"Ninguém encontrado":"Nenhum cliente ainda"}</h2><p>Os clientes aparecem aqui sozinhos quando você cria pedidos ou registra vendas com o nome do cliente.</p></div>`; return }
+  const loja=cfg.loja.nome||"nossa loja";
+  $("#cliLista").innerHTML=`<div class="tablewrap"><table style="min-width:760px"><thead><tr><th>Cliente</th><th>WhatsApp</th><th class="n">Gastou</th><th class="n">Compras</th><th>Última compra</th><th></th></tr></thead><tbody>
+  ${lst.map(c=>{const dias=c.ultima?-diasAte(c.ultima):null; const sumido=dias!=null&&dias>60;
+    const msg=`Olá, ${c.nome.split(" ")[0]}! Aqui é da ${loja}. ${c.compras?"Obrigado de novo pela última compra!":"Tudo bem?"} Temos novidades impressas em 3D. Quer que eu mande algumas fotos?`;
+    return `<tr><td><div class="pname">${esc(c.nome)}</div>${c.orcamentos?`<div class="pcat">${c.orcamentos} ${c.orcamentos===1?"orçamento em aberto":"orçamentos em aberto"}</div>`:""}</td>
+    <td class="num">${esc(c.whatsapp||"—")}</td><td class="n">${brl(c.total)}</td><td class="n num">${c.compras}</td>
+    <td>${c.ultima?`<span class="num">${dataBRc(c.ultima)}</span> <span class="pill ${sumido?"warn":""}">${dias<=0?"hoje":dias===1?"ontem":`há ${dias} dias`}</span>`:"—"}</td>
+    <td class="pact">${c.whatsapp?`<a class="btn sm" target="_blank" rel="noopener" href="${esc(waLink(c.whatsapp,msg))}">Chamar no WhatsApp</a>`:""}</td></tr>`}).join("")}
+  </tbody></table></div>`;
+}
+$("#cliBusca").addEventListener("input",e=>{cliBusca=e.target.value;renderClientes()});
+
+/* ---------- backup ---------- */
+const kb=b=>b>1048576?(b/1048576).toLocaleString("pt-BR",{maximumFractionDigits:1})+" MB":Math.max(1,Math.round(b/1024))+" KB";
+async function carregaBackups(){
+  if(!me||me.papel!=="admin") return;
+  try{
+    const r=await api("GET","/api/backups");
+    $("#bkLista").innerHTML=r.backups.length?`<div class="tablewrap"><table><thead><tr><th>Cópia</th><th class="n">Tamanho</th><th></th></tr></thead><tbody>${r.backups.map(b=>`<tr><td class="num">${esc(new Date(b.data).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"}))}</td><td class="n num">${kb(b.tamanho)}</td><td class="pact"><a class="btn sm" href="/api/backups/${encodeURIComponent(b.nome)}" download>Baixar</a></td></tr>`).join("")}</tbody></table></div>`
+      :`<p class="note">Nenhuma cópia ainda.</p>`;
+    if(r.fotos) $("#bkLista").insertAdjacentHTML("beforeend",`<p class="note">As fotos dos produtos (${r.fotos} ${r.fotos===1?"arquivo":"arquivos"}) ficam na pasta <b>data/fotos</b> da VPS, fora deste arquivo. No Easypanel elas estão no volume <b>/app/data</b>.</p>`);
+  }catch(e){ if(e.status!==401) toast(e.message) }
+}
+$("#btnBackup").addEventListener("click",async e=>{
+  e.target.disabled=true;
+  try{ await api("POST","/api/backups"); toast("Backup feito"); carregaBackups() }catch(err){ toast(err.message) }
+  finally{ e.target.disabled=false }
+});
+
 function showAuth(){
   $("#appScreen").hidden=true; $("#authScreen").hidden=false;
   $("#authLoading").hidden=true;
@@ -1181,7 +1353,8 @@ async function showApp(){
   $("#tab-usuarios").hidden=me.papel!=="admin";
   renderUserChip();
   let t=null; try{t=localStorage.getItem("prec3d.tab")}catch(e){}
-  if(!t||t==="novo"||(t==="usuarios"&&me.papel!=="admin")||!$("#p-"+t)) t="produtos";
+  $("#bkCard").hidden=me.papel!=="admin";
+  if(!t||t==="novo"||(t==="usuarios"&&me.papel!=="admin")||!$("#p-"+t)) t="hoje";
   setTab(t);
   await carregaDados();
 }
@@ -1189,6 +1362,8 @@ async function carregaDados(){
   try{
     const [c,ps]=await Promise.all([api("GET","/api/config"),api("GET","/api/produtos")]);
     cfg=mergeCfg(c); produtos=ps.filter(p=>p&&p.nome); carregado=true; refreshAll();
+    if(tab==="hoje") renderHoje();
+    if(pedCarregado) recalcCatalogo(); else api("GET","/api/pedidos").then(ps=>{pedidos=ps;pedCarregado=true;atualizaBadge();recalcCatalogo()}).catch(()=>{});
   }catch(e){ if(e.status!==401) toast(e.message) }
 }
 $("#formLogin").addEventListener("submit",async e=>{

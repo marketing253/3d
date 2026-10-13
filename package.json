@@ -19,6 +19,7 @@
     "express-rate-limit": "7.5.0",
     "express-session": "1.18.1",
     "helmet": "8.1.0",
-    "multer": "2.0.2"
+    "multer": "2.0.2",
+    "qrcode": "1.5.4"
   }
 }

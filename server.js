@@ -9,6 +9,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const multer = require("multer");
 const bcrypt = require("bcryptjs");
+const QRCode = require("qrcode");
 const { db, DATA_DIR } = require("./db");
 
 // Carrega .env simples (sem dependência extra)
@@ -515,6 +516,7 @@ function limpaPedido(b) {
     personalizacao: txt(i.personalizacao, 300),
     doEstoque: !!i.doEstoque,
     fil: (Array.isArray(i.fil) ? i.fil : []).slice(0, 8).map(f => ({ filId: txt(f.filId, 60), g: n(f.g) })),
+    ...(i.recalc ? { recalc: true } : {}),
   })).filter(i => i.descricao && i.quantidade > 0);
   if (!itens.length) return { erro: "Adicione pelo menos um item com quantidade." };
   const data = DATA_RE.test(b.data || "") ? b.data : new Date().toISOString().slice(0, 10);
@@ -522,7 +524,7 @@ function limpaPedido(b) {
     cliente, whatsapp: txt(b.whatsapp, 30).replace(/[^\d+]/g, ""), canal: txt(b.canal, 80), data,
     prazo: DATA_RE.test(b.prazo || "") ? b.prazo : null, itens,
     desconto: n(b.desconto), freteCliente: n(b.freteCliente), freteVoce: n(b.freteVoce), taxas: n(b.taxas), sinal: n(b.sinal),
-    obs: txt(b.obs, 1000),
+    obs: txt(b.obs, 1000), ...(b.origem === "catalogo" ? { origem: "catalogo" } : {}),
   } };
 }
 function linhaPedido(r) { return { ...JSON.parse(r.dados), id: r.id, numero: r.numero, status: r.status, prazo: r.prazo, criadoEm: r.criado_em, atualizadoEm: r.atualizado_em }; }
@@ -659,6 +661,196 @@ app.post("/api/compras/:id/desfazer", exigeLogin, exigeEdicao, (req, res) => {
 app.delete("/api/compras/:id", exigeLogin, exigeEdicao, (req, res) => {
   db.prepare("DELETE FROM compras WHERE id = ?").run(req.params.id);
   res.json({ ok: true });
+});
+
+
+// ---------- backup automático ----------
+const BACKUP_DIR = path.join(DATA_DIR, "backups");
+fs.mkdirSync(BACKUP_DIR, { recursive: true });
+const BACKUP_RE = /^precificador-\d{4}-\d{2}-\d{2}(-\d{6})?\.db$/;
+async function fazBackup(manual) {
+  const agora = new Date();
+  const dia = agora.toISOString().slice(0, 10);
+  const nome = manual ? `precificador-${dia}-${agora.toISOString().slice(11, 19).replace(/:/g, "")}.db` : `precificador-${dia}.db`;
+  const destino = path.join(BACKUP_DIR, nome);
+  if (!manual && fs.existsSync(destino)) return null;
+  await db.backup(destino);
+  // mantém os 14 backups mais recentes
+  const lista = fs.readdirSync(BACKUP_DIR).filter(f => BACKUP_RE.test(f)).sort().reverse();
+  for (const f of lista.slice(14)) fs.promises.unlink(path.join(BACKUP_DIR, f)).catch(() => {});
+  return nome;
+}
+fazBackup(false).catch(e => console.error("backup", e));
+setInterval(() => fazBackup(false).catch(e => console.error("backup", e)), 3 * 60 * 60 * 1000).unref();
+app.get("/api/backups", exigeLogin, exigeAdmin, (req, res) => {
+  const lista = fs.readdirSync(BACKUP_DIR).filter(f => BACKUP_RE.test(f)).sort().reverse()
+    .map(f => { const st = fs.statSync(path.join(BACKUP_DIR, f)); return { nome: f, tamanho: st.size, data: st.mtime.toISOString() }; });
+  const fotos = fs.readdirSync(FOTOS_DIR).filter(f => FOTO_RE.test(f)).length;
+  res.json({ backups: lista, fotos });
+});
+app.post("/api/backups", exigeLogin, exigeAdmin, async (req, res) => {
+  try { res.json({ nome: await fazBackup(true) }); } catch (e) { console.error(e); res.status(500).json({ erro: "Não deu para fazer o backup agora." }); }
+});
+app.get("/api/backups/:nome", exigeLogin, exigeAdmin, (req, res) => {
+  if (!BACKUP_RE.test(req.params.nome)) return res.status(404).end();
+  res.download(path.join(BACKUP_DIR, req.params.nome), req.params.nome, err => { if (err && !res.headersSent) res.status(404).end(); });
+});
+
+// ---------- Pix (BR Code copia e cola) ----------
+const semAcento = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\x20-\x7E]/g, "");
+function crc16(str) {
+  let crc = 0xffff;
+  for (let i = 0; i < str.length; i++) {
+    crc ^= str.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+  }
+  return crc.toString(16).toUpperCase().padStart(4, "0");
+}
+function pixPayload({ chave, nome, cidade, valor, txid }) {
+  const f = (id, v) => id + String(v.length).padStart(2, "0") + v;
+  const conta = f("00", "br.gov.bcb.pix") + f("01", chave);
+  let p = f("00", "01") + f("26", conta) + f("52", "0000") + f("53", "986");
+  if (valor > 0) p += f("54", valor.toFixed(2));
+  p += f("58", "BR") + f("59", semAcento(nome).toUpperCase().slice(0, 25) || "LOJA") + f("60", semAcento(cidade).toUpperCase().slice(0, 15) || "BRASIL");
+  p += f("62", f("05", (semAcento(txid).replace(/[^A-Za-z0-9]/g, "").slice(0, 25)) || "***"));
+  p += "6304";
+  return p + crc16(p);
+}
+function lojaConfig() {
+  const c = db.prepare("SELECT dados FROM config WHERE id = 1").get();
+  return (c && JSON.parse(c.dados).loja) || {};
+}
+async function pixPara(valor, txid) {
+  const L = lojaConfig();
+  const chave = txt(L.pixChave, 77);
+  if (!chave) return null;
+  const payload = pixPayload({ chave, nome: L.pixNome || L.nome, cidade: L.pixCidade, valor: n(valor), txid });
+  const svg = await QRCode.toString(payload, { type: "svg", margin: 1, errorCorrectionLevel: "M" });
+  return { payload, svg };
+}
+app.get("/api/pix", exigeLogin, async (req, res) => {
+  const r = await pixPara(Number(req.query.valor) || 0, req.query.txid || "");
+  if (!r) return res.status(400).json({ erro: "Cadastre sua chave Pix em Custos e taxas → Sua loja." });
+  res.json(r);
+});
+
+// ---------- impressão 10×15 do pedido ----------
+const escH = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const brlS = v => (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+app.get("/imprimir/pedido/:id", exigeLogin, async (req, res) => {
+  const r = db.prepare("SELECT * FROM pedidos WHERE id = ?").get(req.params.id);
+  if (!r) return res.status(404).send("Pedido não encontrado.");
+  const p = JSON.parse(r.dados), L = lojaConfig();
+  const bruto = p.itens.reduce((s, i) => s + i.quantidade * i.preco_unit, 0);
+  const total = bruto - (p.desconto || 0) + (p.freteCliente || 0);
+  const receber = Math.max(0, total - (p.sinal || 0));
+  const pix = receber > 0 && r.status !== "entregue" ? await pixPara(receber, "PED" + r.numero) : null;
+  const dataBR = s => s ? s.split("-").reverse().join("/") : "";
+  res.set("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Pedido #${r.numero}</title>
+<style>
+@page{size:100mm 150mm;margin:0}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#000;background:#fff}
+.et{width:100mm;height:150mm;padding:5mm 5mm 4mm;display:flex;flex-direction:column;gap:2.5mm;overflow:hidden}
+.top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:.5mm solid #000;padding-bottom:2mm}
+.loja{font-size:15pt;font-weight:800;line-height:1.05}
+.num{font-size:20pt;font-weight:800}
+.lb{font-size:7.5pt;text-transform:uppercase;letter-spacing:.06em}
+.cli{font-size:13pt;font-weight:700}
+table{width:100%;border-collapse:collapse;font-size:9.5pt}
+td{padding:1mm 0;vertical-align:top;border-bottom:.2mm dashed #000}
+td.q{width:9mm;font-weight:700}
+td.v{text-align:right;white-space:nowrap}
+.pers{font-size:8pt}
+.tot{display:flex;justify-content:space-between;font-size:11pt;font-weight:800}
+.pix{display:flex;gap:3mm;align-items:center;margin-top:auto}
+.pix svg{width:30mm;height:30mm}
+.pix .t{font-size:8pt;word-break:break-all}
+.ok{margin-top:auto;font-size:10pt;text-align:center;font-weight:700}
+.rod{font-size:7.5pt;text-align:center}
+@media screen{body{background:#ddd;padding:10px}.et{background:#fff;margin:0 auto;box-shadow:0 0 8px rgba(0,0,0,.2)}.dica{font:13px Arial;text-align:center;margin:10px}}
+@media print{.dica{display:none}}
+</style></head><body>
+<p class="dica">Escolha a impressora térmica e o papel 100 × 150 mm. Se a janela de impressão não abrir, use Ctrl+P.</p>
+<div class="et">
+  <div class="top"><div><div class="lb">Pedido</div><div class="loja">${escH(L.nome || "Impressões 3D")}</div></div><div class="num">#${r.numero}</div></div>
+  <div><div class="lb">Cliente</div><div class="cli">${escH(p.cliente)}</div>${p.whatsapp ? `<div>${escH(p.whatsapp)}</div>` : ""}<div class="lb" style="margin-top:1mm">Pedido em ${dataBR(p.data)}${p.prazo ? ` · entrega até ${dataBR(p.prazo)}` : ""}</div></div>
+  <table>${p.itens.map(i => `<tr><td class="q">${i.quantidade}×</td><td>${escH(i.descricao)}${i.personalizacao ? `<div class="pers">${escH(i.personalizacao)}</div>` : ""}</td><td class="v">${brlS(i.quantidade * i.preco_unit)}</td></tr>`).join("")}</table>
+  ${p.desconto ? `<div class="tot" style="font-size:9pt;font-weight:400"><span>Desconto</span><span>-${brlS(p.desconto)}</span></div>` : ""}
+  ${p.freteCliente ? `<div class="tot" style="font-size:9pt;font-weight:400"><span>Frete</span><span>${brlS(p.freteCliente)}</span></div>` : ""}
+  <div class="tot"><span>Total</span><span>${brlS(total)}</span></div>
+  ${p.sinal ? `<div class="tot" style="font-size:9.5pt;font-weight:400"><span>Já pago</span><span>${brlS(p.sinal)}</span></div>` : ""}
+  ${pix ? `<div class="pix">${pix.svg}<div><div class="lb">Falta pagar</div><div class="num" style="font-size:14pt">${brlS(receber)}</div><div class="t">Pague com o Pix pelo QR Code</div></div></div>`
+        : `<div class="ok">${receber > 0 ? `Falta pagar: ${brlS(receber)}` : "Pago. Obrigado pela compra!"}</div>`}
+  <div class="rod">${escH(L.instagram ? "Instagram " + L.instagram : "")}${L.whatsapp ? ` · WhatsApp ${escH(L.whatsapp)}` : ""}</div>
+</div>
+<script src="/imprimir.js"></script>
+</body></html>`);
+});
+
+// ---------- clientes (a partir dos pedidos e vendas) ----------
+app.get("/api/clientes", exigeLogin, (req, res) => {
+  const mapa = new Map();
+  const chave = (nome, zap) => { const d = String(zap || "").replace(/\D/g, ""); return d.length >= 8 ? "z" + d.slice(-9) : "n" + semAcento(nome).toLowerCase().trim(); };
+  const soma = (nome, zap, valor, data, origem) => {
+    if (!String(nome || "").trim()) return;
+    const k = chave(nome, zap);
+    const c = mapa.get(k) || { nome: nome.trim(), whatsapp: "", total: 0, compras: 0, ultima: "", primeira: "", orcamentos: 0 };
+    if (zap && !c.whatsapp) c.whatsapp = zap;
+    if (origem === "orcamento") c.orcamentos++;
+    else { c.total += valor; c.compras++; if (!c.ultima || data > c.ultima) c.ultima = data; if (!c.primeira || data < c.primeira) c.primeira = data; }
+    mapa.set(k, c);
+  };
+  for (const r of db.prepare("SELECT dados, status FROM pedidos").all()) {
+    if (r.status === "cancelado") continue;
+    const p = JSON.parse(r.dados);
+    const total = p.itens.reduce((s, i) => s + i.quantidade * i.preco_unit, 0) - (p.desconto || 0) + (p.freteCliente || 0);
+    soma(p.cliente, p.whatsapp, total, p.data, r.status === "orcamento" ? "orcamento" : "pedido");
+  }
+  for (const v of db.prepare("SELECT cliente, data, quantidade*preco_unit AS total FROM vendas WHERE pedido_id IS NULL AND cliente IS NOT NULL AND cliente <> ''").all()) {
+    soma(v.cliente, "", v.total, v.data, "venda");
+  }
+  res.json([...mapa.values()].map(c => ({ ...c, total: n(c.total) })).sort((a, b) => b.total - a.total));
+});
+
+// ---------- resumo para a tela Hoje (retorno do investimento) ----------
+app.get("/api/resumo", exigeLogin, (req, res) => {
+  const lucroTotal = db.prepare("SELECT COALESCE(SUM(quantidade*preco_unit - taxas - frete - quantidade*custo_unit),0) t FROM vendas WHERE status='pago'").get().t;
+  const investimento = db.prepare("SELECT COALESCE(SUM(valor_pago),0) t FROM compras WHERE status='comprado'").get().t;
+  const planejado = db.prepare("SELECT COUNT(*) n FROM compras WHERE status<>'comprado'").get().n;
+  const porMes = db.prepare(`SELECT substr(data,1,7) mes, SUM(quantidade*preco_unit - taxas - frete - quantidade*custo_unit) lucro
+    FROM vendas WHERE status='pago' GROUP BY 1 ORDER BY 1 DESC LIMIT 6`).all();
+  const primeiraVenda = db.prepare("SELECT MIN(data) d FROM vendas WHERE status='pago'").get().d;
+  res.json({ lucroTotal: n(lucroTotal), investimento: n(investimento), comprasPendentes: planejado, porMes, primeiraVenda });
+});
+
+// ---------- pedido vindo do catálogo público ----------
+const limitePedidoPublico = rateLimit({ windowMs: 10 * 60 * 1000, limit: 6, standardHeaders: "draft-7", legacyHeaders: false,
+  message: { erro: "Muitos pedidos seguidos. Tente de novo em alguns minutos." } });
+app.post("/api/publico/pedido", limitePedidoPublico, (req, res) => {
+  const b = req.body || {};
+  const nome = txt(b.nome, 80);
+  if (nome.length < 2) return res.status(400).json({ erro: "Informe seu nome." });
+  const prods = new Map(produtosPublicos().map(x => [x.id, x.p]));
+  const itens = (Array.isArray(b.itens) ? b.itens : []).slice(0, 30).map(i => {
+    const p = prods.get(String(i.id || "")); const q = Math.round(Number(i.q) || 0);
+    if (!p || q < 1 || q > 999) return null;
+    return { produto_id: String(i.id), descricao: p.nome, quantidade: q, preco_unit: n(p.precoCatalogo), custo_unit: 0, horas_unit: 0,
+      personalizacao: txt(i.pers, 200), doEstoque: false, fil: [], recalc: true };
+  }).filter(Boolean);
+  if (!itens.length) return res.status(400).json({ erro: "O carrinho está vazio." });
+  const L = lojaConfig();
+  const cfg = db.prepare("SELECT dados FROM config WHERE id = 1").get();
+  const canal = (cfg && JSON.parse(cfg.dados).canais?.[0]?.nome) || "Venda direta";
+  const hoje = new Date().toISOString().slice(0, 10);
+  const prazoD = new Date(); prazoD.setDate(prazoD.getDate() + (Number(L.prazoDias) || 5));
+  const dados = { cliente: nome, whatsapp: txt(b.whatsapp, 30).replace(/[^\d+]/g, ""), canal, data: hoje, prazo: prazoD.toISOString().slice(0, 10),
+    itens, desconto: 0, freteCliente: 0, freteVoce: 0, taxas: 0, sinal: 0, obs: "Pedido feito pelo catálogo do site", origem: "catalogo" };
+  const id = crypto.randomUUID();
+  const numero = (db.prepare("SELECT COALESCE(MAX(numero),0) m FROM pedidos").get().m) + 1;
+  db.prepare("INSERT INTO pedidos (id, numero, dados, status, prazo) VALUES (?, ?, ?, 'orcamento', ?)").run(id, numero, JSON.stringify(dados), dados.prazo);
+  res.json({ numero });
 });
 
 // ---------- catálogo público (sem login) ----------

@@ -39,8 +39,10 @@
     <div class="brand"><small>Bambu Lab A1 Combo</small>Precificador 3D</div>
     <nav class="tabs" role="tablist" aria-label="Menu" aria-orientation="vertical">
       <span class="navgrp">Operação</span>
-      <button role="tab" id="tab-produtos" aria-selected="true" data-tab="produtos"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6l7-3 7 3-7 3-7-3zm0 0v8l7 3 7-3V6M10 9v8"/></svg>Produtos e ranking</button>
-      <button role="tab" id="tab-pedidos" aria-selected="false" data-tab="pedidos"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h10v14l-2.5-1.5L10 17l-2.5-1.5L5 17V3zm3 4h4m-4 3h4"/></svg>Pedidos</button>
+      <button role="tab" id="tab-hoje" aria-selected="true" data-tab="hoje"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 9l7-6 7 6v8H3V9zm5 8v-5h4v5"/></svg>Hoje</button>
+      <button role="tab" id="tab-produtos" aria-selected="false" data-tab="produtos"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6l7-3 7 3-7 3-7-3zm0 0v8l7 3 7-3V6M10 9v8"/></svg>Produtos e ranking</button>
+      <button role="tab" id="tab-pedidos" aria-selected="false" data-tab="pedidos"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h10v14l-2.5-1.5L10 17l-2.5-1.5L5 17V3zm3 4h4m-4 3h4"/></svg>Pedidos<span class="navbadge" id="badgeCat" hidden></span></button>
+      <button role="tab" id="tab-clientes" aria-selected="false" data-tab="clientes"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="7" r="3.2"/><path d="M3.5 17c0-3.4 2.9-5.5 6.5-5.5s6.5 2.1 6.5 5.5"/></svg>Clientes</button>
       <button role="tab" id="tab-fila" aria-selected="false" data-tab="fila"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h7"/></svg>Fila da impressora</button>
       <button role="tab" id="tab-estoque" aria-selected="false" data-tab="estoque"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="2.5"/></svg>Estoque</button>
       <button role="tab" id="tab-compras" aria-selected="false" data-tab="compras"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 3h2.5l2 10h9l1.5-7H5.3M8 17a1 1 0 100-.01M14 17a1 1 0 100-.01"/></svg>Compras e orçamento</button>
@@ -59,11 +61,16 @@
   <div class="main">
   <header class="top">
     <button class="btn menubtn" id="menuBtn" type="button" aria-label="Abrir menu" aria-controls="side" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg></button>
-    <h1 id="pageTitle">Produtos e ranking</h1>
+    <h1 id="pageTitle">Hoje</h1>
   </header>
 
+  <!-- HOJE -->
+  <section class="panel" id="p-hoje">
+    <div class="stack" id="hojeBox"><p class="note">Carregando…</p></div>
+  </section>
+
   <!-- PRODUTOS -->
-  <section class="panel" id="p-produtos">
+  <section class="panel" id="p-produtos" hidden>
     <div class="row spread" style="margin-bottom:14px">
       <div class="row">
         <label class="f" style="flex-direction:row;align-items:center;gap:8px">Ordenar por
@@ -107,6 +114,15 @@
       <div id="filaLista"></div>
       <div id="filaExtra"></div>
       <p class="note">A fila usa os pedidos <strong>aprovados</strong> e <strong>imprimindo</strong>, em ordem de prazo, e as horas de impressão de cada produto. Ajuste quantas horas a impressora roda por dia em <strong>Custos e taxas → Sua loja</strong>.</p>
+    </div>
+  </section>
+
+  <!-- CLIENTES -->
+  <section class="panel" id="p-clientes" hidden>
+    <div class="stack">
+      <div class="row spread"><input id="cliBusca" type="search" placeholder="Buscar nome ou WhatsApp" style="max-width:320px"><span class="note" id="cliResumo"></span></div>
+      <div id="cliLista"></div>
+      <p class="note">A lista é montada sozinha a partir dos pedidos e das vendas. O mesmo cliente é reconhecido pelo WhatsApp (ou pelo nome, se não tiver WhatsApp). Quem não compra há mais de 60 dias aparece destacado: é uma boa hora para mandar uma mensagem.</p>
     </div>
   </section>
 
@@ -338,6 +354,11 @@
         <label class="f">Repita a nova senha<input id="ms-nova2" type="password" required minlength="8" autocomplete="new-password"></label>
         <div class="row"><button class="btn primary" type="submit">Trocar senha</button><span class="note" id="msMsg"></span></div>
       </form>
+    </div>
+    <div class="card stack narrow admin-only" id="bkCard" hidden style="margin-top:18px">
+      <div class="row spread"><h2>Backup</h2><button class="btn primary" id="btnBackup" type="button">Fazer backup agora</button></div>
+      <p class="note" style="margin:0">O sistema faz uma cópia do banco de dados sozinho a cada 3 horas e guarda as 14 mais recentes na VPS. Baixe uma de vez em quando e guarde no seu computador ou no Google Drive: se a VPS der problema, os dados estão salvos.</p>
+      <div id="bkLista"></div>
     </div>
   </section>
 </div>

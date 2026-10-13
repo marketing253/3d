@@ -4,12 +4,15 @@ Sistema para cadastrar produtos impressos em 3D (Bambu Lab A1 Combo), calcular o
 
 - **Login com senha:** senhas guardadas com bcrypt, sessão em cookie `httpOnly`, limite de 10 tentativas a cada 15 minutos.
 - **Três tipos de acesso:** Administrador (tudo, inclusive usuários), Editor (cadastra e edita) e Só leitura (só consulta).
+- **Tela Hoje:** lucro do mês, pedidos com prazo vencendo, pedidos novos do catálogo, prontos para entregar, filamento acabando, contas em aberto, meta do mês e retorno do investimento.
 - **Produtos:** foto, link do modelo, filamentos, tempo, custo por unidade e ranking de lucro por hora de impressora.
 - **Pedidos e encomendas:** cliente, WhatsApp, itens com personalização, sinal, prazo e status (orçamento → aprovado → imprimindo → pronto → entregue). Ao entregar, a venda entra sozinha no financeiro.
-- **Mensagens prontas para o WhatsApp:** orçamento, confirmação, pedido pronto, cobrança e agradecimento.
+- **Mensagens prontas para o WhatsApp:** orçamento, confirmação, pedido pronto, cobrança e agradecimento, com **Pix copia e cola e QR Code** no valor que falta pagar.
+- **Etiqueta 10×15** do pedido para a impressora térmica, com QR Code do Pix.
+- **Clientes:** lista montada a partir dos pedidos e vendas, com quanto cada um gastou, última compra e botão para chamar no WhatsApp.
 - **Fila da impressora:** ordem de impressão por prazo, horas de máquina, previsão de cada pedido e aviso de atraso.
 - **Estoque:** rolos de filamento (o consumo sai sozinho quando o pedido fica pronto) e peças à pronta entrega.
-- **Catálogo público** em `/catalogo`: sem login, com fotos, preços e carrinho que envia o pedido pelo WhatsApp.
+- **Catálogo público** em `/catalogo`: sem login, com fotos, preços e carrinho que envia o pedido pelo WhatsApp e já cria o orçamento no sistema.
 - **Financeiro:** vendas (com taxa do canal, frete e lucro calculados), despesas e receitas, saldo do mês e acumulado, contas a pagar e a receber, gráfico dos últimos 12 meses, despesas por categoria, mais vendidos e exportação em CSV.
 - **Dados:** banco SQLite e fotos ficam na pasta `data/` (fora do Git).
 
@@ -91,7 +94,9 @@ O mesmo comando cria um administrador novo se o usuário não existir.
 
 ## Backup
 
-Tudo fica em `data/`: o arquivo `precificador.db` e a pasta `fotos/`. Para fazer backup:
+O sistema copia o banco sozinho a cada 3 horas para `data/backups/` (guarda as 14 mais recentes). Em **Minha conta**, o administrador vê as cópias, faz uma na hora e baixa o arquivo.
+
+Tudo fica em `data/`: o arquivo `precificador.db` e a pasta `fotos/`. Para fazer backup manual:
 
 ```bash
 sudo sqlite3 /opt/precificador/data/precificador.db ".backup '/root/backup-precificador.db'"

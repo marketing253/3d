@@ -32,6 +32,8 @@ body{padding-block:0 120px}
 .cart{max-width:1180px;margin:0 auto 10px;display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow:auto}
 .cline{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;font-size:14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
 .cline input{grid-column:1/-1;font-size:14px;padding:6px 8px}
+.cliente{max-width:1180px;margin:0 auto 10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
+.cliente input{font-size:15px}
 .foot{margin-top:40px;color:var(--muted);font-size:13px}
 </style>
 </head>
@@ -49,6 +51,10 @@ body{padding-block:0 120px}
 
 <div class="cartbar" id="cartbar" hidden>
   <div class="cart" id="cart" hidden></div>
+  <div class="cliente" id="cliente" hidden>
+    <label class="f">Seu nome<input id="cNome" maxlength="80" autocomplete="name" placeholder="Nome e sobrenome"></label>
+    <label class="f">Seu WhatsApp<input id="cWhats" maxlength="20" inputmode="tel" autocomplete="tel" placeholder="(11) 91234-5678"></label>
+  </div>
   <div class="in">
     <button class="btn" id="verCarrinho" type="button">Ver pedido</button>
     <span id="cartResumo" class="num"></span>

@@ -4,7 +4,9 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const brl=v=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 let dados=null, cat="Todos", carrinho={};
+let cli={nome:"",whatsapp:""};
 try{ carrinho=JSON.parse(localStorage.getItem("cat3d.carrinho")||"{}")||{} }catch(e){ carrinho={} }
+try{ cli={...cli,...JSON.parse(localStorage.getItem("cat3d.cliente")||"{}")} }catch(e){}
 const salva=()=>{ try{ localStorage.setItem("cat3d.carrinho",JSON.stringify(carrinho)) }catch(e){} };
 
 async function carrega(){
@@ -40,12 +42,12 @@ function itens(){ return Object.entries(carrinho).map(([id,c])=>({p:dados.produt
 function texto(){
   const L=dados.loja, its=itens(); const tot=its.reduce((s,x)=>s+x.q*x.p.preco,0);
   const linhas=its.map(x=>`• ${x.q}× ${x.p.nome} — ${brl(x.q*x.p.preco)}${x.pers?`\n   Personalização: ${x.pers}`:""}`).join("\n");
-  return `Olá! Vim pelo catálogo da ${L.nome} e quero fazer um pedido:\n\n${linhas}\n\nTotal estimado: ${brl(tot)}\n\nMeu nome: `;
+  return `Olá! Vim pelo catálogo da ${L.nome} e quero fazer um pedido:\n\n${linhas}\n\nTotal estimado: ${brl(tot)}\n\nMeu nome: ${cli.nome.trim()}`;
 }
 function renderCarrinho(){
   const its=itens(); salva();
   $("#cartbar").hidden=!its.length;
-  if(!its.length){ $("#cart").hidden=true; return }
+  if(!its.length){ $("#cart").hidden=true; $("#cliente").hidden=true; return }
   const tot=its.reduce((s,x)=>s+x.q*x.p.preco,0), n=its.reduce((s,x)=>s+x.q,0);
   $("#cartResumo").innerHTML=`${n} ${n===1?"item":"itens"} · <b>${brl(tot)}</b>`;
   $("#cart").innerHTML=its.map(x=>`<div class="cline" data-id="${esc(x.p.id)}"><span>${x.q}× ${esc(x.p.nome)}</span><span class="num">${brl(x.q*x.p.preco)}</span>
@@ -62,6 +64,18 @@ $("#grid").addEventListener("click",e=>{
 });
 $("#cart").addEventListener("input",e=>{const i=e.target.closest("[data-pers]");if(!i)return;const id=i.closest("[data-id]").dataset.id;if(carrinho[id]){carrinho[id].pers=i.value;salva();
   const num=String(dados.loja.whatsapp||"").replace(/\D/g,"");$("#enviar").href="https://wa.me/"+(num?(num.length<=11?"55"+num:num):"")+"?text="+encodeURIComponent(texto())}});
-$("#verCarrinho").addEventListener("click",()=>{const c=$("#cart");c.hidden=!c.hidden;$("#verCarrinho").textContent=c.hidden?"Ver pedido":"Esconder"});
+function abreCarrinho(abrir){const c=$("#cart");c.hidden=!abrir;$("#cliente").hidden=!abrir;$("#verCarrinho").textContent=abrir?"Esconder":"Ver pedido"}
+$("#verCarrinho").addEventListener("click",()=>abreCarrinho($("#cart").hidden));
+$("#cNome").value=cli.nome; $("#cWhats").value=cli.whatsapp;
+for(const id of ["#cNome","#cWhats"]) $(id).addEventListener("input",()=>{cli.nome=$("#cNome").value;cli.whatsapp=$("#cWhats").value;
+  try{localStorage.setItem("cat3d.cliente",JSON.stringify(cli))}catch(e){}
+  const num=String(dados.loja.whatsapp||"").replace(/\D/g,"");$("#enviar").href="https://wa.me/"+(num?(num.length<=11?"55"+num:num):"")+"?text="+encodeURIComponent(texto())});
+function toast(m){const t=$("#toast");t.textContent=m;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,3500)}
+$("#enviar").addEventListener("click",e=>{
+  if(cli.nome.trim().length<2){ e.preventDefault(); abreCarrinho(true); $("#cNome").focus(); toast("Digite seu nome para enviar o pedido."); return }
+  const corpo={nome:cli.nome.trim(),whatsapp:cli.whatsapp.trim(),itens:itens().map(x=>({id:x.p.id,q:x.q,pers:x.pers||""}))};
+  try{ fetch("/api/publico/pedido",{method:"POST",keepalive:true,headers:{"Content-Type":"application/json"},body:JSON.stringify(corpo)}).catch(()=>{}) }catch(err){}
+  setTimeout(()=>{carrinho={};render();toast("Pedido enviado! Termine a conversa no WhatsApp.")},400);
+});
 carrega();
 })();
