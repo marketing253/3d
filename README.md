@@ -5,6 +5,12 @@ Sistema para cadastrar produtos impressos em 3D (Bambu Lab A1 Combo), calcular o
 - **Login com senha:** senhas guardadas com bcrypt, sessão em cookie `httpOnly`, limite de 10 tentativas a cada 15 minutos.
 - **Três tipos de acesso:** Administrador (tudo, inclusive usuários), Editor (cadastra e edita) e Só leitura (só consulta).
 - **Tela Hoje:** lucro do mês, pedidos com prazo vencendo, pedidos novos do catálogo, prontos para entregar, filamento acabando, contas em aberto, meta do mês e retorno do investimento.
+- **Importar do Bambu Studio:** envie o arquivo fatiado (.gcode.3mf ou .gcode) e o peso de cada cor e o tempo entram sozinhos no produto ou no orçamento. O arquivo é lido no navegador, não vai para o servidor.
+- **Orçamento rápido:** preço de peça sob medida sem cadastrar produto, já com mensagem, link e Pix.
+- **Manutenção da impressora:** conta as horas impressas e avisa quando limpar, lubrificar ou trocar peças.
+- **Kits e cupons:** combos com preço fechado e cupons de desconto no catálogo (link `/catalogo?cupom=CODIGO`).
+- **Fechamento do mês em PDF** e lembretes de cobrança e de clientes para chamar de volta na tela Hoje.
+- **Instalável como app** no celular e no computador.
 - **Produtos:** foto, link do modelo, filamentos, tempo, custo por unidade e ranking de lucro por hora de impressora.
 - **Pedidos e encomendas:** cliente, WhatsApp, itens com personalização, sinal, prazo e status (orçamento → aprovado → imprimindo → pronto → entregue). Ao entregar, a venda entra sozinha no financeiro.
 - **Mensagens prontas para o WhatsApp:** orçamento, confirmação, pedido pronto, cobrança e agradecimento, com **Pix copia e cola e QR Code** no valor que falta pagar.

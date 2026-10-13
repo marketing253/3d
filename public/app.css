@@ -263,3 +263,19 @@ table.cmpt td.n{white-space:nowrap}
 .pixbox{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px;border:1px solid var(--line);border-radius:var(--r);background:#fff}
 .pixbox .pcat{color:#555}
 .qr svg{width:170px;height:170px;display:block}
+
+/* importar arquivo, orçamento rápido, kits, manutenção, instalar */
+.importbox{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 12px;border:1px dashed var(--line);border-radius:var(--r);background:var(--sunken)}
+.importbox .note{margin:0;flex:1 1 220px}
+.swatch{display:inline-block;width:11px;height:11px;border-radius:50%;border:1px solid var(--line);vertical-align:-1px}
+table.mini{width:100%;border-collapse:collapse;font-size:13.5px}
+table.mini td,table.mini th{padding:5px 2px;border-bottom:1px solid var(--line)}
+table.mini th{text-align:left;font:500 11px var(--mono);color:var(--muted);text-transform:uppercase}
+table.mini tr.on td{color:var(--accent);font-weight:600}
+.installbtn{display:flex;align-items:center;gap:8px;justify-content:center;margin:0 0 10px;width:100%}
+.installbtn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.navbadge.warnb{background:var(--bad)}
+#manLista input{font-size:14px;padding:6px 8px}
+#manLista .rbar{margin-bottom:5px}
+.side .installbtn{margin-top:auto}
+.side .installbtn:not([hidden])+.userchip{margin-top:0}

@@ -13,6 +13,7 @@ const DEFAULTS={
   tarifaKwh:0.90, consumoW:100, valorImpressora:4500, vidaUtilH:5000, manutencaoH:0.30,
   falhaPct:10, maoObraH:20, impostoPct:0, margemPct:40,
   loja:{nome:"",whatsapp:"",instagram:"",pagamento:"Pix, cartão ou dinheiro",prazoDias:5,horasDia:16,sobre:"",metaLucro:0,pixChave:"",pixNome:"",pixCidade:""},
+  kits:[], cupons:[], manutencao:null,
   filamentos:[
     {id:"pla-nac",nome:"PLA Básico nacional",precoKg:95},
     {id:"pla-matte",nome:"PLA Matte",precoKg:115},
@@ -100,9 +101,9 @@ let tab="hoje";
 function setTab(t){
   tab=t;
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===t)));
-  ["hoje","produtos","pedidos","clientes","fila","estoque","compras","financeiro","novo","tendencias","config","usuarios","conta"].forEach(x=>{$("#p-"+x).hidden=x!==t});
+  ["hoje","produtos","pedidos","orcamento","clientes","fila","estoque","manutencao","compras","financeiro","novo","tendencias","kits","config","usuarios","conta"].forEach(x=>{$("#p-"+x).hidden=x!==t});
   try{localStorage.setItem("prec3d.tab",t)}catch(e){}
-  const tb=$("#tab-"+t); if(tb) $("#pageTitle").textContent=tb.textContent.trim();
+  const tb=$("#tab-"+t); if(tb) $("#pageTitle").textContent=[...tb.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent).join("").trim();
   document.body.classList.remove("navopen"); $("#menuBtn").setAttribute("aria-expanded","false");
   if(t==="config") renderConfig();
   if(t==="usuarios") carregaUsuarios();
@@ -114,6 +115,9 @@ function setTab(t){
   if(t==="hoje"){ renderHoje(); carregaHoje() }
   if(t==="clientes"){ renderClientes(); carregaClientes() }
   if(t==="conta") carregaBackups();
+  if(t==="orcamento") renderQo();
+  if(t==="manutencao"){ renderManutencao(); carregaPedidos() }
+  if(t==="kits"){ renderKits(); if(!pedCarregado) carregaPedidos() }
   window.scrollTo({top:0});
 }
 document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("click",()=>{
@@ -486,7 +490,8 @@ const resumoItens=p=>(p.itens||[]).map(i=>`${num(i.quantidade).toLocaleString("p
 /* ---------- pedidos ---------- */
 let pedidos=[], pedFiltro="ativos", pedBusca="", pedForm=null, pedCarregado=false;
 async function carregaPedidos(){
-  try{ pedidos=await api("GET","/api/pedidos"); pedCarregado=true; renderPedidos(); renderFila(); atualizaBadge(); recalcCatalogo() }catch(e){ if(e.status!==401) toast(e.message) }
+  try{ pedidos=await api("GET","/api/pedidos"); pedCarregado=true; renderPedidos(); renderFila(); atualizaBadge(); atualizaBadgeMan(); recalcCatalogo();
+    if(tab==="manutencao") renderManutencao(); if(tab==="kits") renderKits() }catch(e){ if(e.status!==401) toast(e.message) }
 }
 function filtraPed(){
   const b=pedBusca.trim().toLowerCase();
@@ -600,7 +605,7 @@ function renderPfItens(){
   const ps=produtos.slice().sort((a,b)=>a.nome.localeCompare(b.nome));
   $("#pfItens").innerHTML=pedForm.d.itens.map((it,i)=>{const pr=produtos.find(x=>x.id===it.produto_id);const est=pr?num(pr.estoque):0;
     return `<div class="pfi" data-ii="${i}">
-      <label class="f">Produto<select data-if="produto_id"><option value="">Outro (digitar)</option>${ps.map(p=>`<option value="${esc(p.id)}"${p.id===it.produto_id?" selected":""}>${esc(p.nome)}${num(p.estoque)>0?` (${num(p.estoque)} prontos)`:""}</option>`).join("")}</select></label>
+      <label class="f">Produto<select data-if="produto_id"><option value="">Outro (digitar)</option>${ps.map(p=>`<option value="${esc(p.id)}"${p.id===it.produto_id?" selected":""}>${esc(p.nome)}${num(p.estoque)>0?` (${num(p.estoque)} prontos)`:""}</option>`).join("")}${kitsCfg().length?`<optgroup label="Kits">${kitsCfg().map(k=>`<option value="kit:${esc(k.id)}"${it.kit_id===k.id?" selected":""}>Kit ${esc(k.nome)}</option>`).join("")}</optgroup>`:""}</select></label>
       <label class="f">Descrição<input data-if="descricao" maxlength="150" value="${esc(it.descricao)}"></label>
       <label class="f">Qtd<input data-if="quantidade" type="number" min="1" step="1" value="${esc(it.quantidade)}"></label>
       <label class="f">Preço un.<div class="unit pre"><span>R$</span><input data-if="preco_unit" type="number" min="0" step="0.01" value="${esc(it.preco_unit)}"></div></label>
@@ -632,7 +637,8 @@ $("#pedForm").addEventListener("input",e=>{
   if(el.id==="pf-taxas") pedForm.taxaManual=true;
   const row=el.closest("[data-ii]");
   if(row&&el.dataset.if){const it=pedForm.d.itens[+row.dataset.ii];const k=el.dataset.if;
-    if(k==="produto_id"){ const p=produtos.find(x=>x.id===el.value); pedForm.d.itens[+row.dataset.ii]=p?{...itemDeProduto(p,pedForm.d.canal,num(it.quantidade)||1),personalizacao:it.personalizacao}:{...it,produto_id:null,fil:[],custo_unit:0,horas_unit:0}; renderPfItens() }
+    if(k==="produto_id"&&el.value.startsWith("kit:")){ const kt=kitsCfg().find(x=>"kit:"+x.id===el.value); if(kt){ pedForm.d.itens[+row.dataset.ii]=itemDeKit(kt,pedForm.d.canal,num(it.quantidade)||1); renderPfItens() } }
+    else if(k==="produto_id"){ const p=produtos.find(x=>x.id===el.value); pedForm.d.itens[+row.dataset.ii]=p?{...itemDeProduto(p,pedForm.d.canal,num(it.quantidade)||1),personalizacao:it.personalizacao}:{...it,produto_id:null,fil:[],custo_unit:0,horas_unit:0}; renderPfItens() }
     else if(k==="doEstoque") it.doEstoque=el.checked;
     else it[k]=["quantidade","preco_unit","horas_unit"].includes(k)?num(el.value):el.value;
   }
@@ -1014,6 +1020,7 @@ async function carregaFin(){
 function renderFin(){
   $("#finMes").textContent=cap(nomeMes(finMes));
   $("#finCsv").href="/api/financeiro/csv?mes="+finMes;
+  $("#finPdf").href="/imprimir/mes/"+finMes;
   if(!fin) return;
   const vs=fin.vendas, ls=fin.lancamentos;
   let entradas=0,saidas=0,lucro=0,pecas=0,receber=0,pagar=0,bruto=0;
@@ -1199,6 +1206,9 @@ async function recalcCatalogo(){
     for(const p of lst){
       const d=clone(p);
       d.itens=d.itens.map(i=>{ if(!i.recalc) return i; const {recalc,...it}=i;
+        if(Array.isArray(it.componentes)&&it.componentes.length){
+          const b=itemDeKit({id:it.kit_id,nome:"",preco:it.preco_unit,itens:it.componentes},d.canal,it.quantidade);
+          return {...it,custo_unit:b.custo_unit,horas_unit:b.horas_unit,fil:b.fil}; }
         const prod=produtos.find(x=>x.id===it.produto_id); if(!prod) return it;
         const b=itemDeProduto(prod,d.canal,it.quantidade);
         return {...it,custo_unit:b.custo_unit,horas_unit:b.horas_unit,fil:b.fil}; });
@@ -1225,9 +1235,9 @@ async function pixDe(p){
 let resumo=null, finHoje=null;
 async function carregaHoje(){
   try{
-    const [ps,rs,fh,rz]=await Promise.all([api("GET","/api/pedidos"),api("GET","/api/rolos"),api("GET","/api/financeiro?mes="+hojeISO().slice(0,7)),api("GET","/api/resumo")]);
-    pedidos=ps; pedCarregado=true; rolos=rs; finHoje=fh; resumo=rz;
-    renderHoje(); atualizaBadge(); recalcCatalogo();
+    const [ps,rs,fh,rz,cb,cl]=await Promise.all([api("GET","/api/pedidos"),api("GET","/api/rolos"),api("GET","/api/financeiro?mes="+hojeISO().slice(0,7)),api("GET","/api/resumo"),api("GET","/api/cobrancas"),api("GET","/api/clientes")]);
+    pedidos=ps; pedCarregado=true; rolos=rs; finHoje=fh; resumo=rz; cobrancas=cb; clientesHoje=cl;
+    renderHoje(); atualizaBadge(); atualizaBadgeMan(); recalcCatalogo();
   }catch(e){ if(e.status!==401) toast(e.message) }
 }
 function canalDireto(){ return cfg.canais.find(c=>c.id==="direta")||cfg.canais[0] }
@@ -1288,6 +1298,7 @@ function renderHoje(){
   if(urgentes.length) avisos.push(`<div class="card stack"><h3>Prazo vencendo</h3><ul class="hlist">${urgentes.map(p=>linhaPed(p,`${prazoPill(p)}<span class="pill ${ST_CLS[p.status]}">${ST[p.status]}</span>`)).join("")}</ul></div>`);
   if(prontos.length) avisos.push(`<div class="card stack"><h3>Prontos para entregar</h3><ul class="hlist">${prontos.map(p=>linhaPed(p,`${totPed(p).receber>0?`<span class="num">falta ${brl(totPed(p).receber)}</span>`:""}<button class="btn sm" data-hm="pronto">Avisar cliente</button>`)).join("")}</ul></div>`);
   if(acabando.length) avisos.push(`<div class="warnbox">Filamento acabando: ${acabando.map(r=>`${esc(nomeFil(r.filamento_id))} ${esc(r.cor)} (${Math.round(r.restante)} g)`).join(", ")}.</div>`);
+  const lemb=lembretesHtml(); if(lemb) avisos.push(lemb);
   if(contas.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Contas em aberto no mês</h3><button class="btn sm" data-hg="financeiro">Financeiro</button></div><ul class="hlist">${contas.sort((a,b)=>String(a[3]).localeCompare(String(b[3]))).map(c=>`<li><span>${esc(c[1])} <span class="pcat">· ${ddmm(c[3])}</span></span><span class="num ${c[0]==="pagar"?"neg":"pos"}">${c[0]==="pagar"?"pagar ":"receber "}${brl(c[2])}</span></li>`).join("")}</ul></div>`);
 
   box.innerHTML=`<div class="row spread"><p style="margin:0;color:var(--muted)">${esc(nomeDia)}</p><div class="row" style="gap:8px"><button class="btn primary edit-only" data-hg="novoPed">+ Novo pedido</button><button class="btn edit-only" data-hg="venda">Registrar venda</button></div></div>
@@ -1349,6 +1360,327 @@ $("#btnBackup").addEventListener("click",async e=>{
   try{ await api("POST","/api/backups"); toast("Backup feito"); carregaBackups() }catch(err){ toast(err.message) }
   finally{ e.target.disabled=false }
 });
+
+/* ---------- importar arquivo fatiado (Bambu Studio) ---------- */
+const semAc=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
+function filPorTipo(tipo){
+  const t=semAc(tipo).trim(); if(!t) return cfg.filamentos[0]?.id||"";
+  const base=t.split(/[-\s_]/)[0];
+  const f=cfg.filamentos.find(x=>semAc(x.nome).includes(t))||cfg.filamentos.find(x=>semAc(x.nome).includes(base));
+  return (f||cfg.filamentos[0])?.id||"";
+}
+function resumoFatiado(r){
+  const h=r.segundos/3600;
+  return `${h>0?fmtH(h)+" de impressão":"sem tempo no arquivo"} · ${r.filamentos.map(f=>`${(+f.g).toLocaleString("pt-BR",{maximumFractionDigits:1})} g ${esc(f.tipo||"filamento")}${f.cor?` <span class="swatch" style="background:${/^#[0-9a-f]{3,8}$/i.test(f.cor)?f.cor:"transparent"}"></span>`:""}`).join(" + ")}${r.placas>1?` · ${r.placas} placas somadas`:""}`;
+}
+async function importaFatiado(file){
+  if(!window.lerFatiado) throw new Error("Recarregue a página (Ctrl+F5) e tente de novo.");
+  if(file.size>300*1024*1024) throw new Error("Arquivo muito grande. Use o arquivo fatiado de uma placa.");
+  const r=await window.lerFatiado(file);
+  const nome=file.name.replace(/\.gcode\.3mf$|\.3mf$|\.gcode$/i,"").replace(/[_]+/g," ").trim();
+  const filamentos=r.filamentos.map(f=>({filId:filPorTipo(f.tipo),gramas:+(+f.g).toFixed(1)}));
+  const seg=Math.max(0,r.segundos);
+  return {r,nome,filamentos,horas:Math.floor(seg/3600),minutos:Math.round((seg%3600)/60)};
+}
+$("#f-fatiado").addEventListener("change",async e=>{
+  const f=e.target.files[0]; e.target.value=""; if(!f||!draft) return;
+  const m=$("#impMsg"); m.textContent="Lendo o arquivo…";
+  try{
+    const x=await importaFatiado(f); readForm();
+    if(x.filamentos.length) draft.filamentos=x.filamentos;
+    if(x.horas||x.minutos){draft.horas=x.horas;draft.minutos=x.minutos;$("#f-h").value=x.horas;$("#f-m").value=x.minutos}
+    if(!draft.nome&&x.nome){draft.nome=x.nome;$("#f-nome").value=x.nome}
+    renderFilLines(); renderFicha();
+    m.innerHTML=`<b>Importado:</b> ${resumoFatiado(x.r)}. Confira o filamento de cada linha e quantas peças saem por impressão.`;
+  }catch(err){ m.textContent=err.message }
+});
+
+/* ---------- orçamento rápido ---------- */
+let qo=null;
+function qoNovo(){ return {desc:"",cliente:"",whatsapp:"",qtd:1,unidades:1,filamentos:[{filId:cfg.filamentos[0]?.id||"",gramas:""}],horas:0,minutos:0,manualMin:5,embalagem:0,margemPct:"",canal:cfg.canais[0]?.nome||"",preco:""} }
+function qoProd(){ return {nome:qo.desc,unidades:qo.unidades,filamentos:qo.filamentos,horas:qo.horas,minutos:qo.minutos,manualMin:qo.manualMin,embalagem:qo.embalagem,outros:0,margemPct:qo.margemPct,precoVenda:""} }
+function renderQo(){
+  if(!qo) qo=qoNovo();
+  const opts=id=>cfg.filamentos.map(f=>`<option value="${esc(f.id)}"${f.id===id?" selected":""}>${esc(f.nome)}</option>`).join("");
+  $("#qoForm").innerHTML=`
+    <div class="card stack"><div class="row spread"><h2>Peça sob medida</h2><button type="button" class="btn ghost" data-qa="limpar">Limpar</button></div>
+      <p class="note" style="margin:0">Para peças sob medida que ainda não estão cadastradas. Preencha, veja o preço e mande o orçamento sem cadastrar produto.</p>
+      <div class="fields">
+        <label class="f" style="grid-column:1/-1">O que vai imprimir<input id="qo-desc" maxlength="150" placeholder="Ex.: Suporte de parede para controle" value="${esc(qo.desc)}"></label>
+        <label class="f">Cliente<input id="qo-cliente" maxlength="120" value="${esc(qo.cliente)}"></label>
+        <label class="f">WhatsApp<input id="qo-whats" inputmode="tel" maxlength="30" placeholder="(11) 91234-5678" value="${esc(qo.whatsapp)}"></label>
+        <label class="f">Quantidade<input id="qo-qtd" type="number" min="1" step="1" value="${esc(qo.qtd)}"></label>
+        <label class="f">Canal<select id="qo-canal">${cfg.canais.map(c=>`<option${c.nome===qo.canal?" selected":""}>${esc(c.nome)}</option>`).join("")}</select></label>
+      </div></div>
+    <div class="card stack"><div class="row spread"><h3>Filamento e tempo (por impressão)</h3><button type="button" class="btn ghost" data-qa="addFil">+ Cor / material</button></div>
+      <div class="importbox"><label class="btn" for="qo-arq">Importar do Bambu Studio</label><input id="qo-arq" type="file" accept=".3mf,.gcode" hidden><span class="note" id="qoImp">Envie o arquivo fatiado e o peso e o tempo entram sozinhos.</span></div>
+      <div class="stack" style="gap:8px" id="qoFil">${qo.filamentos.map((l,i)=>`<div class="fil-line" data-qf="${i}"><select aria-label="Filamento ${i+1}">${opts(l.filId)}</select>
+        <div class="unit"><input type="number" min="0" step="0.1" value="${esc(l.gramas)}" placeholder="0" aria-label="Gramas"><span>g</span></div>
+        <button type="button" class="btn ghost" data-qa="rmFil" aria-label="Remover" ${qo.filamentos.length<2?"disabled":""}>✕</button></div>`).join("")}</div>
+      <div class="fields">
+        <label class="f">Tempo de impressão<div class="unit"><input id="qo-h" type="number" min="0" step="1" value="${esc(qo.horas)}"><span>h</span></div></label>
+        <label class="f">&nbsp;<div class="unit"><input id="qo-m" type="number" min="0" max="59" step="1" value="${esc(qo.minutos)}"><span>min</span></div></label>
+        <label class="f">Peças por impressão<input id="qo-unid" type="number" min="1" step="1" value="${esc(qo.unidades)}"></label>
+        <label class="f">Trabalho manual por peça<div class="unit"><input id="qo-man" type="number" min="0" step="1" value="${esc(qo.manualMin)}"><span>min</span></div></label>
+        <label class="f">Embalagem por peça<div class="unit pre"><span>R$</span><input id="qo-emb" type="number" min="0" step="0.01" value="${esc(qo.embalagem)}"></div></label>
+        <label class="f">Margem %<input id="qo-marg" type="number" min="0" max="90" step="1" placeholder="${esc(cfg.margemPct)}" value="${esc(qo.margemPct)}"></label>
+      </div></div>`;
+  calcQo();
+}
+function leQo(){
+  qo.desc=$("#qo-desc").value.trim(); qo.cliente=$("#qo-cliente").value.trim(); qo.whatsapp=$("#qo-whats").value.trim();
+  qo.qtd=Math.max(1,Math.round(num($("#qo-qtd").value)||1)); qo.canal=$("#qo-canal").value;
+  qo.horas=num($("#qo-h").value); qo.minutos=num($("#qo-m").value); qo.unidades=Math.max(1,Math.round(num($("#qo-unid").value)||1));
+  qo.manualMin=num($("#qo-man").value); qo.embalagem=num($("#qo-emb").value); qo.margemPct=$("#qo-marg").value===""?"":num($("#qo-marg").value);
+  document.querySelectorAll("#qoFil [data-qf]").forEach((el,i)=>{qo.filamentos[i]={filId:el.querySelector("select").value,gramas:el.querySelector("input").value===""?"":num(el.querySelector("input").value)}});
+  const pi=$("#qo-preco"); if(pi) qo.preco=pi.value===""?"":num(pi.value);
+}
+function calcQo(){
+  const r=calc(qoProd()), cnl=cfg.canais.find(c=>c.nome===qo.canal)||cfg.canais[0];
+  const ch=r.canais.find(c=>c.id===cnl?.id)||r.canais[0];
+  const preco=qo.preco!==""&&num(qo.preco)>0?num(qo.preco):(ch?.sugerido||0);
+  const l=cnl?lucroCanal(preco,r.custo,cnl,cfg.impostoPct):{lucro:0,taxas:0,margem:0};
+  const horasTot=r.horasUnid*qo.qtd, fim=previsaoNovo(horasTot);
+  const focoPreco=document.activeElement&&document.activeElement.id==="qo-preco";
+  if(focoPreco){ $("#qoTot").innerHTML=qoTotHtml(); return }
+  $("#qoRes").innerHTML=`<h3>Preço</h3>
+    ${r.gramas<=0&&r.horas<=0?`<p class="note" style="margin:0">Preencha o filamento e o tempo, ou importe o arquivo do Bambu Studio.</p>`:""}
+    <div class="row spread"><span>Custo por peça</span><b class="num">${brl(r.custo)}</b></div>
+    <table class="mini"><thead><tr><th>Canal</th><th class="n">Sugerido</th></tr></thead><tbody>${r.canais.map(c=>`<tr${c.id===cnl?.id?' class="on"':""}><td>${esc(c.nome)}</td><td class="n">${brl(c.sugerido)}</td></tr>`).join("")}</tbody></table>
+    <label class="f">Preço que vou cobrar por peça<span class="hint">Vazio = usa o sugerido do canal</span><div class="unit pre"><span>R$</span><input id="qo-preco" type="number" min="0" step="0.01" placeholder="${(ch?.sugerido||0).toFixed(2)}" value="${esc(qo.preco)}"></div></label>
+    <div id="qoTot">${qoTotHtml()}</div>
+    <div class="stack" style="gap:8px"><button type="button" class="btn primary" data-qa="criar">Criar orçamento e mensagem</button>
+      <button type="button" class="btn" data-qa="produto">Salvar como produto</button>
+      <span class="note" id="qoMsg"></span></div>`;
+  function qoTotHtml(){
+    const r2=calc(qoProd()), ch2=r2.canais.find(c=>c.id===cnl?.id)||r2.canais[0];
+    const pr=qo.preco!==""&&num(qo.preco)>0?num(qo.preco):(ch2?.sugerido||0); const l2=cnl?lucroCanal(pr,r2.custo,cnl,cfg.impostoPct):{lucro:0,margem:0};
+    const ht=r2.horasUnid*qo.qtd;
+    return `<div class="stack" style="gap:6px;border-top:1px solid var(--line);padding-top:10px">
+      <div class="row spread"><span>Total para o cliente (${qo.qtd} ${qo.qtd===1?"peça":"peças"})</span><b class="num" style="font-size:18px">${brl(pr*qo.qtd)}</b></div>
+      <div class="row spread"><span>Seu lucro</span><b class="num ${l2.lucro<0?"neg":"pos"}">${brl(l2.lucro*qo.qtd)} <span class="pcat">(${pct(l2.margem)})</span></b></div>
+      <div class="row spread"><span>Máquina</span><span class="num">${fmtH(ht)}</span></div>
+      <div class="row spread"><span>Pela fila fica pronto</span><span class="num">${ht>0?ddmm(previsaoNovo(ht)):"—"}</span></div></div>`;
+  }
+}
+$("#qoForm").addEventListener("input",()=>{leQo();calcQo()});
+$("#qoForm").addEventListener("change",e=>{if(e.target.tagName==="SELECT"){leQo();calcQo()}});
+$("#qoRes").addEventListener("input",e=>{if(e.target.id==="qo-preco"){qo.preco=e.target.value===""?"":num(e.target.value);calcQo()}});
+$("#qoForm").addEventListener("click",e=>{
+  const b=e.target.closest("[data-qa]"); if(!b) return; leQo();
+  if(b.dataset.qa==="limpar"){qo=qoNovo();renderQo()}
+  if(b.dataset.qa==="addFil"&&qo.filamentos.length<8){qo.filamentos.push({filId:cfg.filamentos[Math.min(qo.filamentos.length,cfg.filamentos.length-1)]?.id||"",gramas:""});renderQo()}
+  if(b.dataset.qa==="rmFil"){qo.filamentos.splice(+b.closest("[data-qf]").dataset.qf,1);renderQo()}
+});
+$("#qoForm").addEventListener("change",async e=>{
+  if(e.target.id!=="qo-arq") return; const f=e.target.files[0]; if(!f) return; leQo();
+  $("#qoImp").textContent="Lendo o arquivo…";
+  try{ const x=await importaFatiado(f);
+    if(x.filamentos.length) qo.filamentos=x.filamentos; if(x.horas||x.minutos){qo.horas=x.horas;qo.minutos=x.minutos}
+    if(!qo.desc) qo.desc=x.nome; renderQo(); $("#qoImp").innerHTML=`<b>Importado:</b> ${resumoFatiado(x.r)}`;
+  }catch(err){ $("#qoImp").textContent=err.message }
+});
+$("#qoRes").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-qa]"); if(!b) return; leQo();
+  const r=calc(qoProd()), cnl=cfg.canais.find(c=>c.nome===qo.canal)||cfg.canais[0], ch=r.canais.find(c=>c.id===cnl?.id)||r.canais[0];
+  const preco=+(qo.preco!==""&&num(qo.preco)>0?num(qo.preco):(ch?.sugerido||0)).toFixed(2);
+  if(b.dataset.qa==="produto"){
+    startForm({...blank(),nome:qo.desc,unidades:qo.unidades,filamentos:clone(qo.filamentos),horas:qo.horas,minutos:qo.minutos,manualMin:qo.manualMin,embalagem:qo.embalagem,margemPct:qo.margemPct,precoVenda:qo.preco!==""?preco:""});
+    setTab("novo"); toast("Confira e salve o produto"); return;
+  }
+  if(b.dataset.qa==="criar"){
+    if(!qo.cliente){ $("#qoMsg").textContent="Preencha o nome do cliente."; $("#qo-cliente").focus(); return }
+    if(!(preco>0)){ $("#qoMsg").textContent="Preencha o filamento e o tempo, ou o preço."; return }
+    const uni=Math.max(1,qo.unidades), ht=r.horasUnid*qo.qtd;
+    const prazoFila=previsaoNovo(ht), prazoPad=addDias(hojeISO(),num(cfg.loja.prazoDias)||5);
+    const item={produto_id:null,descricao:qo.desc||"Peça sob medida",quantidade:qo.qtd,preco_unit:preco,custo_unit:+r.custo.toFixed(2),horas_unit:+r.horasUnid.toFixed(4),
+      personalizacao:"",doEstoque:false,fil:qo.filamentos.filter(l=>num(l.gramas)>0).map(l=>({filId:l.filId,g:+(num(l.gramas)/uni).toFixed(2)}))};
+    try{
+      const ped=await api("POST","/api/pedidos",{cliente:qo.cliente,whatsapp:qo.whatsapp,canal:cnl?.nome||"",data:hojeISO(),prazo:prazoFila>prazoPad?prazoFila:prazoPad,itens:[item],desconto:0,freteCliente:0,freteVoce:0,taxas:0,sinal:0,obs:"Orçamento rápido",status:"orcamento"});
+      pedidos.unshift(ped); qo=null; setTab("pedidos"); renderPedidos(); abreMsg(ped,"orcamento"); toast(`Orçamento #${ped.numero} criado`);
+    }catch(err){ $("#qoMsg").textContent=err.message }
+  }
+});
+
+/* ---------- manutenção da impressora ---------- */
+const MAN_PADRAO=[
+  {id:"placa",nome:"Lavar a placa PEI com água e detergente",cada:30},
+  {id:"bico",nome:"Limpar o bico e conferir se não está entupindo",cada:100},
+  {id:"eixos",nome:"Limpar as hastes e trilhos dos eixos X e Y",cada:200},
+  {id:"fuso",nome:"Lubrificar o fuso do eixo Z",cada:300},
+  {id:"cooler",nome:"Limpar ventoinhas e dissipador do hotend",cada:300},
+  {id:"correia",nome:"Conferir a tensão das correias",cada:500},
+  {id:"hotend",nome:"Trocar o bico (hotend) por desgaste",cada:1500}
+].map(t=>({...t,feitoH:0,feitoData:""}));
+function manCfg(){ if(!cfg.manutencao||!Array.isArray(cfg.manutencao.tarefas)) cfg.manutencao={extraH:num(cfg.manutencao?.extraH),tarefas:clone(MAN_PADRAO)}; return cfg.manutencao }
+function horasImpressas(){ return pedidos.filter(p=>["pronto","entregue"].includes(p.status)).reduce((s,p)=>s+totPed(p).horas,0)+num(manCfg().extraH) }
+function manEstado(){ const H=horasImpressas(); return manCfg().tarefas.map(t=>{const desde=H-num(t.feitoH), cada=Math.max(1,num(t.cada)); return {...t,desde,cada,falta:cada-desde,venc:desde>=cada,perto:desde>=cada*0.85}}) }
+function atualizaBadgeMan(){ const n=pedCarregado?manEstado().filter(t=>t.venc).length:0; const b=$("#badgeMan"); if(b){b.hidden=!n;b.textContent=n} }
+function renderManutencao(){
+  const H=horasImpressas(), ts=manEstado(), venc=ts.filter(t=>t.venc), prox=ts.filter(t=>!t.venc).sort((a,b)=>a.falta-b.falta)[0];
+  $("#manTiles").innerHTML=`
+    <div class="tile main"><span class="tl">Horas impressas</span><span class="tv num">${fmtH(H)||"0 min"}</span><span class="ts">pedidos prontos + horas avulsas</span></div>
+    <div class="tile"><span class="tl">Tarefas vencidas</span><span class="tv num ${venc.length?"neg":""}">${venc.length}</span><span class="ts">${venc.length?"faça e marque como feito":"tudo em dia"}</span></div>
+    <div class="tile"><span class="tl">Próxima</span><span class="tv sm">${prox?fmtH(prox.falta):"—"}</span><span class="ts clip">${prox?esc(prox.nome):""}</span></div>`;
+  $("#manLista").innerHTML=`<div class="tablewrap"><table style="min-width:760px"><thead><tr><th>Tarefa</th><th class="n">A cada</th><th>Última vez</th><th style="width:200px">Situação</th><th></th></tr></thead><tbody>
+    ${ts.map((t,i)=>{const pc=Math.max(0,Math.min(100,t.desde/t.cada*100));
+      return `<tr data-mi="${i}"><td>${podeEditar()?`<input data-mf="nome" maxlength="120" value="${esc(t.nome)}" aria-label="Tarefa">`:esc(t.nome)}</td>
+      <td class="n">${podeEditar()?`<div class="unit" style="width:110px;margin-left:auto"><input data-mf="cada" type="number" min="1" step="1" value="${esc(t.cada)}" aria-label="Intervalo"><span>h</span></div>`:t.cada+" h"}</td>
+      <td>${t.feitoData?`<span class="num">${dataBRc(t.feitoData)}</span><div class="pcat">com ${fmtH(num(t.feitoH))||"0 h"} impressas</div>`:'<span class="pcat">ainda não registrada</span>'}</td>
+      <td><div class="rbar"><i style="width:${pc}%" class="${t.venc?"low":""}"></i></div><span class="pill ${t.venc?"bad":t.perto?"warn":"good"}">${t.venc?`vencida há ${fmtH(-t.falta)||"0 min"}`:`faltam ${fmtH(t.falta)}`}</span></td>
+      <td class="pact"><div class="row" style="gap:4px;justify-content:flex-end;flex-wrap:nowrap"><button class="btn sm ${t.venc?"primary":""} edit-only" data-ma2="feito">Fiz hoje</button><button class="btn sm ghost edit-only" data-ma2="rm" aria-label="Remover tarefa">✕</button></div></td></tr>`}).join("")}
+    </tbody></table></div><div class="row" style="margin-top:10px"><button class="btn ghost edit-only" data-ma2="add" type="button">+ Tarefa</button><button class="btn ghost edit-only" data-ma2="padrao" type="button">Restaurar sugestões</button></div>`;
+  $("#manExtraTot").textContent=num(manCfg().extraH)>0?`Já somadas: ${fmtH(num(manCfg().extraH))}`:"";
+  atualizaBadgeMan();
+}
+$("#manLista").addEventListener("change",e=>{const el=e.target.closest("[data-mf]"); if(!el) return; const t=manCfg().tarefas[+el.closest("[data-mi]").dataset.mi]; if(!t) return;
+  if(el.dataset.mf==="cada") t.cada=Math.max(1,num(el.value)); else t.nome=el.value.trim()||t.nome; saveCfg(); renderManutencao()});
+$("#manLista").addEventListener("click",e=>{const b=e.target.closest("[data-ma2]"); if(!b) return; const M=manCfg(); const a=b.dataset.ma2;
+  if(a==="add"){M.tarefas.push({id:uid(),nome:"Nova tarefa",cada:100,feitoH:horasImpressas(),feitoData:hojeISO()})}
+  else if(a==="padrao"){const H=horasImpressas();for(const p of MAN_PADRAO) if(!M.tarefas.some(t=>t.id===p.id)) M.tarefas.push({...p,feitoH:H,feitoData:hojeISO()})}
+  else { const i=+b.closest("[data-mi]").dataset.mi;
+    if(a==="feito"){M.tarefas[i].feitoH=+horasImpressas().toFixed(2);M.tarefas[i].feitoData=hojeISO();toast("Manutenção registrada")}
+    if(a==="rm") M.tarefas.splice(i,1) }
+  saveCfg(); renderManutencao()});
+$("#btnManExtra").addEventListener("click",()=>{const v=num($("#manExtra").value); if(!(v>0)) return; const M=manCfg(); M.extraH=+(num(M.extraH)+v).toFixed(2); $("#manExtra").value=""; saveCfg(); renderManutencao(); toast(`${fmtH(v)} somadas`)});
+
+/* ---------- kits e cupons ---------- */
+let kitForm=null, cupForm=null;
+const kitsCfg=()=>Array.isArray(cfg.kits)?cfg.kits:(cfg.kits=[]);
+const cupsCfg=()=>Array.isArray(cfg.cupons)?cfg.cupons:(cfg.cupons=[]);
+const noCatalogo=p=>p&&p.catalogo&&num(p.precoCatalogo)>0;
+function kitConta(k){
+  const its=(k.itens||[]).map(i=>({...i,p:produtos.find(x=>x.id===i.produto_id)}));
+  const avulso=its.reduce((s,i)=>s+num(i.q)*(i.p?num(i.p.precoCatalogo)||num(i.p.precoVenda):0),0);
+  const custo=its.reduce((s,i)=>s+num(i.q)*(i.p?calc(i.p).custo:0),0);
+  const cd=canalDireto(); const l=cd?lucroCanal(num(k.preco),custo,cd,cfg.impostoPct).lucro:num(k.preco)-custo;
+  return {its,avulso,custo,lucro:l,fora:its.some(i=>!noCatalogo(i.p))};
+}
+function itemDeKit(k,canal,q){
+  let custo=0,horas=0; const fil={};
+  for(const c of k.itens||[]){const p=produtos.find(x=>x.id===c.produto_id); if(!p) continue; const b=itemDeProduto(p,canal,1);
+    custo+=b.custo_unit*num(c.q); horas+=b.horas_unit*num(c.q); for(const f of b.fil) fil[f.filId]=(fil[f.filId]||0)+f.g*num(c.q)}
+  return {produto_id:null,kit_id:k.id,descricao:"Kit "+k.nome,quantidade:q||1,preco_unit:num(k.preco),custo_unit:+custo.toFixed(2),horas_unit:+horas.toFixed(4),
+    personalizacao:"Contém: "+(k.itens||[]).map(c=>`${c.q}× ${produtos.find(x=>x.id===c.produto_id)?.nome||"?"}`).join(", "),doEstoque:false,
+    fil:Object.entries(fil).map(([filId,g])=>({filId,g:+g.toFixed(2)})),componentes:(k.itens||[]).map(c=>({produto_id:c.produto_id,q:num(c.q)}))};
+}
+function renderKits(){
+  const ks=kitsCfg();
+  $("#kitLista").innerHTML=ks.length?`<div class="tablewrap"><table style="min-width:760px"><thead><tr><th>Kit</th><th class="n">Preço</th><th class="n">Avulso</th><th class="n">Lucro</th><th>Status</th><th></th></tr></thead><tbody>
+    ${ks.map((k,i)=>{const c=kitConta(k);const eco=c.avulso>0?1-num(k.preco)/c.avulso:0;
+      return `<tr data-ki="${i}"><td><div class="pname">${esc(k.nome)}</div><div class="pcat">${c.its.map(x=>`${x.q}× ${esc(x.p?.nome||"produto removido")}`).join(", ")}</div></td>
+      <td class="n">${brl(num(k.preco))}</td><td class="n">${brl(c.avulso)}${eco>0?`<div class="pcat">${pct(eco)} de desconto</div>`:""}</td>
+      <td class="n ${c.lucro<0?"neg":""}">${brl(c.lucro)}</td>
+      <td>${!k.ativo?'<span class="pill">pausado</span>':c.fora?'<span class="pill warn" title="Algum produto do kit não está no catálogo com preço">fora do catálogo</span>':'<span class="pill good">no catálogo</span>'}</td>
+      <td class="pact"><button class="btn sm ghost edit-only" data-ka="edit">Editar</button> <button class="btn sm ghost edit-only" data-ka="del">Excluir</button></td></tr>`}).join("")}</tbody></table></div>`
+    :`<div class="card empty"><h2>Nenhum kit ainda</h2><p>Exemplos que vendem bem: kit de 3 chaveiros, kit organizador de mesa, kit presente com vaso + porta-retrato.</p></div>`;
+  const cs=cupsCfg(); const usos=cod=>pedidos.filter(p=>p.cupom===cod&&p.status!=="cancelado").length;
+  $("#cupLista").innerHTML=cs.length?`<div class="tablewrap"><table style="min-width:680px"><thead><tr><th>Código</th><th>Desconto</th><th>Regras</th><th class="n">Usos</th><th>Status</th><th></th></tr></thead><tbody>
+    ${cs.map((c,i)=>{const venc=c.validade&&c.validade<hojeISO();
+      return `<tr data-ci="${i}"><td class="num"><b>${esc(c.codigo)}</b></td><td>${c.tipo==="valor"?brl(num(c.valor)):num(c.valor)+"%"}</td>
+      <td class="pcat">${[num(c.minimo)>0?`a partir de ${brl(num(c.minimo))}`:"",c.validade?`até ${dataBRc(c.validade)}`:""].filter(Boolean).join(" · ")||"sem limite"}</td>
+      <td class="n num">${pedCarregado?usos(c.codigo):"—"}</td>
+      <td>${!c.ativo?'<span class="pill">pausado</span>':venc?'<span class="pill bad">vencido</span>':'<span class="pill good">ativo</span>'}</td>
+      <td class="pact"><button class="btn sm ghost" data-ca="link" title="Link do catálogo com o cupom já preenchido">Link</button> <button class="btn sm ghost edit-only" data-ca="edit">Editar</button> <button class="btn sm ghost edit-only" data-ca="del">Excluir</button></td></tr>`}).join("")}</tbody></table></div>`
+    :`<div class="card empty"><h2>Nenhum cupom ainda</h2><p>Ex.: <b>BEMVINDO10</b> com 10% para a primeira compra, ou <b>FRETEGRATIS</b> com R$ 15 de desconto acima de R$ 100.</p></div>`;
+}
+function abreKit(i){
+  const k=i==null?{id:uid(),nome:"",descricao:"",preco:"",ativo:true,itens:[{produto_id:produtos.find(noCatalogo)?.id||"",q:1}]}:clone(kitsCfg()[i]);
+  kitForm={i,k}; desenhaKit();
+}
+function desenhaKit(){
+  const {k}=kitForm, box=$("#kitForm"); box.hidden=false;
+  const ps=produtos.slice().sort((a,b)=>(noCatalogo(b)-noCatalogo(a))||a.nome.localeCompare(b.nome));
+  const c=kitConta(k);
+  box.innerHTML=`<div class="row spread"><h3>${kitForm.i==null?"Novo kit":"Editar kit"}</h3><button class="btn ghost" data-kf="fechar" type="button">Fechar</button></div>
+    <div class="fields"><label class="f">Nome do kit<input id="kf-nome" maxlength="100" placeholder="Ex.: Trio de chaveiros" value="${esc(k.nome)}"></label>
+      <label class="f">Preço do kit<div class="unit pre"><span>R$</span><input id="kf-preco" type="number" min="0" step="0.01" value="${esc(k.preco)}"></div></label>
+      <label class="f wide">Descrição<input id="kf-desc" maxlength="300" placeholder="Ex.: Escolha as cores no WhatsApp" value="${esc(k.descricao)}"></label></div>
+    <div class="stack" style="gap:8px" id="kfItens">${k.itens.map((it,j)=>`<div class="fil-line" data-kj="${j}"><select aria-label="Produto">${ps.map(p=>`<option value="${esc(p.id)}"${p.id===it.produto_id?" selected":""}>${esc(p.nome)}${noCatalogo(p)?` · ${brl(num(p.precoCatalogo))}`:" (fora do catálogo)"}</option>`).join("")}</select>
+      <div class="unit"><input type="number" min="1" step="1" value="${esc(it.q)}" aria-label="Quantidade"><span>un.</span></div><button type="button" class="btn ghost" data-kf="rm" ${k.itens.length<2?"disabled":""} aria-label="Remover">✕</button></div>`).join("")}</div>
+    <div class="row"><button type="button" class="btn ghost" data-kf="add">+ Produto</button><label class="chk"><input type="checkbox" id="kf-ativo"${k.ativo?" checked":""}> Mostrar no catálogo</label></div>
+    <div class="row" id="kfResumo" style="gap:18px">${kitResumo(c,k)}</div>
+    ${c.fora?`<p class="note" style="margin:0">Algum produto não está no catálogo com preço. O kit só aparece no catálogo quando todos os produtos estiverem lá.</p>`:""}
+    <div class="row"><button class="btn primary" data-kf="salvar" type="button">Salvar kit</button><span class="note" id="kfMsg"></span></div>`;
+}
+const kitResumo=(c,k)=>`<span>Avulso <b class="num">${brl(c.avulso)}</b></span><span>Custo <b class="num">${brl(c.custo)}</b></span><span>Lucro na venda direta <b class="num ${c.lucro<0?"neg":"pos"}">${brl(c.lucro)}</b></span>${c.avulso>0&&num(k.preco)>0?`<span>Desconto para o cliente <b class="num">${pct(1-num(k.preco)/c.avulso)}</b></span>`:""}`;
+function leKit(){ const k=kitForm.k; k.nome=$("#kf-nome").value.trim(); k.preco=$("#kf-preco").value===""?"":num($("#kf-preco").value); k.descricao=$("#kf-desc").value.trim(); k.ativo=$("#kf-ativo").checked;
+  document.querySelectorAll("#kfItens [data-kj]").forEach((el,j)=>{k.itens[j]={produto_id:el.querySelector("select").value,q:Math.max(1,Math.round(num(el.querySelector("input").value)||1))}}) }
+$("#kitForm").addEventListener("input",()=>{if(!kitForm)return;leKit();$("#kfResumo").innerHTML=kitResumo(kitConta(kitForm.k),kitForm.k)});
+$("#kitForm").addEventListener("change",()=>{if(!kitForm)return;leKit();$("#kfResumo").innerHTML=kitResumo(kitConta(kitForm.k),kitForm.k)});
+$("#kitForm").addEventListener("click",e=>{const b=e.target.closest("[data-kf]"); if(!b||!kitForm) return; const a=b.dataset.kf;
+  if(a==="fechar"){kitForm=null;$("#kitForm").hidden=true;return}
+  leKit();
+  if(a==="add"){kitForm.k.itens.push({produto_id:produtos.find(noCatalogo)?.id||produtos[0]?.id||"",q:1});desenhaKit()}
+  if(a==="rm"){kitForm.k.itens.splice(+b.closest("[data-kj]").dataset.kj,1);desenhaKit()}
+  if(a==="salvar"){const k=kitForm.k;
+    if(!k.nome){$("#kfMsg").textContent="Dê um nome ao kit.";return} if(!(num(k.preco)>0)){$("#kfMsg").textContent="Informe o preço do kit.";return}
+    if(kitForm.i==null) kitsCfg().push(k); else kitsCfg()[kitForm.i]=k;
+    kitForm=null;$("#kitForm").hidden=true;saveCfg();renderKits();toast("Kit salvo")}
+});
+$("#btnNovoKit").addEventListener("click",()=>{if(!produtos.length){toast("Cadastre produtos primeiro");return}abreKit(null)});
+$("#kitLista").addEventListener("click",e=>{const b=e.target.closest("[data-ka]"); if(!b) return; const i=+b.closest("[data-ki]").dataset.ki;
+  if(b.dataset.ka==="edit") abreKit(i);
+  if(b.dataset.ka==="del") b.outerHTML=`<span class="confirm">Excluir? <button class="btn sm danger" data-ka="delok">Excluir</button></span>`;
+  if(b.dataset.ka==="delok"){kitsCfg().splice(i,1);saveCfg();renderKits()}});
+function abreCupom(i){
+  const c=i==null?{id:uid(),codigo:"",tipo:"pct",valor:10,minimo:"",validade:"",ativo:true}:clone(cupsCfg()[i]);
+  cupForm={i}; const box=$("#cupForm"); box.hidden=false;
+  box.innerHTML=`<div class="row spread"><h3>${i==null?"Novo cupom":"Editar cupom"}</h3><button class="btn ghost" data-cf="fechar" type="button">Fechar</button></div>
+    <div class="fields"><label class="f">Código<span class="hint">Sem espaços. Ex.: BEMVINDO10</span><input id="cf-cod" maxlength="30" autocapitalize="characters" value="${esc(c.codigo)}"></label>
+      <label class="f">Tipo<select id="cf-tipo"><option value="pct"${c.tipo!=="valor"?" selected":""}>Porcentagem (%)</option><option value="valor"${c.tipo==="valor"?" selected":""}>Valor fixo (R$)</option></select></label>
+      <label class="f">Desconto<input id="cf-valor" type="number" min="0" step="0.01" value="${esc(c.valor)}"></label>
+      <label class="f">Pedido mínimo<span class="hint">Opcional</span><div class="unit pre"><span>R$</span><input id="cf-min" type="number" min="0" step="0.01" value="${esc(c.minimo)}"></div></label>
+      <label class="f">Válido até<span class="hint">Opcional</span><input id="cf-val" type="date" value="${esc(c.validade)}"></label></div>
+    <div class="row"><label class="chk"><input type="checkbox" id="cf-ativo"${c.ativo?" checked":""}> Ativo</label><button class="btn primary" data-cf="salvar" type="button">Salvar cupom</button><span class="note" id="cfMsg"></span></div>`;
+  cupForm.c=c;
+}
+$("#cupForm").addEventListener("click",e=>{const b=e.target.closest("[data-cf]"); if(!b||!cupForm) return;
+  if(b.dataset.cf==="fechar"){cupForm=null;$("#cupForm").hidden=true;return}
+  const c=cupForm.c; c.codigo=$("#cf-cod").value.toUpperCase().replace(/\s+/g,""); c.tipo=$("#cf-tipo").value; c.valor=num($("#cf-valor").value);
+  c.minimo=$("#cf-min").value===""?"":num($("#cf-min").value); c.validade=$("#cf-val").value; c.ativo=$("#cf-ativo").checked;
+  if(!/^[A-Z0-9_-]{3,30}$/.test(c.codigo)){$("#cfMsg").textContent="Use de 3 a 30 letras ou números, sem espaços.";return}
+  if(cupsCfg().some((x,j)=>x.codigo===c.codigo&&j!==cupForm.i)){$("#cfMsg").textContent="Já existe um cupom com esse código.";return}
+  if(!(c.valor>0)||(c.tipo==="pct"&&c.valor>90)){$("#cfMsg").textContent=c.tipo==="pct"?"Use um desconto entre 1% e 90%.":"Informe o valor do desconto.";return}
+  if(cupForm.i==null) cupsCfg().push(c); else cupsCfg()[cupForm.i]=c;
+  cupForm=null;$("#cupForm").hidden=true;saveCfg();renderKits();toast("Cupom salvo")});
+$("#btnNovoCupom").addEventListener("click",()=>abreCupom(null));
+$("#cupLista").addEventListener("click",e=>{const b=e.target.closest("[data-ca]"); if(!b) return; const i=+b.closest("[data-ci]").dataset.ci;
+  if(b.dataset.ca==="edit") abreCupom(i);
+  if(b.dataset.ca==="link"){const u=location.origin+"/catalogo?cupom="+encodeURIComponent(cupsCfg()[i].codigo);navigator.clipboard.writeText(u).then(()=>toast("Link com cupom copiado"),()=>toast(u))}
+  if(b.dataset.ca==="del") b.outerHTML=`<span class="confirm">Excluir? <button class="btn sm danger" data-ca="delok">Excluir</button></span>`;
+  if(b.dataset.ca==="delok"){cupsCfg().splice(i,1);saveCfg();renderKits()}});
+
+/* ---------- lembretes (cobrança e retorno) ---------- */
+let cobrancas=[], clientesHoje=[];
+function lembretesHtml(){
+  const out=[]; const loja=cfg.loja.nome||"nossa loja";
+  if(cobrancas.length) out.push(`<div class="card stack"><div class="row spread"><h3>Pagamentos pendentes <span class="pill bad">${cobrancas.length}</span></h3><button class="btn sm" data-hg="financeiro">Financeiro</button></div><ul class="hlist">
+    ${cobrancas.slice(0,8).map(c=>{const dias=-diasAte(c.data); const msg=`Olá, ${(c.cliente||"").split(" ")[0]}! Tudo bem? Passando para lembrar do pagamento de ${brl(c.valor)} referente a ${c.descricao}${c.numero?` (pedido #${c.numero})`:""} da ${loja}.${cfg.loja.pagamento?`\nPagamento: ${cfg.loja.pagamento}`:""}\n\nQualquer dúvida, estou à disposição.`;
+      return `<li><span>${esc(c.cliente||"Sem nome")} <span class="pcat">· ${esc(c.descricao)} · ${dias<=0?"hoje":`há ${dias} ${dias===1?"dia":"dias"}`}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap"><b class="num">${brl(c.valor)}</b>${c.whatsapp?`<a class="btn sm" target="_blank" rel="noopener" href="${esc(waLink(c.whatsapp,msg))}">Cobrar</a>`:""}</span></li>`}).join("")}</ul>
+    ${cobrancas.some(c=>!c.whatsapp)?`<p class="note" style="margin:0">Vendas sem WhatsApp cadastrado não têm botão de cobrar.</p>`:""}</div>`);
+  const dispensados=lerDispensa();
+  const volta=clientesHoje.filter(c=>c.whatsapp&&c.compras>0&&c.ultima).map(c=>({...c,dias:-diasAte(c.ultima)}))
+    .filter(c=>c.dias>=30&&c.dias<=240&&!(dispensados[c.whatsapp]&&diasAte(dispensados[c.whatsapp])>-30)).sort((a,b)=>b.total-a.total).slice(0,5);
+  if(volta.length) out.push(`<div class="card stack"><div class="row spread"><h3>Clientes para chamar de volta</h3><button class="btn sm" data-hg="clientes">Todos os clientes</button></div>
+    <p class="note" style="margin:0">Compraram há mais de um mês. Uma mensagem com uma novidade costuma trazer uma compra nova.</p><ul class="hlist">
+    ${volta.map(c=>{const msg=`Olá, ${c.nome.split(" ")[0]}! Aqui é da ${loja}. Obrigado de novo pela última compra! Fizemos peças novas e lembrei de você. Quer que eu mande umas fotos?${location.origin?`\nCatálogo: ${location.origin}/catalogo`:""}`;
+      return `<li data-vz="${esc(c.whatsapp)}"><span>${esc(c.nome)} <span class="pcat">· gastou ${brl(c.total)} · última compra há ${c.dias} dias</span></span><span class="row" style="gap:6px;flex-wrap:nowrap"><a class="btn sm" target="_blank" rel="noopener" data-hv="chamei" href="${esc(waLink(c.whatsapp,msg))}">Chamar</a><button class="btn sm ghost" data-hv="nao" type="button">Agora não</button></span></li>`}).join("")}</ul></div>`);
+  const venc=pedCarregado?manEstado().filter(t=>t.venc):[];
+  if(venc.length) out.push(`<div class="card stack"><div class="row spread"><h3>Manutenção da impressora</h3><button class="btn sm" data-hg="manutencao">Ver manutenção</button></div><ul class="hlist">${venc.map(t=>`<li><span>${esc(t.nome)}</span><span class="pill bad">vencida há ${fmtH(-t.falta)||"0 min"}</span></li>`).join("")}</ul></div>`);
+  return out.join("");
+}
+function lerDispensa(){ try{ return JSON.parse(localStorage.getItem("prec3d.chamados")||"{}")||{} }catch(e){ return {} } }
+function dispensa(zap){ const d=lerDispensa(); d[zap]=hojeISO(); try{ localStorage.setItem("prec3d.chamados",JSON.stringify(d)) }catch(e){} }
+$("#hojeBox").addEventListener("click",e=>{const b=e.target.closest("[data-hv]"); if(!b) return; const li=b.closest("[data-vz]"); if(!li) return;
+  dispensa(li.dataset.vz); setTimeout(()=>{ if(tab==="hoje") renderHoje() },b.dataset.hv==="chamei"?600:0)});
+
+/* ---------- instalar como app ---------- */
+let pedidoInstalar=null;
+window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();pedidoInstalar=e;$("#btnInstalar").hidden=false});
+window.addEventListener("appinstalled",()=>{pedidoInstalar=null;$("#btnInstalar").hidden=true;toast("App instalado")});
+$("#btnInstalar").addEventListener("click",async()=>{ if(!pedidoInstalar) return; pedidoInstalar.prompt(); try{await pedidoInstalar.userChoice}catch(e){} pedidoInstalar=null; $("#btnInstalar").hidden=true });
+if("serviceWorker" in navigator) window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(()=>{}));
 
 function showAuth(){
   $("#appScreen").hidden=true; $("#authScreen").hidden=false;

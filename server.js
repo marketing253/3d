@@ -517,6 +517,8 @@ function limpaPedido(b) {
     doEstoque: !!i.doEstoque,
     fil: (Array.isArray(i.fil) ? i.fil : []).slice(0, 8).map(f => ({ filId: txt(f.filId, 60), g: n(f.g) })),
     ...(i.recalc ? { recalc: true } : {}),
+    ...(i.kit_id ? { kit_id: txt(i.kit_id, 60) } : {}),
+    ...(Array.isArray(i.componentes) && i.componentes.length ? { componentes: i.componentes.slice(0, 20).map(c => ({ produto_id: txt(c.produto_id, 60), q: Math.max(0, n(c.q)) })) } : {}),
   })).filter(i => i.descricao && i.quantidade > 0);
   if (!itens.length) return { erro: "Adicione pelo menos um item com quantidade." };
   const data = DATA_RE.test(b.data || "") ? b.data : new Date().toISOString().slice(0, 10);
@@ -524,7 +526,7 @@ function limpaPedido(b) {
     cliente, whatsapp: txt(b.whatsapp, 30).replace(/[^\d+]/g, ""), canal: txt(b.canal, 80), data,
     prazo: DATA_RE.test(b.prazo || "") ? b.prazo : null, itens,
     desconto: n(b.desconto), freteCliente: n(b.freteCliente), freteVoce: n(b.freteVoce), taxas: n(b.taxas), sinal: n(b.sinal),
-    obs: txt(b.obs, 1000), ...(b.origem === "catalogo" ? { origem: "catalogo" } : {}),
+    obs: txt(b.obs, 1000), ...(b.origem === "catalogo" ? { origem: "catalogo" } : {}), ...(b.cupom ? { cupom: txt(b.cupom, 30).toUpperCase() } : {}),
   } };
 }
 function linhaPedido(r) { return { ...JSON.parse(r.dados), id: r.id, numero: r.numero, status: r.status, prazo: r.prazo, token: r.token || null, criadoEm: r.criado_em, atualizadoEm: r.atualizado_em }; }
@@ -790,7 +792,7 @@ td.v{text-align:right;white-space:nowrap}
 });
 
 // ---------- clientes (a partir dos pedidos e vendas) ----------
-app.get("/api/clientes", exigeLogin, (req, res) => {
+function listaClientes() {
   const mapa = new Map();
   const chave = (nome, zap) => { const d = String(zap || "").replace(/\D/g, ""); return d.length >= 8 ? "z" + d.slice(-9) : "n" + semAcento(nome).toLowerCase().trim(); };
   const soma = (nome, zap, valor, data, origem) => {
@@ -811,8 +813,9 @@ app.get("/api/clientes", exigeLogin, (req, res) => {
   for (const v of db.prepare("SELECT cliente, data, quantidade*preco_unit AS total FROM vendas WHERE pedido_id IS NULL AND cliente IS NOT NULL AND cliente <> ''").all()) {
     soma(v.cliente, "", v.total, v.data, "venda");
   }
-  res.json([...mapa.values()].map(c => ({ ...c, total: n(c.total) })).sort((a, b) => b.total - a.total));
-});
+  return [...mapa.values()].map(c => ({ ...c, total: n(c.total) })).sort((a, b) => b.total - a.total);
+}
+app.get("/api/clientes", exigeLogin, (req, res) => res.json(listaClientes()));
 
 // ---------- resumo para a tela Hoje (retorno do investimento) ----------
 app.get("/api/resumo", exigeLogin, (req, res) => {
@@ -833,24 +836,173 @@ app.post("/api/publico/pedido", limitePedidoPublico, (req, res) => {
   const nome = txt(b.nome, 80);
   if (nome.length < 2) return res.status(400).json({ erro: "Informe seu nome." });
   const prods = new Map(produtosPublicos().map(x => [x.id, x.p]));
+  const kits = new Map(kitsPublicos(prods).map(k => [k.id, k]));
   const itens = (Array.isArray(b.itens) ? b.itens : []).slice(0, 30).map(i => {
-    const p = prods.get(String(i.id || "")); const q = Math.round(Number(i.q) || 0);
-    if (!p || q < 1 || q > 999) return null;
+    const q = Math.round(Number(i.q) || 0);
+    if (q < 1 || q > 999) return null;
+    if (i.kit) {
+      const k = kits.get(String(i.kit)); if (!k) return null;
+      return { produto_id: null, kit_id: k.id, descricao: "Kit " + k.nome, quantidade: q, preco_unit: k.preco, custo_unit: 0, horas_unit: 0,
+        personalizacao: txt([k.itens.map(x => `${x.q}× ${x.nome}`).join(", "), i.pers].filter(Boolean).join(" · "), 300), doEstoque: false, fil: [],
+        componentes: k.itens.map(x => ({ produto_id: x.produto_id, q: x.q })), recalc: true };
+    }
+    const p = prods.get(String(i.id || ""));
+    if (!p) return null;
     return { produto_id: String(i.id), descricao: p.nome, quantidade: q, preco_unit: n(p.precoCatalogo), custo_unit: 0, horas_unit: 0,
       personalizacao: txt(i.pers, 200), doEstoque: false, fil: [], recalc: true };
   }).filter(Boolean);
   if (!itens.length) return res.status(400).json({ erro: "O carrinho está vazio." });
   const L = lojaConfig();
-  const cfg = db.prepare("SELECT dados FROM config WHERE id = 1").get();
-  const canal = (cfg && JSON.parse(cfg.dados).canais?.[0]?.nome) || "Venda direta";
+  const cfg = configCompleta();
+  const canal = cfg.canais?.[0]?.nome || "Venda direta";
   const hoje = new Date().toISOString().slice(0, 10);
   const prazoD = new Date(); prazoD.setDate(prazoD.getDate() + (Number(L.prazoDias) || 5));
+  const bruto = itens.reduce((s, i) => s + i.quantidade * i.preco_unit, 0);
+  const cup = b.cupom ? cupomValido(b.cupom, bruto) : null;
   const dados = { cliente: nome, whatsapp: txt(b.whatsapp, 30).replace(/[^\d+]/g, ""), canal, data: hoje, prazo: prazoD.toISOString().slice(0, 10),
-    itens, desconto: 0, freteCliente: 0, freteVoce: 0, taxas: 0, sinal: 0, obs: "Pedido feito pelo catálogo do site", origem: "catalogo" };
+    itens, desconto: cup && !cup.erro ? cup.desconto : 0, freteCliente: 0, freteVoce: 0, taxas: 0, sinal: 0,
+    obs: "Pedido feito pelo catálogo do site" + (cup && !cup.erro ? ` · cupom ${cup.codigo}` : ""), origem: "catalogo",
+    ...(cup && !cup.erro ? { cupom: cup.codigo } : {}) };
   const id = crypto.randomUUID();
   const numero = (db.prepare("SELECT COALESCE(MAX(numero),0) m FROM pedidos").get().m) + 1;
   db.prepare("INSERT INTO pedidos (id, numero, dados, status, prazo) VALUES (?, ?, ?, 'orcamento', ?)").run(id, numero, JSON.stringify(dados), dados.prazo);
   res.json({ numero });
+});
+
+// ---------- kits e cupons ----------
+function configCompleta() { const c = db.prepare("SELECT dados FROM config WHERE id = 1").get(); return c ? JSON.parse(c.dados) : {}; }
+function kitsPublicos(prods) {
+  prods = prods || new Map(produtosPublicos().map(x => [x.id, x.p]));
+  const fotos = new Map(produtosPublicos().map(x => [x.id, x.foto]));
+  return (configCompleta().kits || []).filter(k => k && k.ativo && n(k.preco) > 0 && Array.isArray(k.itens) && k.itens.length)
+    .map(k => {
+      const itens = k.itens.map(i => ({ produto_id: String(i.produto_id || ""), q: Math.max(1, Math.round(Number(i.q) || 1)) }))
+        .map(i => ({ ...i, p: prods.get(i.produto_id) }));
+      if (itens.some(i => !i.p)) return null;
+      const fotoId = itens.map(i => fotos.get(i.produto_id)).find(Boolean);
+      return { id: txt(k.id, 60), nome: txt(k.nome, 100), descricao: txt(k.descricao, 300), preco: n(k.preco),
+        avulso: n(itens.reduce((s, i) => s + i.q * n(i.p.precoCatalogo), 0)), foto: fotoId ? "/fotos-publicas/" + fotoId : null,
+        itens: itens.map(i => ({ produto_id: i.produto_id, nome: i.p.nome, q: i.q })) };
+    }).filter(Boolean);
+}
+function cupomValido(codigo, total) {
+  const cod = txt(codigo, 30).toUpperCase().replace(/\s+/g, "");
+  const c = (configCompleta().cupons || []).find(x => x && x.ativo && String(x.codigo || "").toUpperCase() === cod);
+  if (!c) return { erro: "Cupom não encontrado ou encerrado." };
+  const hoje = new Date().toISOString().slice(0, 10);
+  if (c.validade && DATA_RE.test(c.validade) && c.validade < hoje) return { erro: "Este cupom já venceu." };
+  if (n(c.minimo) > 0 && total != null && total < n(c.minimo)) return { erro: `Este cupom vale para pedidos a partir de ${brlS(c.minimo)}.` };
+  const desconto = total == null ? null : n(Math.min(total, c.tipo === "valor" ? n(c.valor) : total * n(c.valor) / 100));
+  return { codigo: cod, tipo: c.tipo === "valor" ? "valor" : "pct", valor: n(c.valor), minimo: n(c.minimo), desconto };
+}
+const limiteCupom = rateLimit({ windowMs: 10 * 60 * 1000, limit: 30, standardHeaders: "draft-7", legacyHeaders: false,
+  message: { erro: "Muitas tentativas. Tente de novo em alguns minutos." } });
+app.get("/api/publico/cupom", limiteCupom, (req, res) => {
+  const r = cupomValido(req.query.codigo, null);
+  if (r.erro) return res.status(404).json(r);
+  res.json({ codigo: r.codigo, tipo: r.tipo, valor: r.valor, minimo: r.minimo });
+});
+
+// ---------- fechamento do mês (para salvar em PDF) ----------
+const MESES_PT = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+function resumoMes(mes) {
+  const [de, ate] = intervaloMes(mes);
+  const vs = db.prepare("SELECT * FROM vendas WHERE data BETWEEN ? AND ?").all(de, ate);
+  const ls = db.prepare("SELECT * FROM lancamentos WHERE data BETWEEN ? AND ?").all(de, ate);
+  const r = { bruto: 0, taxas: 0, frete: 0, custo: 0, lucro: 0, pecas: 0, nVendas: 0, receberVendas: 0, entradas: 0, saidas: 0, pagar: 0, receberLanc: 0, canais: {}, produtos: {}, categorias: {} };
+  for (const v of vs) {
+    const bruto = v.quantidade * v.preco_unit, liq = bruto - v.taxas - v.frete, custo = v.quantidade * v.custo_unit;
+    if (v.status !== "pago") { r.receberVendas += liq; continue; }
+    r.bruto += bruto; r.taxas += v.taxas; r.frete += v.frete; r.custo += custo; r.lucro += liq - custo; r.pecas += v.quantidade; r.nVendas++;
+    const c = r.canais[v.canal || "Sem canal"] ||= { bruto: 0, lucro: 0, n: 0 }; c.bruto += bruto; c.lucro += liq - custo; c.n++;
+    const pr = r.produtos[v.descricao] ||= { q: 0, bruto: 0, lucro: 0 }; pr.q += v.quantidade; pr.bruto += bruto; pr.lucro += liq - custo;
+  }
+  for (const l of ls) {
+    if (l.status !== "pago") { if (l.tipo === "entrada") r.receberLanc += l.valor; else r.pagar += l.valor; continue; }
+    if (l.tipo === "entrada") r.entradas += l.valor;
+    else { r.saidas += l.valor; r.categorias[l.categoria] = (r.categorias[l.categoria] || 0) + l.valor; }
+  }
+  r.liquido = r.bruto - r.taxas - r.frete;
+  r.saldo = r.liquido + r.entradas - r.saidas;
+  r.pedidosNovos = db.prepare("SELECT dados, status FROM pedidos").all().map(x => ({ ...JSON.parse(x.dados), status: x.status }))
+    .filter(p => p.data >= de && p.data <= ate && p.status !== "cancelado").length;
+  r.clientesNovos = listaClientes().filter(c => c.primeira >= de && c.primeira <= ate);
+  return r;
+}
+app.get("/imprimir/mes/:mes", exigeLogin, (req, res) => {
+  const mes = MES_RE.test(req.params.mes) ? req.params.mes : new Date().toISOString().slice(0, 7);
+  const [a, m] = mes.split("-").map(Number);
+  const ant = new Date(Date.UTC(a, m - 2, 1)).toISOString().slice(0, 7);
+  const r = resumoMes(mes), p = resumoMes(ant), L = lojaConfig();
+  const nomeMes = k => { const [y, mm] = k.split("-").map(Number); return `${MESES_PT[mm - 1]} de ${y}`; };
+  const varia = (x, y) => y ? `<span class="${x >= y ? "pos" : "neg"}">${x >= y ? "▲" : "▼"} ${Math.abs((x - y) / Math.abs(y) * 100).toFixed(0)}%</span>` : "";
+  const linha = (rot, v, cls) => `<tr><td>${rot}</td><td class="v ${cls || ""}">${brlS(v)}</td></tr>`;
+  const top = Object.entries(r.produtos).sort((x, y) => y[1].q - x[1].q).slice(0, 8);
+  const cats = Object.entries(r.categorias).sort((x, y) => y[1] - x[1]);
+  const canais = Object.entries(r.canais).sort((x, y) => y[1].bruto - x[1].bruto);
+  const margem = r.bruto > 0 ? (r.lucro / r.bruto * 100).toFixed(1).replace(".", ",") + "%" : "—";
+  res.set("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Fechamento ${nomeMes(mes)} · ${escH(L.nome || "")}</title>
+<style>
+@page{size:A4;margin:14mm}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;font-size:10.5pt}
+.pg{max-width:182mm;margin:0 auto}
+h1{font-size:20pt;margin:0}
+h2{font-size:11pt;text-transform:uppercase;letter-spacing:.06em;margin:16px 0 6px;border-bottom:1.5px solid #15803d;padding-bottom:3px;color:#15803d}
+.sub{color:#555;margin:2px 0 12px}
+.kp{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.k{border:1px solid #ccc;border-radius:6px;padding:8px 10px}
+.k b{display:block;font-size:15pt;margin-top:2px}
+.k span{font-size:8pt;color:#555;text-transform:uppercase;letter-spacing:.05em}
+.k small{display:block;color:#555;font-size:8.5pt;margin-top:2px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+table{width:100%;border-collapse:collapse}
+td,th{padding:4px 2px;border-bottom:1px solid #e3e3e3;text-align:left;vertical-align:top}
+th{font-size:8.5pt;color:#555;text-transform:uppercase;letter-spacing:.04em}
+.v,th.v{text-align:right;white-space:nowrap}
+tr.t td{font-weight:700;border-top:1.5px solid #111;border-bottom:0}
+.pos{color:#15803d}.neg{color:#b42318}
+.muted{color:#666}
+.ft{margin-top:18px;font-size:8.5pt;color:#666}
+.dica{margin:0 0 10px;padding:8px 10px;background:#f2f2f2;border-radius:6px;font-size:9.5pt}
+@media print{.dica{display:none}}
+</style></head><body><div class="pg">
+<p class="dica">Na janela de impressão, escolha <b>Salvar como PDF</b>. Se ela não abrir, use Ctrl+P.</p>
+<h1>Fechamento de ${nomeMes(mes)}</h1>
+<p class="sub">${escH(L.nome || "Minha loja")} · gerado em ${new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</p>
+<div class="kp">
+  <div class="k"><span>Vendido</span><b>${brlS(r.bruto)}</b><small>${varia(r.bruto, p.bruto)} vs ${MESES_PT[Number(ant.slice(5)) - 1]}</small></div>
+  <div class="k"><span>Lucro das vendas</span><b class="${r.lucro < 0 ? "neg" : ""}">${brlS(r.lucro)}</b><small>margem ${margem} ${varia(r.lucro, p.lucro)}</small></div>
+  <div class="k"><span>Saldo do mês</span><b class="${r.saldo < 0 ? "neg" : ""}">${brlS(r.saldo)}</b><small>entrou − saiu</small></div>
+  <div class="k"><span>Peças vendidas</span><b>${r.pecas.toLocaleString("pt-BR")}</b><small>${r.nVendas} vendas · ${r.pedidosNovos} pedidos novos</small></div>
+</div>
+<div class="cols">
+<div><h2>Resultado das vendas</h2><table>
+${linha("Vendido (bruto)", r.bruto)}${linha("Taxas dos canais", -r.taxas)}${linha("Frete pago por você", -r.frete)}
+<tr class="t"><td>Recebido das vendas</td><td class="v">${brlS(r.liquido)}</td></tr>
+${linha("Custo de produção das peças", -r.custo)}
+<tr class="t"><td>Lucro das vendas</td><td class="v ${r.lucro < 0 ? "neg" : "pos"}">${brlS(r.lucro)}</td></tr></table>
+<h2>Caixa do mês</h2><table>
+${linha("Recebido das vendas", r.liquido)}${linha("Outras entradas", r.entradas)}${linha("Despesas pagas", -r.saidas)}
+<tr class="t"><td>Saldo do mês</td><td class="v ${r.saldo < 0 ? "neg" : "pos"}">${brlS(r.saldo)}</td></tr>
+${r.receberVendas + r.receberLanc > 0 ? linha('<span class="muted">Ainda a receber</span>', r.receberVendas + r.receberLanc, "muted") : ""}
+${r.pagar > 0 ? linha('<span class="muted">Ainda a pagar</span>', r.pagar, "muted") : ""}</table></div>
+<div><h2>Despesas por categoria</h2>${cats.length ? `<table>${cats.map(([c, v]) => linha(escH(c), v)).join("")}<tr class="t"><td>Total</td><td class="v">${brlS(r.saidas)}</td></tr></table>` : `<p class="muted">Nenhuma despesa paga no mês.</p>`}
+<h2>Vendas por canal</h2>${canais.length ? `<table><tr><th>Canal</th><th class="v">Vendas</th><th class="v">Vendido</th><th class="v">Lucro</th></tr>${canais.map(([c, v]) => `<tr><td>${escH(c)}</td><td class="v">${v.n}</td><td class="v">${brlS(v.bruto)}</td><td class="v">${brlS(v.lucro)}</td></tr>`).join("")}</table>` : `<p class="muted">Nenhuma venda no mês.</p>`}</div>
+</div>
+<h2>Produtos mais vendidos</h2>${top.length ? `<table><tr><th>Produto</th><th class="v">Peças</th><th class="v">Vendido</th><th class="v">Lucro</th></tr>${top.map(([nm, v]) => `<tr><td>${escH(nm)}</td><td class="v">${v.q.toLocaleString("pt-BR")}</td><td class="v">${brlS(v.bruto)}</td><td class="v">${brlS(v.lucro)}</td></tr>`).join("")}</table>` : `<p class="muted">Nenhuma venda no mês.</p>`}
+<h2>Clientes novos (${r.clientesNovos.length})</h2>${r.clientesNovos.length ? `<table><tr><th>Cliente</th><th>WhatsApp</th><th class="v">Comprou</th></tr>${r.clientesNovos.slice(0, 20).map(c => `<tr><td>${escH(c.nome)}</td><td>${escH(c.whatsapp || "—")}</td><td class="v">${brlS(c.total)}</td></tr>`).join("")}</table>` : `<p class="muted">Nenhum cliente novo no mês.</p>`}
+<p class="ft">Lucro das vendas = vendido − taxas − frete − custo de produção (filamento, energia, desgaste, falhas, mão de obra e embalagem). Compras de filamento lançadas como despesa entram no caixa, não no lucro, para não contar duas vezes.</p>
+</div><script src="/imprimir.js"></script></body></html>`);
+});
+
+// ---------- cobranças pendentes ----------
+app.get("/api/cobrancas", exigeLogin, (req, res) => {
+  const vs = db.prepare(`SELECT v.id, v.data, v.descricao, v.cliente, v.quantidade*v.preco_unit - v.taxas - v.frete AS valor, v.quantidade*v.preco_unit AS bruto, p.dados AS pdados, p.numero
+    FROM vendas v LEFT JOIN pedidos p ON p.id = v.pedido_id WHERE v.status = 'pendente' ORDER BY v.data`).all();
+  res.json(vs.map(v => { const pd = v.pdados ? JSON.parse(v.pdados) : null;
+    return { id: v.id, data: v.data, descricao: v.descricao, cliente: v.cliente || "", valor: n(v.bruto), numero: v.numero || null, whatsapp: pd ? pd.whatsapp || "" : "" }; }));
 });
 
 // ---------- catálogo público (sem login) ----------
@@ -870,6 +1022,8 @@ app.get("/api/publico/catalogo", limitePublico, (req, res) => {
       id, nome: p.nome, categoria: p.categoria || "", descricao: txt(p.descricaoCatalogo, 400), preco: n(p.precoCatalogo),
       prontaEntrega: (Number(p.estoque) || 0) > 0, foto: foto ? "/fotos-publicas/" + foto : null, personalizavel: !!p.personalizavel,
     })),
+    kits: kitsPublicos().map(({ itens, ...k }) => ({ ...k, itens: itens.map(i => ({ nome: i.nome, q: i.q })) })),
+    temCupom: (configCompleta().cupons || []).some(c => c && c.ativo),
   });
 });
 app.get("/fotos-publicas/:nome", limitePublico, (req, res) => {
