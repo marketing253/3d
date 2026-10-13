@@ -358,6 +358,24 @@ async function setFoto(file){
   }
   renderFoto(); renderFicha();
 }
+async function puxaDoLink(auto){
+  if(!draft) return; const u=$("#f-link").value.trim(), m=$("#puxaMsg");
+  if(!safeUrl(u)){ if(!auto){ m.textContent="Cole o link do modelo no campo acima."; $("#f-link").focus() } return }
+  const b=$("#btnPuxaFoto"); b.disabled=true; m.textContent="Buscando a foto no site…";
+  try{
+    const r=await fetch("/api/foto-do-link",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:u})});
+    if(r.status===401){ showAuth(); return }
+    if(!r.ok){ const j=await r.json().catch(()=>({})); if(j.titulo&&!$("#f-nome").value.trim()){ $("#f-nome").value=j.titulo; readForm(); renderFicha() } m.textContent=j.erro||"Não deu para buscar a foto."; return }
+    const titulo=decodeURIComponent(r.headers.get("X-Titulo")||"");
+    const blob=await r.blob();
+    if(titulo&&!$("#f-nome").value.trim()){ $("#f-nome").value=titulo; readForm() }
+    await setFoto(new File([blob],"foto",{type:blob.type||"image/jpeg"}));
+    m.textContent=titulo?"Foto e nome puxados do site. Confira e clique em Salvar.":"Foto puxada do site. Clique em Salvar para guardar.";
+  }catch(e){ m.textContent="Não deu para buscar a foto. Copie a imagem na página do modelo e cole aqui com Ctrl+V." }
+  finally{ b.disabled=false }
+}
+$("#btnPuxaFoto").addEventListener("click",()=>puxaDoLink(false));
+$("#f-link").addEventListener("paste",()=>setTimeout(()=>{ if(draft&&!draft.fotoId) puxaDoLink(true) },50));
 $("#f-foto").addEventListener("change",e=>{const f=e.target.files&&e.target.files[0];e.target.value="";setFoto(f)});
 $("#fotoBtn").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("#f-foto").click()}});
 $("#fotoRm").addEventListener("click",()=>{discardUnsavedFoto();draft.fotoId="";$("#fotoMsg").textContent="Foto removida. Clique em Salvar para confirmar.";renderFoto();renderFicha()});
