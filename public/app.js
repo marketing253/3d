@@ -1677,6 +1677,11 @@ function dispensa(zap){ const d=lerDispensa(); d[zap]=hojeISO(); try{ localStora
 $("#hojeBox").addEventListener("click",e=>{const b=e.target.closest("[data-hv]"); if(!b) return; const li=b.closest("[data-vz]"); if(!li) return;
   dispensa(li.dataset.vz); setTimeout(()=>{ if(tab==="hoje") renderHoje() },b.dataset.hv==="chamei"?600:0)});
 
+/* ---------- tema claro / escuro ---------- */
+function aplicaTema(t){ document.documentElement.dataset.theme=t; const b=$("#btnTema"); if(b) b.setAttribute("aria-checked",String(t==="dark")); }
+(()=>{ let t="light"; try{ t=localStorage.getItem("prec3d.tema")||"light" }catch(e){} aplicaTema(t==="dark"?"dark":"light") })();
+$("#btnTema").addEventListener("click",()=>{ const t=document.documentElement.dataset.theme==="dark"?"light":"dark"; aplicaTema(t); try{localStorage.setItem("prec3d.tema",t)}catch(e){} if(tab==="financeiro"&&fin) renderFinChart() });
+
 /* ---------- instalar como app ---------- */
 let pedidoInstalar=null;
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();pedidoInstalar=e;$("#btnInstalar").hidden=false});
