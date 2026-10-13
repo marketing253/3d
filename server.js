@@ -600,6 +600,67 @@ app.delete("/api/pedidos/:id", exigeLogin, exigeEdicao, (req, res) => {
   res.json({ ok: true });
 });
 
+
+// ---------- compras / orçamento de equipamentos ----------
+const CAT_COMPRA = { Equipamento: "Equipamentos", Filamento: "Filamento", Embalagem: "Embalagem", Ferramenta: "Peças e manutenção", Outros: "Outros" };
+function limpaCompra(b) {
+  if (!b) return { erro: "Item inválido." };
+  const nome = txt(b.nome, 150); if (!nome) return { erro: "Informe o nome do item." };
+  const cotacoes = (Array.isArray(b.cotacoes) ? b.cotacoes : []).slice(0, 10).map(c => {
+    let link = ""; try { const u = new URL(String(c.link || "").trim()); if (/^https?:$/.test(u.protocol)) link = u.href; } catch {}
+    return { loja: txt(c.loja, 80), preco: n(c.preco), link };
+  }).filter(c => c.loja || c.preco > 0 || c.link);
+  return { v: {
+    nome, categoria: Object.keys(CAT_COMPRA).includes(b.categoria) ? b.categoria : "Outros",
+    quantidade: Math.max(1, n(b.quantidade) || 1), prioridade: ["essencial", "importante", "depois"].includes(b.prioridade) ? b.prioridade : "importante",
+    cotacoes, obs: txt(b.obs, 500),
+  } };
+}
+function linhaCompra(r) { return { ...JSON.parse(r.dados), id: r.id, status: r.status, valorPago: r.valor_pago, dataCompra: r.data_compra, criadoEm: r.criado_em }; }
+app.get("/api/compras", exigeLogin, (req, res) => {
+  res.json(db.prepare("SELECT * FROM compras ORDER BY criado_em").all().map(linhaCompra));
+});
+app.post("/api/compras", exigeLogin, exigeEdicao, (req, res) => {
+  const lista = Array.isArray(req.body?.itens) ? req.body.itens : [req.body];
+  const criados = [];
+  for (const b of lista.slice(0, 50)) {
+    const { v, erro } = limpaCompra(b); if (erro) return res.status(400).json({ erro });
+    const id = crypto.randomUUID();
+    db.prepare("INSERT INTO compras (id, dados) VALUES (?, ?)").run(id, JSON.stringify(v));
+    criados.push(linhaCompra(db.prepare("SELECT * FROM compras WHERE id = ?").get(id)));
+  }
+  res.json(criados);
+});
+app.put("/api/compras/:id", exigeLogin, exigeEdicao, (req, res) => {
+  const { v, erro } = limpaCompra(req.body); if (erro) return res.status(400).json({ erro });
+  const status = ["planejado", "cotado"].includes(req.body.status) ? req.body.status : null;
+  const r = db.prepare("UPDATE compras SET dados = ?" + (status ? ", status = ?" : "") + " WHERE id = ?").run(...(status ? [JSON.stringify(v), status, req.params.id] : [JSON.stringify(v), req.params.id]));
+  if (!r.changes) return res.status(404).json({ erro: "Item não encontrado." });
+  res.json(linhaCompra(db.prepare("SELECT * FROM compras WHERE id = ?").get(req.params.id)));
+});
+app.post("/api/compras/:id/comprar", exigeLogin, exigeEdicao, (req, res) => {
+  const r = db.prepare("SELECT * FROM compras WHERE id = ?").get(req.params.id);
+  if (!r) return res.status(404).json({ erro: "Item não encontrado." });
+  const valor = n(req.body?.valor); const data = DATA_RE.test(req.body?.data || "") ? req.body.data : new Date().toISOString().slice(0, 10);
+  if (valor <= 0) return res.status(400).json({ erro: "Informe quanto você pagou." });
+  const c = JSON.parse(r.dados);
+  db.transaction(() => {
+    db.prepare("UPDATE compras SET status = 'comprado', valor_pago = ?, data_compra = ? WHERE id = ?").run(valor, data, r.id);
+    if (req.body.lancarDespesa) db.prepare("INSERT INTO lancamentos (id, data, tipo, descricao, categoria, valor, status, obs, criado_por) VALUES (?, ?, 'saida', ?, ?, ?, 'pago', ?, ?)")
+      .run(crypto.randomUUID(), data, `${c.quantidade > 1 ? c.quantidade + "× " : ""}${c.nome}`, CAT_COMPRA[c.categoria] || "Outros", valor, "Lista de compras", req.usuario.id);
+  })();
+  res.json(linhaCompra(db.prepare("SELECT * FROM compras WHERE id = ?").get(r.id)));
+});
+app.post("/api/compras/:id/desfazer", exigeLogin, exigeEdicao, (req, res) => {
+  const r = db.prepare("UPDATE compras SET status = 'cotado', valor_pago = NULL, data_compra = NULL WHERE id = ?").run(req.params.id);
+  if (!r.changes) return res.status(404).json({ erro: "Item não encontrado." });
+  res.json(linhaCompra(db.prepare("SELECT * FROM compras WHERE id = ?").get(req.params.id)));
+});
+app.delete("/api/compras/:id", exigeLogin, exigeEdicao, (req, res) => {
+  db.prepare("DELETE FROM compras WHERE id = ?").run(req.params.id);
+  res.json({ ok: true });
+});
+
 // ---------- catálogo público (sem login) ----------
 const limitePublico = rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: "draft-7", legacyHeaders: false });
 function produtosPublicos() {

@@ -100,7 +100,7 @@ let tab="produtos";
 function setTab(t){
   tab=t;
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===t)));
-  ["produtos","pedidos","fila","estoque","financeiro","novo","tendencias","config","usuarios","conta"].forEach(x=>{$("#p-"+x).hidden=x!==t});
+  ["produtos","pedidos","fila","estoque","compras","financeiro","novo","tendencias","config","usuarios","conta"].forEach(x=>{$("#p-"+x).hidden=x!==t});
   try{localStorage.setItem("prec3d.tab",t)}catch(e){}
   const tb=$("#tab-"+t); if(tb) $("#pageTitle").textContent=tb.textContent.trim();
   document.body.classList.remove("navopen"); $("#menuBtn").setAttribute("aria-expanded","false");
@@ -109,6 +109,7 @@ function setTab(t){
   if(t==="financeiro") carregaFin();
   if(t==="pedidos"||t==="fila") carregaPedidos();
   if(t==="estoque") carregaRolos();
+  if(t==="compras") carregaCompras();
   if(t==="novo") renderFicha();
   window.scrollTo({top:0});
 }
@@ -801,6 +802,156 @@ function renderLoja(){
   if(!podeEditar()) $("#cfgLoja").querySelectorAll("input").forEach(i=>i.disabled=true);
 }
 $("#cfgLoja").addEventListener("input",e=>{const k=e.target.dataset.l;if(!k)return;cfg.loja[k]=["prazoDias","horasDia"].includes(k)?num(e.target.value):e.target.value;saveCfg()});
+
+
+/* ---------- compras e orçamento ---------- */
+const CMP_CATS=["Equipamento","Filamento","Embalagem","Ferramenta","Outros"];
+const CMP_CAT_NOME={Equipamento:"Equipamentos",Filamento:"Filamentos",Embalagem:"Caixas e embalagens",Ferramenta:"Ferramentas e peças",Outros:"Outros"};
+const CMP_PRI={essencial:["Essencial","bad"],importante:["Importante","warn"],depois:["Pode esperar",""]};
+const CMP_ST={planejado:["Sem cotação",""],cotado:["Cotado","acc"],comprado:["Comprado","good"]};
+const SUGESTAO=[
+  ["Impressora Bambu Lab A1 Combo","Equipamento",1,"essencial","Com AMS lite para 4 cores"],
+  ["Placa PEI texturizada extra","Equipamento",1,"importante","Reserva para não parar a produção"],
+  ["Bico 0.4 mm de reserva (hotend)","Equipamento",1,"importante",""],
+  ["Secador de filamento","Equipamento",1,"importante","Essencial para PETG e TPU"],
+  ["Impressora térmica de etiquetas","Equipamento",1,"essencial","Para etiquetas de envio do Mercado Livre e Shopee (100×150 mm)"],
+  ["Rolo de etiquetas térmicas 100×150 mm","Embalagem",2,"essencial","Confira o tamanho aceito pela sua impressora"],
+  ["PLA Básico preto 1 kg","Filamento",2,"essencial",""],
+  ["PLA Básico branco 1 kg","Filamento",2,"essencial",""],
+  ["PLA Matte (cor da moda) 1 kg","Filamento",1,"importante",""],
+  ["PLA colorido (vermelho/azul/amarelo) 1 kg","Filamento",2,"importante","Para peças em várias cores"],
+  ["PETG 1 kg","Filamento",1,"depois","Peças que pegam calor ou umidade"],
+  ["Caixas de papelão pequenas","Embalagem",50,"essencial","Para chaveiros e peças pequenas"],
+  ["Caixas de papelão médias","Embalagem",30,"importante","Vasos, suportes e kits"],
+  ["Saquinhos plásticos / zip","Embalagem",200,"essencial",""],
+  ["Plástico bolha ou papel de seda","Embalagem",1,"importante",""],
+  ["Fita adesiva para caixas","Embalagem",4,"essencial",""],
+  ["Adesivos com logo / cartão de agradecimento","Embalagem",100,"depois","Ajuda nas avaliações e na recompra"],
+  ["Kit de ferramentas (espátula, alicate de corte, estilete, lixas)","Ferramenta",1,"essencial",""],
+  ["Álcool isopropílico (limpar a mesa)","Ferramenta",1,"essencial",""],
+  ["Sílica gel e potes herméticos","Ferramenta",1,"importante","Guardar filamento longe da umidade"],
+];
+let compras=[], cmpFiltro="todos", cmpForm=null;
+async function carregaCompras(){ try{ compras=await api("GET","/api/compras"); renderCompras() }catch(e){ if(e.status!==401) toast(e.message) } }
+const melhorCot=c=>{const v=(c.cotacoes||[]).filter(x=>num(x.preco)>0);return v.length?v.reduce((a,b)=>num(b.preco)<num(a.preco)?b:a):null};
+const totalItem=c=>c.status==="comprado"?num(c.valorPago):(melhorCot(c)?num(melhorCot(c).preco)*num(c.quantidade):0);
+function renderCompras(){
+  let previsto=0,comprado=0,falta=0,semCot=0,essPend=0;
+  for(const c of compras){const t=totalItem(c);previsto+=t;if(c.status==="comprado")comprado+=t;else{falta+=t;if(!melhorCot(c))semCot++;if(c.prioridade==="essencial")essPend++}}
+  const pend=compras.filter(c=>c.status!=="comprado").length;
+  $("#cmpTiles").innerHTML=`
+    <div class="tile main"><span class="tl">Investimento total</span><span class="tv num">${brl(previsto)}</span><span class="ts">${pl(compras.length,"item","itens")} na lista</span></div>
+    <div class="tile"><span class="tl">Já comprado</span><span class="tv num">${brl(comprado)}</span><span class="ts">${pl(compras.length-pend,"item comprado","itens comprados")}</span></div>
+    <div class="tile"><span class="tl">Falta comprar</span><span class="tv num">${brl(falta)}</span><span class="ts">${pl(pend,"item","itens")}${semCot?` · ${semCot} sem preço`:""}</span></div>
+    <div class="tile"><span class="tl">Essenciais pendentes</span><span class="tv num ${essPend?"neg":""}">${essPend}</span><span class="ts">${essPend?"compre estes primeiro":"tudo essencial comprado"}</span></div>`;
+  const chips=[["todos","Todos"],["pendentes","Falta comprar"],["comprado","Comprados"],...CMP_CATS.map(k=>[k,CMP_CAT_NOME[k]])];
+  $("#cmpChips").innerHTML=chips.map(([k,n])=>`<button class="chip${cmpFiltro===k?" on":""}" data-cf="${k}">${n}</button>`).join("");
+  $("#cmpSugestao").hidden=compras.length>0;
+  const lst=compras.filter(c=>cmpFiltro==="todos"||(cmpFiltro==="pendentes"&&c.status!=="comprado")||c.status===cmpFiltro||c.categoria===cmpFiltro);
+  if(!compras.length){ $("#cmpLista").innerHTML=`<div class="card empty"><h2>Sua lista de compras está vazia</h2><p>Comece com a lista sugerida para quem está montando a operação (impressora, filamentos, caixas, embalagens, impressora térmica e ferramentas). Depois é só colocar os preços que você encontrar.</p><button class="btn primary edit-only" data-cmpa="sugestao">Usar lista sugerida</button></div>`; return }
+  if(!lst.length){ $("#cmpLista").innerHTML=`<div class="card empty"><h2>Nada neste filtro</h2></div>`; return }
+  const ordemPri={essencial:0,importante:1,depois:2};
+  $("#cmpLista").innerHTML=`<div class="stack" style="gap:26px">`+CMP_CATS.map(cat=>{
+    const its=lst.filter(c=>c.categoria===cat).sort((a,b)=>(a.status==="comprado")-(b.status==="comprado")||ordemPri[a.prioridade]-ordemPri[b.prioridade]); if(!its.length) return "";
+    const sub=its.reduce((s,c)=>s+totalItem(c),0);
+    return `<div class="stack" style="gap:8px"><div class="row spread"><h3>${CMP_CAT_NOME[cat]}</h3><span class="num">${brl(sub)}</span></div>
+    <div class="tablewrap"><table class="cmpt"><colgroup><col><col style="width:56px"><col style="width:180px"><col style="width:100px"><col style="width:112px"><col style="width:112px"><col style="width:186px"></colgroup><thead><tr><th>Item</th><th class="n">Qtd</th><th>Melhor preço</th><th class="n">Total</th><th>Prioridade</th><th>Situação</th><th></th></tr></thead><tbody>
+    ${its.map(c=>{const m=melhorCot(c);const pr=CMP_PRI[c.prioridade]||CMP_PRI.importante;const st=CMP_ST[c.status]||CMP_ST.planejado;const nc=(c.cotacoes||[]).filter(x=>num(x.preco)>0).length;
+      return `<tr data-cid="${esc(c.id)}" class="${c.status==="comprado"?"feito":""}"><td><div class="pname">${esc(c.nome)}</div>${c.obs?`<div class="pcat">${esc(c.obs)}</div>`:""}</td>
+      <td class="n num">${num(c.quantidade).toLocaleString("pt-BR")}</td>
+      <td>${c.status==="comprado"?`<span class="pcat">pago em ${dataBRc(c.dataCompra)}</span>`:m?`<span class="num">${brl(num(m.preco))}</span> <span class="pcat">${m.link?`<a href="${esc(m.link)}" target="_blank" rel="noopener">${esc(m.loja||"ver loja")} ↗</a>`:esc(m.loja||"")}${nc>1?` · ${nc} cotações`:""}</span>`:`<span class="pcat">sem cotação</span>`}</td>
+      <td class="n num">${totalItem(c)?brl(totalItem(c)):"—"}</td>
+      <td><span class="pill ${pr[1]}">${pr[0]}</span></td><td><span class="pill ${st[1]}">${st[0]}</span></td>
+      <td class="pact edit-only">${c.status==="comprado"?'<button class="btn sm ghost" data-cmpa="desfazer">Desfazer</button>':'<button class="btn sm primary" data-cmpa="comprar">Comprei</button>'} <button class="btn sm ghost" data-cmpa="editar">${c.status==="comprado"?"Ver":"Cotar / editar"}</button></td></tr>`}).join("")}
+    </tbody></table></div></div>`}).join("")+`</div>`;
+}
+$("#cmpChips").addEventListener("click",e=>{const b=e.target.closest("[data-cf]");if(!b)return;cmpFiltro=b.dataset.cf;renderCompras()});
+async function usarSugestao(){
+  try{ const r=await api("POST","/api/compras",{itens:SUGESTAO.map(([nome,categoria,quantidade,prioridade,obs])=>({nome,categoria,quantidade,prioridade,obs,cotacoes:[]}))}); compras=compras.concat(r); renderCompras(); toast("Lista sugerida adicionada. Agora coloque os preços.") }catch(e){ toast(e.message) }
+}
+$("#cmpSugestao").addEventListener("click",usarSugestao);
+$("#cmpNovo").addEventListener("click",()=>abreCompra(null));
+function abreCompra(c){
+  cmpForm={id:c?.id||null,d:c?clone(c):{nome:"",categoria:"Equipamento",quantidade:1,prioridade:"importante",cotacoes:[],obs:""}};
+  if(!cmpForm.d.cotacoes.length) cmpForm.d.cotacoes.push({loja:"",preco:"",link:""});
+  const d=cmpForm.d, box=$("#cmpForm"); box.hidden=false;
+  box.innerHTML=`<form class="stack" id="cf" autocomplete="off">
+    <div class="row spread"><h2>${c?"Editar item":"Novo item da lista"}</h2><button type="button" class="btn ghost" data-cfa="fechar">Fechar</button></div>
+    <div class="fields">
+      <label class="f wide2">Item<input id="cf-nome" required maxlength="150" value="${esc(d.nome)}" placeholder="Ex.: Impressora térmica de etiquetas"></label>
+      <label class="f">Categoria<select id="cf-cat">${CMP_CATS.map(k=>`<option value="${k}"${k===d.categoria?" selected":""}>${CMP_CAT_NOME[k]}</option>`).join("")}</select></label>
+      <label class="f">Quantidade<input id="cf-qtd" type="number" min="1" step="1" value="${esc(d.quantidade)}"></label>
+      <label class="f">Prioridade<select id="cf-pri">${Object.entries(CMP_PRI).map(([k,v])=>`<option value="${k}"${k===d.prioridade?" selected":""}>${v[0]}</option>`).join("")}</select></label>
+      <label class="f wide">Observação<input id="cf-obs" maxlength="500" value="${esc(d.obs)}" placeholder="Modelo, tamanho, cor…"></label>
+    </div>
+    <div class="stack" style="gap:8px"><div class="row spread"><h3>Cotações (preço por unidade)</h3><button type="button" class="btn ghost" data-cfa="addCot">+ Cotação</button></div>
+      <div id="cfCots" class="stack" style="gap:8px"></div></div>
+    <div class="vresumo" id="cfResumo"></div>
+    <div class="row"><button class="btn primary" type="submit">Salvar</button><span class="note" id="cfMsg"></span>${c?'<span style="flex:1"></span><button type="button" class="btn ghost" data-cfa="del">Excluir item</button>':""}</div>
+  </form>`;
+  renderCots(); resumoCompra();
+  box.scrollIntoView({behavior:"smooth",block:"start"}); $("#cf-nome").focus();
+}
+function renderCots(){
+  $("#cfCots").innerHTML=cmpForm.d.cotacoes.map((q,i)=>`<div class="cot" data-qi="${i}">
+    <label class="f">Loja<input data-q="loja" maxlength="80" value="${esc(q.loja)}" placeholder="Ex.: Mercado Livre"></label>
+    <label class="f">Preço un.<div class="unit pre"><span>R$</span><input data-q="preco" type="number" min="0" step="0.01" value="${esc(q.preco)}"></div></label>
+    <label class="f">Link<input data-q="link" type="url" inputmode="url" value="${esc(q.link)}" placeholder="https://…"></label>
+    <button type="button" class="btn ghost" data-cfa="rmCot" aria-label="Remover cotação" ${cmpForm.d.cotacoes.length<2?"disabled":""}>✕</button></div>`).join("");
+}
+function leCompra(){
+  const d=cmpForm.d; d.nome=$("#cf-nome").value.trim(); d.categoria=$("#cf-cat").value; d.quantidade=Math.max(1,num($("#cf-qtd").value)||1);
+  d.prioridade=$("#cf-pri").value; d.obs=$("#cf-obs").value.trim();
+  document.querySelectorAll("#cfCots .cot").forEach((el,i)=>{d.cotacoes[i]={loja:el.querySelector('[data-q="loja"]').value.trim(),preco:el.querySelector('[data-q="preco"]').value===""?"":num(el.querySelector('[data-q="preco"]').value),link:el.querySelector('[data-q="link"]').value.trim()}});
+}
+function resumoCompra(){
+  leCompra(); const d=cmpForm.d, m=melhorCot(d), v=(d.cotacoes||[]).filter(x=>num(x.preco)>0), pior=v.length?Math.max(...v.map(x=>num(x.preco))):0;
+  $("#cfResumo").innerHTML=m?`<span>Melhor preço <b class="num">${brl(num(m.preco))}</b>${m.loja?` na ${esc(m.loja)}`:""}</span><span>Total <b class="num">${brl(num(m.preco)*d.quantidade)}</b></span>${v.length>1?`<span>Economia vs. mais cara <b class="num pos">${brl((pior-num(m.preco))*d.quantidade)}</b></span>`:""}`:`<span class="pcat">Coloque o preço de pelo menos uma loja para somar no orçamento.</span>`;
+}
+$("#cmpForm").addEventListener("input",()=>{ if(cmpForm) resumoCompra() });
+$("#cmpForm").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-cfa]"); if(!b||!cmpForm) return; const a=b.dataset.cfa;
+  if(a==="fechar"){cmpForm=null;$("#cmpForm").hidden=true;return}
+  if(a==="addCot"){leCompra();if(cmpForm.d.cotacoes.length>=10)return;cmpForm.d.cotacoes.push({loja:"",preco:"",link:""});renderCots();resumoCompra()}
+  if(a==="rmCot"){leCompra();cmpForm.d.cotacoes.splice(+b.closest("[data-qi]").dataset.qi,1);renderCots();resumoCompra()}
+  if(a==="del"){b.outerHTML=`<span class="confirm">Excluir este item? <button type="button" class="btn danger" data-cfa="delok">Excluir</button></span>`}
+  if(a==="delok"){try{await api("DELETE","/api/compras/"+encodeURIComponent(cmpForm.id));compras=compras.filter(x=>x.id!==cmpForm.id);cmpForm=null;$("#cmpForm").hidden=true;renderCompras();toast("Item excluído")}catch(err){toast(err.message)}}
+});
+$("#cmpForm").addEventListener("submit",async e=>{
+  e.preventDefault(); leCompra(); const d=cmpForm.d;
+  const body={...d,status:melhorCot(d)?"cotado":"planejado"};
+  try{
+    if(cmpForm.id){const r=await api("PUT","/api/compras/"+encodeURIComponent(cmpForm.id),body);compras[compras.findIndex(x=>x.id===r.id)]=r}
+    else{const r=await api("POST","/api/compras",body);compras=compras.concat(r)}
+    toast("Item salvo"); cmpForm=null; $("#cmpForm").hidden=true; renderCompras();
+  }catch(err){ $("#cfMsg").textContent=err.message }
+});
+$("#cmpLista").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-cmpa]"); if(!b) return;
+  if(b.dataset.cmpa==="sugestao") return usarSugestao();
+  const tr=b.closest("[data-cid]"), c=compras.find(x=>x.id===tr?.dataset.cid); if(!c) return;
+  const a=b.dataset.cmpa;
+  if(a==="editar") return abreCompra(c);
+  if(a==="comprar"){const m=melhorCot(c);const cell=b.closest("td");
+    cell.innerHTML=`<div class="buyrow"><div class="unit pre"><span>R$</span><input type="number" min="0" step="0.01" class="bv" value="${m?(num(m.preco)*num(c.quantidade)).toFixed(2):""}" placeholder="total pago" aria-label="Valor pago"></div>
+      <input type="date" class="bd" value="${hojeISO()}" aria-label="Data da compra"><label class="chk"><input type="checkbox" class="bl" checked> Lançar no Financeiro</label>
+      <button class="btn sm primary" data-cmpa="comprarok">Confirmar</button><button class="btn sm ghost" data-cmpa="cancel">Cancelar</button></div>`;
+    cell.querySelector(".bv").focus(); return}
+  if(a==="cancel") return renderCompras();
+  try{
+    let r;
+    if(a==="comprarok"){const cell=b.closest("td");r=await api("POST","/api/compras/"+encodeURIComponent(c.id)+"/comprar",{valor:num(cell.querySelector(".bv").value),data:cell.querySelector(".bd").value,lancarDespesa:cell.querySelector(".bl").checked});toast(cell.querySelector(".bl").checked?"Comprado e lançado no Financeiro":"Marcado como comprado")}
+    if(a==="desfazer"){r=await api("POST","/api/compras/"+encodeURIComponent(c.id)+"/desfazer");toast("Voltou para a lista. Se lançou no Financeiro, exclua a despesa por lá.")}
+    if(r){compras[compras.findIndex(x=>x.id===r.id)]=r;renderCompras()}
+  }catch(err){ toast(err.message) }
+});
+$("#cmpCopiar").addEventListener("click",async()=>{
+  const pend=compras.filter(c=>c.status!=="comprado");
+  const txt="Lista de compras"+(cfg.loja.nome?" – "+cfg.loja.nome:"")+"\n\n"+CMP_CATS.map(cat=>{const its=pend.filter(c=>c.categoria===cat);if(!its.length)return "";
+    return `*${CMP_CAT_NOME[cat]}*\n`+its.map(c=>{const m=melhorCot(c);return `• ${num(c.quantidade)}× ${c.nome}${m?` — ${brl(num(m.preco)*num(c.quantidade))}${m.loja?" ("+m.loja+")":""}`:""}`}).join("\n")}).filter(Boolean).join("\n\n")
+    +`\n\nTotal previsto: ${brl(pend.reduce((s,c)=>s+totalItem(c),0))}`;
+  try{await navigator.clipboard.writeText(txt);toast("Lista copiada. Cole no WhatsApp ou nas notas.")}catch(e){toast("Não deu para copiar neste navegador.")}
+});
 
 /* ---------- financeiro ---------- */
 const hojeISO=()=>{const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)};

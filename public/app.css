@@ -234,3 +234,18 @@ label.f .hint{order:3;margin-top:1px;line-height:1.3}
 label.f > input, label.f > select, label.f > .unit{order:2}
 label.f .chk{order:4}
 .fields{align-items:start}
+
+/* compras */
+.cot{display:grid;grid-template-columns:minmax(0,1fr) 140px minmax(0,1.6fr) auto;gap:8px 10px;align-items:start;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.cot > .btn{margin-top:22px}
+@media (max-width:700px){.cot{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.cot label:last-of-type{grid-column:1/-1}}
+.fields .wide2{grid-column:span 2}
+@media (max-width:520px){.fields .wide2{grid-column:1/-1}}
+tr.feito td{opacity:.65}
+tr.feito td.pact{opacity:1}
+.buyrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:flex-end}
+.buyrow .unit{width:130px}
+.buyrow input[type=date]{width:auto;padding:5px 8px;font-size:13px}
+.buyrow .chk{font-size:13px}
+table.cmpt{table-layout:fixed;min-width:880px}
+table.cmpt td{overflow-wrap:anywhere}

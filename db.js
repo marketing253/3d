@@ -84,6 +84,14 @@ CREATE TABLE IF NOT EXISTS pedidos (
   criado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS pedidos_status ON pedidos(status);
+CREATE TABLE IF NOT EXISTS compras (
+  id TEXT PRIMARY KEY,
+  dados TEXT NOT NULL,             -- JSON: nome, categoria, quantidade, prioridade, cotações
+  status TEXT NOT NULL DEFAULT 'planejado',
+  valor_pago REAL,
+  data_compra TEXT,
+  criado_em TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS rolos (
   id TEXT PRIMARY KEY,
   filamento_id TEXT NOT NULL,
