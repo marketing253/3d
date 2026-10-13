@@ -487,3 +487,12 @@ td .pcell{min-width:230px}
 .temabtn[aria-checked="true"] .sw2::after{transform:translateX(14px)}
 .side .installbtn{margin-top:0}
 .side .temabtn~.userchip{margin-top:0}
+
+/* painel das impressoras */
+.impcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+.impcard.ativa{border-color:var(--accent)}
+.impnum{display:flex;flex-direction:column;gap:2px}
+.impnum .tv{font:600 26px var(--display,inherit);letter-spacing:-.01em}
+.impnum .ts{font-size:13px;color:var(--muted)}
+.impcard button.pill{border:0;cursor:pointer;font:inherit}
+@media (max-width:480px){.impcards{grid-template-columns:1fr}}

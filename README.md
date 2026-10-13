@@ -8,7 +8,7 @@ Sistema para cadastrar produtos impressos em 3D (Bambu Lab A1 Combo), calcular o
 - **Puxar dados do link do modelo:** cole o link do MakerWorld e a foto, o nome, o tempo e o peso de cada cor entram sozinhos (do perfil escolhido, se o link tiver `#profileId-…`). Do Thingiverse vem a foto e o nome. Printables e Cults bloqueiam a leitura automática.
 - **Importar do Bambu Studio:** envie o arquivo fatiado (.gcode.3mf ou .gcode) e o peso de cada cor e o tempo entram sozinhos no produto ou no orçamento. O arquivo é lido no navegador, não vai para o servidor.
 - **Orçamento rápido:** preço de peça sob medida sem cadastrar produto, já com mensagem, link e Pix.
-- **Manutenção da impressora:** conta as horas impressas e avisa quando limpar, lubrificar ou trocar peças.
+- **Manutenção por impressora:** cada uma tem a sua lista; as horas vêm das impressões do painel (inclusive as que falharam) e dos pedidos prontos, e o sistema avisa quando limpar, lubrificar ou trocar peças.
 - **Kits e cupons:** combos com preço fechado e cupons de desconto no catálogo (link `/catalogo?cupom=CODIGO`).
 - **Fechamento do mês em PDF** e lembretes de cobrança e de clientes para chamar de volta na tela Hoje.
 - **Instalável como app** no celular e no computador.
@@ -19,7 +19,9 @@ Sistema para cadastrar produtos impressos em 3D (Bambu Lab A1 Combo), calcular o
 - **Link de cada produto** do catálogo (`/catalogo?p=...`), com foto e preço na prévia do WhatsApp.
 - **Etiqueta 10×15** do pedido para a impressora térmica, com QR Code do Pix.
 - **Clientes:** lista montada a partir dos pedidos e vendas, com quanto cada um gastou, última compra e botão para chamar no WhatsApp.
-- **Fila da impressora:** ordem de impressão por prazo, horas de máquina, previsão de cada pedido e aviso de atraso.
+- **Várias impressoras:** cadastre quantas tiver (nome, modelo, horas por dia, horas de uso anteriores). A fila divide os pedidos entre elas pela que fica livre primeiro, ou pela que você escolher, e a previsão de entrega considera todas.
+- **Painel ao vivo:** cada impressora mostra o que está imprimindo, quanto falta, a que horas termina e a % concluída. Começar, pausar, retomar, ajustar o tempo pelo que a impressora mostra, concluir, falhou e cancelar. O contador é manual (não lê a impressora); as impressões ficam no servidor, prontas para uma ponte local com a A1 no futuro.
+- **Fila das impressoras:** ordem de impressão por prazo, horas de máquina, previsão de cada pedido e aviso de atraso.
 - **Estoque:** rolos de filamento (o consumo sai sozinho quando o pedido fica pronto) e peças à pronta entrega.
 - **Catálogo público** em `/catalogo`: sem login, com fotos, preços e carrinho que envia o pedido pelo WhatsApp e já cria o orçamento no sistema.
 - **Financeiro:** vendas (com taxa do canal, frete e lucro calculados), despesas e receitas, saldo do mês e acumulado, contas a pagar e a receber, gráfico dos últimos 12 meses, despesas por categoria, mais vendidos e exportação em CSV.

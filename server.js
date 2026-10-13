@@ -612,6 +612,7 @@ function limpaPedido(b) {
     prazo: DATA_RE.test(b.prazo || "") ? b.prazo : null, itens,
     desconto: n(b.desconto), freteCliente: n(b.freteCliente), freteVoce: n(b.freteVoce), taxas: n(b.taxas), sinal: n(b.sinal),
     obs: txt(b.obs, 1000), ...(b.origem === "catalogo" ? { origem: "catalogo" } : {}), ...(b.cupom ? { cupom: txt(b.cupom, 30).toUpperCase() } : {}),
+    ...(b.impressora ? { impressora: txt(b.impressora, 60) } : {}),
   } };
 }
 function linhaPedido(r) { return { ...JSON.parse(r.dados), id: r.id, numero: r.numero, status: r.status, prazo: r.prazo, token: r.token || null, criadoEm: r.criado_em, atualizadoEm: r.atualizado_em }; }
@@ -673,6 +674,8 @@ app.post("/api/pedidos/:id/status", exigeLogin, exigeEdicao, (req, res) => {
         db.prepare("UPDATE pedidos SET estoque_baixado = 1 WHERE id = ?").run(r.id);
       }
     }
+    // chegou em "pronto": encerra a impressão em andamento ou registra as horas previstas na impressora
+    if (["pronto", "entregue"].includes(novo) && ["aprovado", "imprimindo"].includes(r.status)) registraImpressaoDoPedido(r, p, req.usuario.id, txt(req.body.impressora, 60));
     if (r.status === "entregue" && novo !== "entregue") {
       db.prepare("DELETE FROM vendas WHERE pedido_id = ?").run(r.id);
       avisos.push("As vendas deste pedido foram retiradas do financeiro.");
@@ -686,6 +689,125 @@ app.delete("/api/pedidos/:id", exigeLogin, exigeEdicao, (req, res) => {
   if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
   if (r.status === "entregue") return res.status(400).json({ erro: "Pedido entregue não pode ser excluído. Volte o status antes." });
   db.prepare("DELETE FROM pedidos WHERE id = ?").run(req.params.id);
+  db.prepare("UPDATE impressoes SET pedido_id = NULL WHERE pedido_id = ?").run(req.params.id);
+  res.json({ ok: true });
+});
+app.post("/api/pedidos/:id/impressora", exigeLogin, exigeEdicao, (req, res) => {
+  const r = db.prepare("SELECT * FROM pedidos WHERE id = ?").get(req.params.id);
+  if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  const imp = txt(req.body?.impressora, 60);
+  if (imp && !impressoraExiste(imp)) return res.status(400).json({ erro: "Impressora não encontrada." });
+  const p = JSON.parse(r.dados);
+  if (imp) p.impressora = imp; else delete p.impressora;
+  db.prepare("UPDATE pedidos SET dados = ?, atualizado_em = datetime('now') WHERE id = ?").run(JSON.stringify(p), r.id);
+  res.json(linhaPedido(db.prepare("SELECT * FROM pedidos WHERE id = ?").get(r.id)));
+});
+
+// ---------- impressoras: impressões em andamento e horas de máquina ----------
+// As impressoras ficam em config.impressoras; aqui ficam as impressões (com início, pausa e fim),
+// que dão o tempo restante ao vivo e as horas de cada máquina para a manutenção.
+const ST_ATIVA = ["imprimindo", "pausada"];
+function impressorasCfg() {
+  const r = db.prepare("SELECT dados FROM config WHERE id = 1").get();
+  const c = r ? JSON.parse(r.dados) : null;
+  return c && Array.isArray(c.impressoras) ? c.impressoras : null;
+}
+function impressoraExiste(id) { const l = impressorasCfg(); return !!l && l.some(i => i.id === id); }
+function decorridoS(x, agora = Date.now()) {
+  const ate = x.fim || x.pausado_em || agora;
+  return Math.max(0, Math.round((ate - x.inicio) / 1000) - (x.pausa_s || 0));
+}
+function linhaImpressao(x) {
+  const dec = decorridoS(x);
+  return { id: x.id, impressora: x.impressora_id, pedido: x.pedido_id, descricao: x.descricao, status: x.status, origem: x.origem,
+    inicio: x.inicio, fim: x.fim, duracao_s: x.duracao_s, decorrido_s: dec,
+    restante_s: x.restante_s != null && ST_ATIVA.includes(x.status) ? x.restante_s : Math.max(0, x.duracao_s - dec),
+    progresso: x.progresso, pausado_em: x.pausado_em, atualizado_em: x.atualizado_em };
+}
+function horasPedido(p) {
+  return (p.itens || []).reduce((s, i) => s + (i.doEstoque ? 0 : n(i.quantidade) * n(i.horas_unit)), 0);
+}
+function registraImpressaoDoPedido(r, p, uid, sugerida) {
+  const lista = impressorasCfg(); if (!lista || !lista.length) return;
+  const agora = Date.now();
+  const ativas = db.prepare(`SELECT * FROM impressoes WHERE pedido_id = ? AND status IN ('imprimindo','pausada')`).all(r.id);
+  for (const x of ativas) {
+    const pausa = x.pausado_em ? (x.pausa_s || 0) + Math.round((agora - x.pausado_em) / 1000) : x.pausa_s;
+    db.prepare("UPDATE impressoes SET status = 'concluida', fim = ?, pausado_em = NULL, pausa_s = ?, atualizado_em = ? WHERE id = ?").run(agora, pausa, agora, x.id);
+  }
+  if (db.prepare("SELECT 1 FROM impressoes WHERE pedido_id = ?").get(r.id)) return; // já tem impressão registrada
+  const horas = horasPedido(p); if (!(horas > 0)) return;
+  const imp = [p.impressora, sugerida].find(id => id && lista.some(i => i.id === id)) || lista[0].id;
+  const dur = Math.round(horas * 3600);
+  db.prepare(`INSERT INTO impressoes (id, impressora_id, pedido_id, descricao, inicio, duracao_s, fim, status, origem, atualizado_em, criado_por)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'concluida', 'pedido', ?, ?)`).run(crypto.randomUUID(), imp, r.id, `Pedido #${r.numero}`, agora - dur * 1000, dur, agora, agora, uid);
+}
+
+app.get("/api/impressoes", exigeLogin, (req, res) => {
+  const ativas = db.prepare("SELECT * FROM impressoes WHERE status IN ('imprimindo','pausada') ORDER BY inicio").all().map(linhaImpressao);
+  const recentes = db.prepare("SELECT * FROM impressoes WHERE status NOT IN ('imprimindo','pausada') ORDER BY fim DESC LIMIT 30").all().map(linhaImpressao);
+  const horas = {}, falhas = {};
+  for (const x of db.prepare("SELECT * FROM impressoes").all()) {
+    horas[x.impressora_id] = (horas[x.impressora_id] || 0) + decorridoS(x) / 3600;
+    if (x.status === "falhou") falhas[x.impressora_id] = (falhas[x.impressora_id] || 0) + 1;
+  }
+  res.json({ agora: Date.now(), ativas, recentes, horas, falhas });
+});
+app.post("/api/impressoes", exigeLogin, exigeEdicao, (req, res) => {
+  const b = req.body || {};
+  const imp = txt(b.impressora, 60);
+  if (!impressoraExiste(imp)) return res.status(400).json({ erro: "Escolha uma impressora." });
+  const dur = Math.round(n(b.duracao_s));
+  if (!(dur >= 60 && dur <= 14 * 86400)) return res.status(400).json({ erro: "Informe o tempo de impressão (de 1 minuto a 14 dias)." });
+  if (db.prepare("SELECT 1 FROM impressoes WHERE impressora_id = ? AND status IN ('imprimindo','pausada')").get(imp))
+    return res.status(409).json({ erro: "Essa impressora já está imprimindo. Conclua ou cancele a impressão atual antes." });
+  let pedido = null;
+  if (b.pedido) {
+    pedido = db.prepare("SELECT * FROM pedidos WHERE id = ?").get(txt(b.pedido, 60));
+    if (!pedido) return res.status(404).json({ erro: "Pedido não encontrado." });
+  }
+  const descricao = txt(b.descricao, 150) || (pedido ? `Pedido #${pedido.numero}` : "Impressão avulsa");
+  const id = crypto.randomUUID(), agora = Date.now();
+  db.transaction(() => {
+    db.prepare(`INSERT INTO impressoes (id, impressora_id, pedido_id, descricao, inicio, duracao_s, status, origem, atualizado_em, criado_por)
+      VALUES (?, ?, ?, ?, ?, ?, 'imprimindo', 'manual', ?, ?)`).run(id, imp, pedido ? pedido.id : null, descricao, agora, dur, agora, req.usuario.id);
+    if (pedido && pedido.status === "aprovado") db.prepare("UPDATE pedidos SET status = 'imprimindo', atualizado_em = datetime('now') WHERE id = ?").run(pedido.id);
+    if (pedido) { const p = JSON.parse(pedido.dados); if (p.impressora !== imp) { p.impressora = imp; db.prepare("UPDATE pedidos SET dados = ? WHERE id = ?").run(JSON.stringify(p), pedido.id); } }
+  })();
+  res.json({ impressao: linhaImpressao(db.prepare("SELECT * FROM impressoes WHERE id = ?").get(id)),
+    pedido: pedido ? linhaPedido(db.prepare("SELECT * FROM pedidos WHERE id = ?").get(pedido.id)) : null });
+});
+app.post("/api/impressoes/:id/acao", exigeLogin, exigeEdicao, (req, res) => {
+  const x = db.prepare("SELECT * FROM impressoes WHERE id = ?").get(req.params.id);
+  if (!x) return res.status(404).json({ erro: "Impressão não encontrada." });
+  const acao = req.body?.acao, agora = Date.now();
+  if (!ST_ATIVA.includes(x.status)) return res.status(400).json({ erro: "Essa impressão já terminou." });
+  const pausaTotal = () => x.pausado_em ? (x.pausa_s || 0) + Math.round((agora - x.pausado_em) / 1000) : (x.pausa_s || 0);
+  if (acao === "pausar") {
+    if (x.status !== "imprimindo") return res.status(400).json({ erro: "A impressão não está rodando." });
+    db.prepare("UPDATE impressoes SET status = 'pausada', pausado_em = ?, atualizado_em = ? WHERE id = ?").run(agora, agora, x.id);
+  } else if (acao === "retomar") {
+    if (x.status !== "pausada") return res.status(400).json({ erro: "A impressão não está pausada." });
+    db.prepare("UPDATE impressoes SET status = 'imprimindo', pausa_s = ?, pausado_em = NULL, atualizado_em = ? WHERE id = ?").run(pausaTotal(), agora, x.id);
+  } else if (acao === "ajustar") {
+    // "a impressora diz que faltam X": muda a duração para o restante bater
+    const falta = Math.round(n(req.body.restante_s));
+    if (!(falta >= 0 && falta <= 14 * 86400)) return res.status(400).json({ erro: "Tempo restante inválido." });
+    db.prepare("UPDATE impressoes SET duracao_s = ?, atualizado_em = ? WHERE id = ?").run(decorridoS(x, agora) + falta, agora, x.id);
+  } else if (["concluir", "falhou", "cancelar"].includes(acao)) {
+    const st = { concluir: "concluida", falhou: "falhou", cancelar: "cancelada" }[acao];
+    db.prepare("UPDATE impressoes SET status = ?, fim = ?, pausa_s = ?, pausado_em = NULL, restante_s = NULL, atualizado_em = ? WHERE id = ?").run(st, agora, pausaTotal(), agora, x.id);
+  } else return res.status(400).json({ erro: "Ação inválida." });
+  const y = db.prepare("SELECT * FROM impressoes WHERE id = ?").get(x.id);
+  const outrasAtivas = y.pedido_id ? db.prepare("SELECT COUNT(*) c FROM impressoes WHERE pedido_id = ? AND status IN ('imprimindo','pausada')").get(y.pedido_id).c : 0;
+  res.json({ impressao: linhaImpressao(y), pedidoSemImpressaoAtiva: !!y.pedido_id && !outrasAtivas });
+});
+app.delete("/api/impressoes/:id", exigeLogin, exigeEdicao, (req, res) => {
+  // apagar do histórico (lançamento errado); a impressão em andamento se cancela, não se apaga
+  const x = db.prepare("SELECT status FROM impressoes WHERE id = ?").get(req.params.id);
+  if (!x) return res.status(404).json({ erro: "Impressão não encontrada." });
+  if (ST_ATIVA.includes(x.status)) return res.status(400).json({ erro: "Cancele a impressão antes de apagar." });
+  db.prepare("DELETE FROM impressoes WHERE id = ?").run(req.params.id);
   res.json({ ok: true });
 });
 

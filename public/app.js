@@ -13,7 +13,7 @@ const DEFAULTS={
   tarifaKwh:0.90, consumoW:100, valorImpressora:4500, vidaUtilH:5000, manutencaoH:0.30,
   falhaPct:10, maoObraH:20, impostoPct:0, margemPct:40,
   loja:{nome:"",whatsapp:"",instagram:"",pagamento:"Pix, cartão ou dinheiro",prazoDias:5,horasDia:16,sobre:"",metaLucro:0,pixChave:"",pixNome:"",pixCidade:""},
-  kits:[], cupons:[], manutencao:null,
+  kits:[], cupons:[], manutencao:null, impressoras:null,
   filamentos:[
     {id:"pla-nac",nome:"PLA Básico nacional",precoKg:95},
     {id:"pla-matte",nome:"PLA Matte",precoKg:115},
@@ -109,14 +109,15 @@ function setTab(t){
   if(t==="usuarios") carregaUsuarios();
   if(t==="financeiro") carregaFin();
   if(t==="pedidos"||t==="fila") carregaPedidos();
+  if(t==="fila"){ impForm=null; renderImpressoras(); carregaImpressoes() }
   if(t==="estoque") carregaRolos();
   if(t==="compras") carregaCompras();
   if(t==="novo") renderFicha();
-  if(t==="hoje"){ renderHoje(); carregaHoje() }
+  if(t==="hoje"){ renderHoje(); carregaHoje(); carregaImpressoes() }
   if(t==="clientes"){ renderClientes(); carregaClientes() }
   if(t==="conta") carregaBackups();
   if(t==="orcamento") renderQo();
-  if(t==="manutencao"){ renderManutencao(); carregaPedidos() }
+  if(t==="manutencao"){ renderManutencao(); carregaPedidos(); carregaImpressoes() }
   if(t==="kits"){ renderKits(); if(!pedCarregado) carregaPedidos() }
   window.scrollTo({top:0});
 }
@@ -528,7 +529,7 @@ const resumoItens=p=>(p.itens||[]).map(i=>`${num(i.quantidade).toLocaleString("p
 /* ---------- pedidos ---------- */
 let pedidos=[], pedFiltro="ativos", pedBusca="", pedForm=null, pedCarregado=false;
 async function carregaPedidos(){
-  try{ pedidos=await api("GET","/api/pedidos"); pedCarregado=true; renderPedidos(); renderFila(); atualizaBadge(); atualizaBadgeMan(); recalcCatalogo();
+  try{ pedidos=await api("GET","/api/pedidos"); pedCarregado=true; renderPedidos(); renderFila(); if(tab==="fila") renderImpressoras(); atualizaBadge(); atualizaBadgeMan(); recalcCatalogo();
     if(tab==="manutencao") renderManutencao(); if(tab==="kits") renderKits() }catch(e){ if(e.status!==401) toast(e.message) }
 }
 function filtraPed(){
@@ -577,11 +578,12 @@ $("#pedBusca").addEventListener("input",e=>{pedBusca=e.target.value;renderPedido
 $("#btnNovoPed").addEventListener("click",()=>abrePedido(null));
 async function mudaStatus(p,novo){
   try{
-    const r=await api("POST","/api/pedidos/"+encodeURIComponent(p.id)+"/status",{status:novo});
+    const g=["aprovado","imprimindo"].includes(p.status)&&["pronto","entregue"].includes(novo)?agenda().res.get(p.id):null; // horas vão para a impressora da fila
+    const r=await api("POST","/api/pedidos/"+encodeURIComponent(p.id)+"/status",{status:novo,impressora:g?.imp||""});
     const i=pedidos.findIndex(x=>x.id===p.id); if(i>=0) pedidos[i]=r.pedido;
     toast(novo==="entregue"?"Pedido entregue. Venda lançada no Financeiro":`Pedido #${p.numero}: ${ST[novo]}`);
     for(const a of r.avisos||[]) setTimeout(()=>toast(a),2700);
-    renderPedidos(); renderFila();
+    renderPedidos(); renderFila(); if(novo==="pronto"&&tab==="fila") carregaImpressoes();
     if(novo==="entregue"||novo==="pronto"){ if(r.pedido.itens.some(i=>i.doEstoque)) carregaDados(); if(tab==="estoque") carregaRolos() }
     if((novo==="pronto"||novo==="entregue")&&tab==="pedidos") abreMsg(r.pedido,novo==="pronto"?"pronto":"obrigado");
   }catch(err){ toast(err.message) }
@@ -752,42 +754,267 @@ $("#pedMsgBox").addEventListener("click",async e=>{
   if(b.dataset.ma==="copiar"){const t=$("#msgTxt");try{await navigator.clipboard.writeText(t.value);toast("Mensagem copiada")}catch(err){t.select();toast("Selecionei o texto: use Ctrl+C")}}
 });
 
-/* ---------- fila da impressora ---------- */
+/* ---------- impressoras: cadastro, impressões ao vivo e fila ---------- */
 const soProntaEntrega=p=>(p.itens||[]).length>0&&(p.itens||[]).every(i=>i.doEstoque);
+/* Cada impressora fica em cfg.impressoras com a sua manutenção. Na primeira vez, a A1 que já existia
+   vira a impressora 1 e herda as horas contadas até aqui (pedidos prontos + horas avulsas). */
+function horasAntigas(){ return pedidos.filter(p=>["pronto","entregue"].includes(p.status)).reduce((s,p)=>s+totPed(p).horas,0)+num(manCfg().extraH) }
+function impLista(){
+  if(Array.isArray(cfg.impressoras)&&cfg.impressoras.length) return cfg.impressoras;
+  const base={id:"imp1",nome:"A1 Combo",modelo:"Bambu Lab A1 Combo",horasDia:num(cfg.loja.horasDia)||16,extraH:0,tarefas:clone(manCfg().tarefas)};
+  if(!carregado||!pedCarregado) return [base];
+  base.extraH=+horasAntigas().toFixed(2);
+  cfg.impressoras=[base]; saveCfg();
+  return cfg.impressoras;
+}
+const impPorId=id=>impLista().find(i=>i.id===id);
+const impNome=id=>impPorId(id)?.nome||"Impressora removida";
+const impHorasDia=imp=>Math.max(1,Math.min(24,num(imp.horasDia)||num(cfg.loja.horasDia)||16));
+function horasDia(){return Math.max(1,Math.min(24,num(cfg.loja.horasDia)||16))}
+
+/* impressões vindas do servidor; o contador anda no navegador entre uma busca e outra */
+let imps={ativas:[],recentes:[],horas:{},falhas:{},carregado:false,em:0};
+const impAtiva=id=>imps.ativas.find(x=>x.impressora===id);
+function restanteS(x){ return Math.max(0,x.restante_s-(x.status==="imprimindo"?(Date.now()-imps.em)/1000:0)) }
+function progressoPct(x){ if(x.progresso!=null) return x.progresso; const tot=x.decorrido_s+x.restante_s; return tot>0?Math.min(100,(tot-restanteS(x))/tot*100):0 }
+async function carregaImpressoes(){
+  try{ const r=await api("GET","/api/impressoes"); imps={...r,carregado:true,em:Date.now()};
+    if(tab==="fila"){ renderImpressoras(); renderFila() } if(tab==="manutencao") renderManutencao(); if(tab==="hoje") renderHoje();
+    atualizaBadgeMan();
+  }catch(e){ if(e.status!==401) toast(e.message) }
+}
+function fimTxt(seg){
+  const d=new Date(Date.now()+seg*1000), dias=Math.round((new Date(d.toDateString())-new Date(new Date().toDateString()))/86400000);
+  const hh=d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+  return dias<=0?`hoje às ${hh}`:dias===1?`amanhã às ${hh}`:`${d.toLocaleDateString("pt-BR",{weekday:"short",day:"2-digit"})} às ${hh}`;
+}
+const fmtSeg=s=>{s=Math.max(0,Math.round(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h?`${h}h${String(m).padStart(2,"0")}`:m?`${m} min`:`${s%60} s`};
+
+/* fila: distribui os pedidos entre as impressoras pela ordem de prazo.
+   Pedido com impressora escolhida vai para ela; os outros vão para a que fica livre primeiro. */
 function filaOrdenada(excluiId){
   return pedidos.filter(p=>["aprovado","imprimindo"].includes(p.status)&&p.id!==excluiId)
     .sort((a,b)=>(a.status==="imprimindo"?0:1)-(b.status==="imprimindo"?0:1)||(a.prazo||"9999").localeCompare(b.prazo||"9999")||a.numero-b.numero);
 }
-function horasDia(){return Math.max(1,Math.min(24,num(cfg.loja.horasDia)||16))}
-function previsaoNovo(horas,excluiId){
-  const tot=filaOrdenada(excluiId).reduce((s,p)=>s+totPed(p).horas,0)+horas;
-  return addDias(hojeISO(),Math.max(0,Math.ceil(tot/horasDia())-1));
+function agenda(excluiId){
+  const lista=impLista(), f=filaOrdenada(excluiId), naFila=new Set(f.map(p=>p.id));
+  const carga={}; for(const i of lista){ const a=impAtiva(i.id); carga[i.id]=a&&!(a.pedido&&naFila.has(a.pedido))?restanteS(a)/3600:0 }
+  const dia=(id,h)=>Math.max(0,Math.ceil(h/impHorasDia(impPorId(id)))-1);
+  const res=new Map();
+  for(const p of f){
+    const ativa=imps.ativas.find(x=>x.pedido===p.id);
+    const horas=soProntaEntrega(p)?0:ativa?restanteS(ativa)/3600:totPed(p).horas;
+    let id=ativa?ativa.impressora:lista.some(i=>i.id===p.impressora)?p.impressora:null;
+    if(!id) id=lista.map(i=>i.id).sort((a,b)=>(carga[a]+horas)/impHorasDia(impPorId(a))-(carga[b]+horas)/impHorasDia(impPorId(b)))[0];
+    const ini=carga[id]; carga[id]+=horas;
+    res.set(p.id,{imp:id,ini,fimH:carga[id],fim:addDias(hojeISO(),dia(id,carga[id])),horas,fixa:!!p.impressora&&!ativa,ativa});
+  }
+  return {res,carga,dia};
 }
+function previsaoNovo(horas,excluiId){
+  const {carga,dia}=agenda(excluiId);
+  const melhor=Object.keys(carga).map(id=>dia(id,carga[id]+horas)).sort((a,b)=>a-b)[0]||0;
+  return addDias(hojeISO(),melhor);
+}
+
+/* painel ao vivo: um cartão por impressora */
+let impForm=null; // {imp, modo:"iniciar"|"ajustar"}
+const impAviso={}; // impressora -> pedido que terminou de imprimir
+function cartaoImp(i){
+  const a=impAtiva(i.id), venc=manEstado(i).filter(t=>t.venc).length, ed=podeEditar();
+  const ped=a&&a.pedido?pedidos.find(p=>p.id===a.pedido):null;
+  const st=!a?["Livre","good"]:a.status==="pausada"?["Pausada","warn"]:restanteS(a)<=0?["Deve ter terminado","warn"]:["Imprimindo","acc"];
+  const proxima=!a?[...agenda().res.entries()].find(([,v])=>v.imp===i.id):null;
+  const proxPed=proxima?pedidos.find(p=>p.id===proxima[0]):null;
+  let corpo="";
+  if(a){
+    const pc=progressoPct(a);
+    corpo=`<div class="pname">${esc(a.descricao)}${ped?` <span class="pcat">· ${esc(ped.cliente)}</span>`:""}</div>
+      <div class="pcat clip">${ped?esc(resumoItens(ped)):"Impressão fora dos pedidos"}</div>
+      <div class="impnum"><span class="tv num" data-cd="${esc(a.id)}">${a.status==="pausada"?"pausada":restanteS(a)>0?"faltam "+fmtSeg(restanteS(a)):"0 min"}</span>
+        <span class="ts" data-cdfim="${esc(a.id)}">${a.status==="pausada"?`parada desde ${new Date(a.pausado_em).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`:restanteS(a)>0?"termina "+fimTxt(restanteS(a)):"confira na impressora e clique em Concluiu"}</span></div>
+      <div class="rbar big"><i data-cdbar="${esc(a.id)}" style="width:${pc}%"></i></div>
+      <div class="pcat">Começou ${new Date(a.inicio).toLocaleString("pt-BR",{weekday:"short",hour:"2-digit",minute:"2-digit"})} · previsto ${fmtSeg(a.decorrido_s+a.restante_s)} · <span data-cdpc="${esc(a.id)}">${Math.round(pc)}%</span></div>
+      ${ed?`<div class="row" style="gap:6px">
+        ${a.status==="pausada"?'<button class="btn sm primary" data-ia="retomar">Retomar</button>':'<button class="btn sm" data-ia="pausar">Pausar</button>'}
+        <button class="btn sm" data-ia="ajustar">Ajustar tempo</button>
+        <button class="btn sm ${restanteS(a)<=0?"primary":""}" data-ia="concluir">Concluiu</button>
+        <button class="btn sm ghost" data-ia="falhou">Falhou</button>
+        <button class="btn sm ghost" data-ia="cancelar">Cancelar</button></div>`:""}`;
+  } else {
+    const av=impAviso[i.id]&&pedidos.find(p=>p.id===impAviso[i.id]&&p.status==="imprimindo");
+    corpo=`${av?`<div class="warnbox">O pedido <b>#${av.numero}</b> terminou de imprimir? <button class="btn sm primary" data-ia="pronto" data-ped="${esc(av.id)}">Marcar pedido pronto</button> <button class="btn sm ghost" data-ia="nao-pronto">Ainda falta</button></div>`:""}
+      <div class="impnum"><span class="tv">Livre</span><span class="ts">${proxPed?`Próximo da fila: #${proxPed.numero} · ${esc(proxPed.cliente)} (${fmtH(totPed(proxPed).horas)||"sem tempo"})`:"Nada na fila para esta impressora"}</span></div>
+      ${ed?`<div class="row" style="gap:6px"><button class="btn sm primary" data-ia="iniciar">Iniciar impressão</button></div>`:""}`;
+  }
+  return `<div class="card stack impcard${a?" ativa":""}" data-imp="${esc(i.id)}" style="gap:10px">
+    <div class="row spread" style="gap:8px"><div style="min-width:0"><h3 style="margin:0">${esc(i.nome)}</h3><div class="pcat">${esc(i.modelo||"")}</div></div>
+      <div class="row" style="gap:6px">${venc?`<button class="pill bad" data-ia="man" title="Ver manutenção">${venc} manutenç${venc>1?"ões":"ão"}</button>`:""}<span class="pill ${st[1]}">${st[0]}</span></div></div>
+    ${corpo}
+    ${impForm&&impForm.imp===i.id?formImp(i,a):""}
+    <div class="pcat">${horasImpressas(i)>0?fmtH(horasImpressas(i)):"0 h"} impressas no total${imps.falhas[i.id]?` · ${imps.falhas[i.id]} ${imps.falhas[i.id]>1?"falhas":"falha"}`:""}</div>
+  </div>`;
+}
+function formImp(i,a){
+  if(impForm.modo==="ajustar"){
+    const s=Math.round(restanteS(a)/60);
+    return `<div class="importbox stack" style="gap:8px" data-if="ajustar"><span class="note" style="margin:0">Quanto tempo a tela da impressora (ou o Bambu Handy) diz que falta?</span>
+      <div class="row" style="gap:8px"><div class="unit" style="max-width:110px"><input data-if="h" type="number" min="0" step="1" value="${Math.floor(s/60)}" aria-label="Horas"><span>h</span></div>
+      <div class="unit" style="max-width:110px"><input data-if="m" type="number" min="0" max="59" step="1" value="${s%60}" aria-label="Minutos"><span>min</span></div>
+      <button class="btn sm primary" data-ia="ajustar-ok">Salvar</button><button class="btn sm ghost" data-ia="fechar">Voltar</button></div></div>`;
+  }
+  const {res}=agenda();
+  const fila=filaOrdenada().filter(p=>!soProntaEntrega(p)&&!imps.ativas.some(x=>x.pedido===p.id));
+  const sug=fila.find(p=>res.get(p.id)?.imp===i.id)||fila[0];
+  const sel=impForm.ped!==undefined?impForm.ped:(sug?sug.id:"");
+  const p=pedidos.find(x=>x.id===sel), h=impForm.h!==undefined?impForm.h:p?totPed(p).horas:0;
+  return `<div class="importbox stack" style="gap:8px" data-if="iniciar">
+    <label class="f">O que vai imprimir<select data-if="ped"><option value="">Impressão avulsa (estoque, teste, brinde…)</option>
+      ${fila.map(x=>`<option value="${esc(x.id)}"${x.id===sel?" selected":""}>#${x.numero} · ${esc(x.cliente)} · ${esc(resumoItens(x)).slice(0,60)}</option>`).join("")}</select></label>
+    ${sel?"":`<label class="f">Descrição<input data-if="desc" maxlength="150" placeholder="Ex.: 10 chaveiros para estoque" value="${esc(impForm.desc||"")}"></label>`}
+    <div class="row" style="gap:8px;align-items:flex-end"><label class="f">Tempo da impressão<div class="row" style="gap:6px;flex-wrap:nowrap">
+      <div class="unit" style="max-width:100px"><input data-if="h" type="number" min="0" step="1" value="${Math.floor(h)}" aria-label="Horas"><span>h</span></div>
+      <div class="unit" style="max-width:100px"><input data-if="m" type="number" min="0" max="59" step="1" value="${Math.round((h%1)*60)}" aria-label="Minutos"><span>min</span></div></div></label>
+      <label class="btn sm ghost" for="if-arq-${esc(i.id)}">Ler tempo do arquivo fatiado</label><input id="if-arq-${esc(i.id)}" data-if="arq" type="file" accept=".3mf,.gcode" hidden></div>
+    ${p?`<span class="note" style="margin:0">Tempo somado dos itens do pedido. Se for imprimir só uma parte agora, troque pelo tempo desta placa.</span>`:""}
+    <div class="row" style="gap:6px"><button class="btn sm primary" data-ia="iniciar-ok">Começar agora</button><button class="btn sm ghost" data-ia="fechar">Voltar</button></div></div>`;
+}
+function renderImpressoras(){
+  const box=$("#impCards"); if(!box) return;
+  box.innerHTML=impLista().map(cartaoImp).join("");
+  renderImpGerencia();
+}
+function leFormImp(card){
+  const v=k=>card.querySelector(`[data-if="${k}"]`);
+  if(v("ped")) impForm.ped=v("ped").value;
+  if(v("desc")) impForm.desc=v("desc").value;
+  if(v("h")) impForm.h=num(v("h").value)+num(v("m").value)/60;
+}
+$("#impCards").addEventListener("change",async e=>{
+  const card=e.target.closest("[data-imp]"); if(!card||!impForm) return;
+  const k=e.target.dataset.if;
+  if(k==="ped"){ impForm.ped=e.target.value; delete impForm.h; renderImpressoras() }
+  if(k==="arq"){ const f=e.target.files[0]; e.target.value=""; if(!f) return;
+    try{ leFormImp(card); const x=await importaFatiado(f); impForm.h=x.horas+x.minutos/60; if(!impForm.ped&&!impForm.desc) impForm.desc=x.nome; renderImpressoras(); toast("Tempo lido do arquivo") }catch(err){ toast(err.message) } }
+});
+$("#impCards").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-ia]"); if(!b) return;
+  const card=b.closest("[data-imp]"), id=card.dataset.imp, a=impAtiva(id), acao=b.dataset.ia;
+  if(acao==="man"){ manSel=id; setTab("manutencao"); return }
+  if(acao==="iniciar"){ impForm={imp:id,modo:"iniciar"}; renderImpressoras(); return }
+  if(acao==="ajustar"){ impForm={imp:id,modo:"ajustar"}; renderImpressoras(); return }
+  if(acao==="fechar"){ impForm=null; renderImpressoras(); return }
+  if(acao==="nao-pronto"){ delete impAviso[id]; renderImpressoras(); return }
+  if(acao==="pronto"){ const p=pedidos.find(x=>x.id===b.dataset.ped); delete impAviso[id]; if(p) await mudaStatus(p,"pronto"); renderImpressoras(); return }
+  b.disabled=true;
+  try{
+    if(acao==="iniciar-ok"){
+      leFormImp(card);
+      const dur=Math.round(num(impForm.h)*3600);
+      if(dur<60){ toast("Informe o tempo da impressão."); b.disabled=false; return }
+      const r=await api("POST","/api/impressoes",{impressora:id,pedido:impForm.ped||null,descricao:impForm.ped?"":impForm.desc,duracao_s:dur});
+      if(r.pedido){ const i=pedidos.findIndex(x=>x.id===r.pedido.id); if(i>=0) pedidos[i]=r.pedido }
+      impForm=null; toast(`${impNome(id)}: impressão iniciada, termina ${fimTxt(dur)}`);
+    } else if(acao==="ajustar-ok"){
+      const s=Math.round(num(card.querySelector('[data-if="h"]').value)*3600+num(card.querySelector('[data-if="m"]').value)*60);
+      await api("POST","/api/impressoes/"+encodeURIComponent(a.id)+"/acao",{acao:"ajustar",restante_s:s}); impForm=null; toast("Tempo ajustado");
+    } else if(a&&["pausar","retomar","concluir","falhou","cancelar"].includes(acao)){
+      const r=await api("POST","/api/impressoes/"+encodeURIComponent(a.id)+"/acao",{acao});
+      const p=a.pedido&&pedidos.find(x=>x.id===a.pedido);
+      if(acao==="concluir"&&r.pedidoSemImpressaoAtiva&&p&&p.status==="imprimindo") impAviso[id]=p.id;
+      toast({pausar:"Impressão pausada",retomar:"Impressão retomada",concluir:"Impressão concluída",falhou:"Falha registrada. As horas contam para a manutenção.",cancelar:"Impressão cancelada"}[acao]);
+      impForm=null;
+    }
+    await carregaImpressoes(); renderImpressoras(); renderFila();
+  }catch(err){ toast(err.message); b.disabled=false }
+});
+
+/* cadastro das impressoras */
+function renderImpGerencia(){
+  const box=$("#impGerencia"); if(!box) return;
+  if(!podeEditar()){ box.innerHTML=""; return }
+  const lista=impLista();
+  box.innerHTML=`<div class="card stack"><div class="row spread"><h3>Suas impressoras</h3><button class="btn sm" type="button" data-ig="add">+ Impressora</button></div>
+    <p class="note" style="margin:0">Comprou outra? Adicione aqui: ela ganha fila, contador e manutenção próprios. Em <b>Horas que já tinha</b>, coloque as horas de uso de uma impressora usada (aparece em Configurações → Dispositivo, na tela dela).</p>
+    <div class="tablewrap"><table style="min-width:640px"><thead><tr><th>Nome</th><th>Modelo</th><th class="n">Horas por dia</th><th class="n">Horas que já tinha</th><th></th></tr></thead><tbody>
+    ${lista.map(i=>`<tr data-ii="${esc(i.id)}"><td><input data-ig="nome" maxlength="40" value="${esc(i.nome)}" aria-label="Nome"></td>
+      <td><input data-ig="modelo" maxlength="60" value="${esc(i.modelo||"")}" aria-label="Modelo"></td>
+      <td class="n"><div class="unit" style="width:100px;margin-left:auto"><input data-ig="horasDia" type="number" min="1" max="24" step="1" value="${esc(impHorasDia(i))}" aria-label="Horas por dia"><span>h</span></div></td>
+      <td class="n"><div class="unit" style="width:120px;margin-left:auto"><input data-ig="extraH" type="number" min="0" step="1" value="${esc(+num(i.extraH).toFixed(1))}" aria-label="Horas que já tinha"><span>h</span></div></td>
+      <td class="pact"><button class="btn sm ghost" type="button" data-ig="rm" ${lista.length<2||impAtiva(i.id)?"disabled":""} title="${impAtiva(i.id)?"Está imprimindo":lista.length<2?"Precisa ter pelo menos uma":"Remover"}">Remover</button></td></tr>`).join("")}
+    </tbody></table></div></div>`;
+}
+$("#impGerencia").addEventListener("change",e=>{
+  const el=e.target.closest("[data-ig]"), tr=e.target.closest("[data-ii]"); if(!el||!tr) return;
+  const i=impPorId(tr.dataset.ii); if(!i) return; const k=el.dataset.ig;
+  if(k==="nome") i.nome=el.value.trim()||i.nome;
+  if(k==="modelo") i.modelo=el.value.trim();
+  if(k==="horasDia") i.horasDia=Math.max(1,Math.min(24,Math.round(num(el.value))||16));
+  if(k==="extraH") i.extraH=Math.max(0,num(el.value));
+  saveCfg(); renderImpressoras(); renderFila();
+});
+$("#impGerencia").addEventListener("click",e=>{
+  const b=e.target.closest("[data-ig]"); if(!b||b.tagName==="INPUT") return;
+  const lista=impLista();
+  if(b.dataset.ig==="add"){ lista.push({id:uid(),nome:`A1 Combo ${lista.length+1}`,modelo:"Bambu Lab A1 Combo",horasDia:horasDia(),extraH:0,tarefas:clone(MAN_PADRAO)}); toast("Impressora adicionada") }
+  if(b.dataset.ig==="rm"){ const id=b.closest("[data-ii]").dataset.ii;
+    if(b.dataset.ok!=="1"){ b.dataset.ok="1"; b.textContent="Confirmar"; b.classList.add("danger"); return }
+    cfg.impressoras=lista.filter(i=>i.id!==id); if(manSel===id) manSel=null; toast("Impressora removida") }
+  saveCfg(); renderImpressoras(); renderFila();
+});
+
+/* contador: atualiza só o texto a cada segundo; busca o servidor a cada 30 s */
+let ultZero=new Set();
+setInterval(()=>{
+  if(document.hidden||!imps.ativas.length||!["fila","hoje"].includes(tab)) return;
+  for(const a of imps.ativas){
+    const s=restanteS(a), pc=progressoPct(a);
+    document.querySelectorAll(`[data-cd="${CSS.escape(a.id)}"]`).forEach(el=>el.textContent=a.status==="pausada"?"pausada":s>0?"faltam "+fmtSeg(s):"0 min");
+    document.querySelectorAll(`[data-cdbar="${CSS.escape(a.id)}"]`).forEach(el=>el.style.width=pc+"%");
+    document.querySelectorAll(`[data-cdpc="${CSS.escape(a.id)}"]`).forEach(el=>el.textContent=Math.round(pc)+"%");
+    document.querySelectorAll(`[data-cd2="${CSS.escape(a.id)}"]`).forEach(el=>el.textContent=fmtSeg(s));
+    if(a.status==="imprimindo"&&s<=0&&!ultZero.has(a.id)){ ultZero.add(a.id); toast(`${impNome(a.impressora)}: o tempo de "${a.descricao}" acabou. Confira e marque Concluiu.`); if(tab==="fila") renderImpressoras() }
+  }
+},1000);
+setInterval(()=>{ if(!document.hidden&&me&&["fila","hoje","manutencao"].includes(tab)&&!impForm) carregaImpressoes() },30000);
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden&&me&&["fila","hoje"].includes(tab)) carregaImpressoes() });
+
 function renderFila(){
   if(!$("#filaLista")) return;
-  const f=filaOrdenada(), hd=horasDia(); let acum=0, atrasos=0;
-  const linhas=f.map((p,i)=>{const t=totPed(p);const ini=acum;acum+=t.horas;
-    const fim=addDias(hojeISO(),Math.max(0,Math.ceil(acum/hd)-1));const late=p.prazo&&fim>p.prazo;if(late)atrasos++;
-    return `<tr data-pid="${esc(p.id)}" class="${i===0?"agora":""}"><td class="num">${i+1}</td>
+  const f=filaOrdenada(), {res,carga,dia}=agenda(), lista=impLista(), varias=lista.length>1; let atrasos=0, tot=0;
+  const linhas=f.map((p,i)=>{const t=totPed(p), g=res.get(p.id); tot+=g.horas;
+    const late=p.prazo&&g.fim>p.prazo;if(late)atrasos++;
+    const selImp=podeEditar()&&varias&&!g.ativa?`<select data-fimp aria-label="Impressora"><option value="">Automática${!g.fixa?` (${esc(impNome(g.imp))})`:""}</option>${lista.map(x=>`<option value="${esc(x.id)}"${g.fixa&&x.id===g.imp?" selected":""}>${esc(x.nome)}</option>`).join("")}</select>`:esc(impNome(g.imp));
+    return `<tr data-pid="${esc(p.id)}" class="${g.ini===0?"agora":""}"><td class="num">${i+1}</td>
       <td><div class="pname">#${p.numero} · ${esc(p.cliente)}</div><div class="pcat clip">${esc(resumoItens(p))}</div></td>
+      <td>${selImp}${g.ativa?`<div class="pcat">imprimindo · faltam <span data-cd2="${esc(g.ativa.id)}">${fmtSeg(restanteS(g.ativa))}</span></div>`:""}</td>
       <td class="n">${soProntaEntrega(p)?'<span class="pill good">pronta entrega</span>':t.horas>0?fmtH(t.horas):'<span class="pill warn" title="Edite o pedido e informe o tempo de impressão dos itens">sem tempo</span>'}</td><td class="n num">${Math.round(t.gramas)} g</td>
       <td>${prazoPill(p)}</td>
-      <td><span class="num">${ddmm(fim)}</span> ${late?'<span class="pill bad">depois do prazo</span>':'<span class="pill good">no prazo</span>'}</td>
+      <td><span class="num">${ddmm(g.fim)}</span> ${late?'<span class="pill bad">depois do prazo</span>':'<span class="pill good">no prazo</span>'}</td>
       <td><span class="pill ${ST_CLS[p.status]}">${ST[p.status]}</span></td>
-      <td class="pact"><button class="btn sm ghost edit-only" data-fa2="editar">Editar</button> ${p.status==="aprovado"?'<button class="btn sm primary edit-only" data-fa2="imprimindo">Começar</button>':'<button class="btn sm primary edit-only" data-fa2="pronto">Pronto</button>'}</td></tr>`});
+      <td class="pact"><button class="btn sm ghost edit-only" data-fa2="editar">Editar</button> ${g.ativa?'<button class="btn sm primary edit-only" data-fa2="pronto">Pronto</button>':soProntaEntrega(p)?'<button class="btn sm primary edit-only" data-fa2="pronto">Pronto</button>':'<button class="btn sm primary edit-only" data-fa2="comecar">Começar</button>'}</td></tr>`});
+  const fimGeral=Object.keys(carga).reduce((m,id)=>Math.max(m,dia(id,carga[id])),0);
+  const livres=lista.filter(i=>!impAtiva(i.id)).length;
   $("#filaTiles").innerHTML=`
-    <div class="tile"><span class="tl">Na fila</span><span class="tv num">${f.length}</span><span class="ts">${f.length===1?"pedido para imprimir":"pedidos para imprimir"}</span></div>
-    <div class="tile"><span class="tl">Horas de impressão</span><span class="tv num">${fmtH(acum)||"0 min"}</span><span class="ts">${hd} h por dia de impressora</span></div>
-    <div class="tile main"><span class="tl">Fila livre em</span><span class="tv num">${acum>=hd?ddmm(addDias(hojeISO(),Math.floor(acum/hd))):"hoje"}</span><span class="ts">prazo para prometer a um pedido novo</span></div>
+    <div class="tile"><span class="tl">Impressoras</span><span class="tv num">${lista.length-livres}/${lista.length}</span><span class="ts">${livres?`${livres} livre${livres>1?"s":""} agora`:"todas imprimindo"}</span></div>
+    <div class="tile"><span class="tl">Na fila</span><span class="tv num">${f.length}</span><span class="ts">${fmtH(tot)||"0 min"} de impressão</span></div>
+    <div class="tile main"><span class="tl">Fila livre em</span><span class="tv num">${f.length&&fimGeral>0?ddmm(addDias(hojeISO(),fimGeral)):"hoje"}</span><span class="ts">prazo para prometer a um pedido novo: ${ddmm(previsaoNovo(0))}</span></div>
     <div class="tile"><span class="tl">Risco de atraso</span><span class="tv num ${atrasos?"neg":""}">${atrasos}</span><span class="ts">${atrasos?"pedidos ficam prontos depois do prazo":"tudo dentro do prazo"}</span></div>`;
-  $("#filaLista").innerHTML=f.length?`<div class="tablewrap"><table style="min-width:820px"><thead><tr><th>#</th><th>Pedido</th><th class="n">Máquina</th><th class="n">Filamento</th><th>Prazo</th><th>Previsão</th><th>Status</th><th></th></tr></thead><tbody>${linhas.join("")}</tbody></table></div>`
-    :`<div class="card empty"><h2>A impressora está livre</h2><p>Os pedidos aprovados aparecem aqui em ordem de prazo, com a previsão de quando cada um fica pronto.</p></div>`;
+  $("#filaLista").innerHTML=f.length?`<div class="tablewrap"><table style="min-width:900px"><thead><tr><th>#</th><th>Pedido</th><th>Impressora</th><th class="n">Máquina</th><th class="n">Filamento</th><th>Prazo</th><th>Previsão</th><th>Status</th><th></th></tr></thead><tbody>${linhas.join("")}</tbody></table></div>`
+    :`<div class="card empty"><h2>Nenhum pedido na fila</h2><p>Os pedidos aprovados aparecem aqui em ordem de prazo, divididos entre as impressoras, com a previsão de quando cada um fica pronto.</p></div>`;
   const semTempo=f.filter(p=>!soProntaEntrega(p)&&totPed(p).horas===0);
   $("#filaExtra").innerHTML=semTempo.length?`<p class="note"><strong>${semTempo.length===1?"1 pedido está":semTempo.length+" pedidos estão"} sem tempo de impressão</strong> (${semTempo.map(p=>"#"+p.numero).join(", ")}). Clique em Editar no pedido e preencha "Tempo un." de cada item para a previsão ficar certa.</p>`:"";
 }
 $("#filaLista").addEventListener("click",e=>{const b=e.target.closest("[data-fa2]");if(!b)return;const p=pedidos.find(x=>x.id===b.closest("[data-pid]").dataset.pid);if(!p)return;
   if(b.dataset.fa2==="editar"){setTab("pedidos");abrePedido(p);return}
+  if(b.dataset.fa2==="comecar"){
+    const g=agenda().res.get(p.id), livre=impLista().find(i=>i.id===g?.imp&&!impAtiva(i.id))||(!p.impressora&&impLista().find(i=>!impAtiva(i.id)));
+    if(!livre){ toast(`${impNome(g?.imp)} está ocupada. Conclua a impressão atual ou escolha outra impressora.`); return }
+    impForm={imp:livre.id,modo:"iniciar",ped:p.id}; renderImpressoras();
+    $(`#impCards [data-imp="${CSS.escape(livre.id)}"]`)?.scrollIntoView({behavior:"smooth",block:"center"}); return }
   mudaStatus(p,b.dataset.fa2)});
+$("#filaLista").addEventListener("change",async e=>{const s=e.target.closest("[data-fimp]");if(!s)return;const p=pedidos.find(x=>x.id===s.closest("[data-pid]").dataset.pid);if(!p)return;
+  try{ const r=await api("POST","/api/pedidos/"+encodeURIComponent(p.id)+"/impressora",{impressora:s.value}); const i=pedidos.findIndex(x=>x.id===p.id); if(i>=0) pedidos[i]=r; renderFila() }catch(err){ toast(err.message) }});
 
 /* ---------- estoque ---------- */
 let rolos=[], roloForm=false;
@@ -859,7 +1086,7 @@ $("#pecasLista").addEventListener("click",async e=>{
 });
 
 /* ---------- sua loja (config) ---------- */
-const LOJA=[["nome","Nome da loja","text","Ex.: Freire 3D"],["whatsapp","WhatsApp da loja","tel","Recebe os pedidos do catálogo"],["instagram","Instagram","text","@sualoja"],["pagamento","Formas de pagamento","text","Pix, cartão ou dinheiro"],["prazoDias","Prazo padrão (dias)","number","Usado em pedidos novos"],["horasDia","Impressora por dia (h)","number","Horas ligada; usado na fila"],["sobre","Texto do catálogo","text","Uma frase sobre a loja"],["metaLucro","Meta de lucro por mês (R$)","number","Aparece na tela Hoje"],["pixChave","Chave Pix","text","CPF, CNPJ, e-mail, celular (+55…) ou aleatória"],["pixNome","Nome no Pix","text","Como aparece no banco (vazio = nome da loja)"],["pixCidade","Cidade no Pix","text","Ex.: São Paulo"]];
+const LOJA=[["nome","Nome da loja","text","Ex.: Freire 3D"],["whatsapp","WhatsApp da loja","tel","Recebe os pedidos do catálogo"],["instagram","Instagram","text","@sualoja"],["pagamento","Formas de pagamento","text","Pix, cartão ou dinheiro"],["prazoDias","Prazo padrão (dias)","number","Usado em pedidos novos"],["horasDia","Horas por dia (padrão)","number","Para impressoras novas; cada uma tem o seu em Impressoras e fila"],["sobre","Texto do catálogo","text","Uma frase sobre a loja"],["metaLucro","Meta de lucro por mês (R$)","number","Aparece na tela Hoje"],["pixChave","Chave Pix","text","CPF, CNPJ, e-mail, celular (+55…) ou aleatória"],["pixNome","Nome no Pix","text","Como aparece no banco (vazio = nome da loja)"],["pixCidade","Cidade no Pix","text","Ex.: São Paulo"]];
 function renderLoja(){
   $("#cfgLoja").innerHTML=LOJA.map(([k,l,t,h])=>`<label class="f${k==="sobre"?" wide":""}">${l}<span class="hint">${h}</span><input id="lj-${k}" data-l="${k}" type="${t==="number"?"number":t}" ${t==="number"?'min="0" step="1"':""} value="${esc(cfg.loja[k]??"")}"></label>`).join("");
   const url=location.origin+"/catalogo";
@@ -1332,6 +1559,8 @@ function renderHoje(){
   } else payHtml=`<div class="card stack"><h3>Retorno do investimento</h3><p class="note" style="margin:0">Quando marcar os itens de <b>Compras e orçamento</b> como comprados, o sistema mostra quanto já voltou do que você investiu e em quantos meses se paga.</p><div><button class="btn" data-hg="compras">Abrir compras</button></div></div>`;
 
   const avisos=[];
+  if(imps.carregado) avisos.push(`<div class="card stack"><div class="row spread"><h3>Impressoras agora</h3><button class="btn sm" data-hg="fila">Abrir painel</button></div><ul class="hlist">${impLista().map(i=>{const a=impAtiva(i.id);
+    return `<li><span><b>${esc(i.nome)}</b>${a?` · ${esc(a.descricao)}`:""}</span><span class="row" style="gap:6px;flex-wrap:nowrap">${!a?'<span class="pill good">livre</span>':a.status==="pausada"?'<span class="pill warn">pausada</span>':`<span class="num" data-cd="${esc(a.id)}">faltam ${fmtSeg(restanteS(a))}</span><span class="pcat">${restanteS(a)>0?fimTxt(restanteS(a)):""}</span>`}</span></li>`}).join("")}</ul></div>`);
   if(novosCat.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Pedidos novos do catálogo <span class="pill acc">${novosCat.length}</span></h3><button class="btn sm" data-hg="pedidos">Ver pedidos</button></div><ul class="hlist">${novosCat.map(p=>linhaPed(p,`<span class="num">${brl(totPed(p).total)}</span><button class="btn sm primary" data-hm="orcamento">Responder</button>`)).join("")}</ul></div>`);
   if(urgentes.length) avisos.push(`<div class="card stack"><h3>Prazo vencendo</h3><ul class="hlist">${urgentes.map(p=>linhaPed(p,`${prazoPill(p)}<span class="pill ${ST_CLS[p.status]}">${ST[p.status]}</span>`)).join("")}</ul></div>`);
   if(prontos.length) avisos.push(`<div class="card stack"><h3>Prontos para entregar</h3><ul class="hlist">${prontos.map(p=>linhaPed(p,`${totPed(p).receber>0?`<span class="num">falta ${brl(totPed(p).receber)}</span>`:""}<button class="btn sm" data-hm="pronto">Avisar cliente</button>`)).join("")}</ul></div>`);
@@ -1344,7 +1573,7 @@ function renderHoje(){
   box.innerHTML=`<div class="hojehero"><div><h2>${saud}, ${esc((me?.nome||"").split(" ")[0])}!</h2><p>${esc(nomeDia)} · ${esc(resumoDia)}</p></div><div class="row" style="gap:8px"><button class="btn primary edit-only" data-hg="novoPed">+ Novo pedido</button><button class="btn edit-only" data-hg="venda">Registrar venda</button></div></div>
     <div class="tiles">
       <div class="tile main"><span class="tl">Lucro no mês</span><span class="tv num ${lucro<0?"neg":""}">${brl(lucro)}</span><span class="ts">${brl(bruto)} vendidos · ${pecas.toLocaleString("pt-BR")} ${pecas===1?"peça":"peças"}</span></div>
-      <div class="tile"><span class="tl">Na fila</span><span class="tv num">${f.length}</span><span class="ts">${!f.length?"impressora livre":horasFila>0?fmtH(horasFila)+" de impressão":"sem tempo informado"}</span></div>
+      <div class="tile"><span class="tl">Na fila</span><span class="tv num">${f.length}</span><span class="ts">${!f.length?"nenhum pedido esperando":horasFila>0?fmtH(horasFila)+" de impressão":"sem tempo informado"}</span></div>
       <div class="tile"><span class="tl">A receber</span><span class="tv num">${brl(receber)}</span><span class="ts">vendas e entradas pendentes</span></div>
       <div class="tile"><span class="tl">A pagar</span><span class="tv num ${pagar>0?"neg":""}">${brl(pagar)}</span><span class="ts">despesas pendentes do mês</span></div>
     </div>
@@ -1542,7 +1771,7 @@ $("#qoRes").addEventListener("click",async e=>{
   }
 });
 
-/* ---------- manutenção da impressora ---------- */
+/* ---------- manutenção (uma lista por impressora) ---------- */
 const MAN_PADRAO=[
   {id:"placa",nome:"Lavar a placa PEI com água e detergente",cada:30},
   {id:"bico",nome:"Limpar o bico e conferir se não está entupindo",cada:100},
@@ -1552,14 +1781,20 @@ const MAN_PADRAO=[
   {id:"correia",nome:"Conferir a tensão das correias",cada:500},
   {id:"hotend",nome:"Trocar o bico (hotend) por desgaste",cada:1500}
 ].map(t=>({...t,feitoH:0,feitoData:""}));
+/* versão antiga: uma lista só em cfg.manutencao; serve de origem para a impressora 1 */
 function manCfg(){ if(!cfg.manutencao||!Array.isArray(cfg.manutencao.tarefas)) cfg.manutencao={extraH:num(cfg.manutencao?.extraH),tarefas:clone(MAN_PADRAO)}; return cfg.manutencao }
-function horasImpressas(){ return pedidos.filter(p=>["pronto","entregue"].includes(p.status)).reduce((s,p)=>s+totPed(p).horas,0)+num(manCfg().extraH) }
-function manEstado(){ const H=horasImpressas(); return manCfg().tarefas.map(t=>{const desde=H-num(t.feitoH), cada=Math.max(1,num(t.cada)); return {...t,desde,cada,falta:cada-desde,venc:desde>=cada,perto:desde>=cada*0.85}}) }
-function atualizaBadgeMan(){ const n=pedCarregado?manEstado().filter(t=>t.venc).length:0; const b=$("#badgeMan"); if(b){b.hidden=!n;b.textContent=n} }
+let manSel=null;
+const manImp=()=>impPorId(manSel)||impLista()[0];
+function horasImpressas(imp){ imp=imp||manImp(); return num(imp.extraH)+num(imps.horas[imp.id]) }
+function manTarefas(imp){ if(!Array.isArray(imp.tarefas)) imp.tarefas=clone(MAN_PADRAO); return imp.tarefas }
+function manEstado(imp){ imp=imp||manImp(); const H=horasImpressas(imp); return manTarefas(imp).map(t=>{const desde=H-num(t.feitoH), cada=Math.max(1,num(t.cada)); return {...t,desde,cada,falta:cada-desde,venc:desde>=cada,perto:desde>=cada*0.85}}) }
+const manPronto=()=>pedCarregado&&imps.carregado;
+function atualizaBadgeMan(){ const n=manPronto()?impLista().reduce((s,i)=>s+manEstado(i).filter(t=>t.venc).length,0):0; const b=$("#badgeMan"); if(b){b.hidden=!n;b.textContent=n} }
 function renderManutencao(){
-  const H=horasImpressas(), ts=manEstado(), venc=ts.filter(t=>t.venc), prox=ts.filter(t=>!t.venc).sort((a,b)=>a.falta-b.falta)[0];
+  const lista=impLista(), imp=manImp(), H=horasImpressas(imp), ts=manEstado(imp), venc=ts.filter(t=>t.venc), prox=ts.filter(t=>!t.venc).sort((a,b)=>a.falta-b.falta)[0];
+  $("#manImps").innerHTML=lista.length>1?lista.map(i=>{const v=manEstado(i).filter(t=>t.venc).length;return `<button class="chip${i.id===imp.id?" on":""}" data-msel="${esc(i.id)}">${esc(i.nome)}${v?` <b>${v}</b>`:""}</button>`}).join(""):"";
   $("#manTiles").innerHTML=`
-    <div class="tile main"><span class="tl">Horas impressas</span><span class="tv num">${fmtH(H)||"0 min"}</span><span class="ts">pedidos prontos + horas avulsas</span></div>
+    <div class="tile main"><span class="tl">Horas impressas${lista.length>1?` · ${esc(imp.nome)}`:""}</span><span class="tv num">${fmtH(H)||"0 min"}</span><span class="ts">impressões registradas${num(imp.extraH)>0?` + ${fmtH(num(imp.extraH))} anteriores`:""}</span></div>
     <div class="tile"><span class="tl">Tarefas vencidas</span><span class="tv num ${venc.length?"neg":""}">${venc.length}</span><span class="ts">${venc.length?"faça e marque como feito":"tudo em dia"}</span></div>
     <div class="tile"><span class="tl">Próxima</span><span class="tv sm">${prox?fmtH(prox.falta):"—"}</span><span class="ts clip">${prox?esc(prox.nome):""}</span></div>`;
   $("#manLista").innerHTML=`<div class="tablewrap"><table style="min-width:760px"><thead><tr><th>Tarefa</th><th class="n">A cada</th><th>Última vez</th><th style="width:200px">Situação</th><th></th></tr></thead><tbody>
@@ -1570,19 +1805,20 @@ function renderManutencao(){
       <td><div class="rbar"><i style="width:${pc}%" class="${t.venc?"low":""}"></i></div><span class="pill ${t.venc?"bad":t.perto?"warn":"good"}">${t.venc?`vencida há ${fmtH(-t.falta)||"0 min"}`:`faltam ${fmtH(t.falta)}`}</span></td>
       <td class="pact"><div class="row" style="gap:4px;justify-content:flex-end;flex-wrap:nowrap"><button class="btn sm ${t.venc?"primary":""} edit-only" data-ma2="feito">Fiz hoje</button><button class="btn sm ghost edit-only" data-ma2="rm" aria-label="Remover tarefa">✕</button></div></td></tr>`}).join("")}
     </tbody></table></div><div class="row" style="margin-top:10px"><button class="btn ghost edit-only" data-ma2="add" type="button">+ Tarefa</button><button class="btn ghost edit-only" data-ma2="padrao" type="button">Restaurar sugestões</button></div>`;
-  $("#manExtraTot").textContent=num(manCfg().extraH)>0?`Já somadas: ${fmtH(num(manCfg().extraH))}`:"";
+  $("#manExtraTot").textContent=num(imp.extraH)>0?`Já somadas: ${fmtH(num(imp.extraH))}`:"";
   atualizaBadgeMan();
 }
-$("#manLista").addEventListener("change",e=>{const el=e.target.closest("[data-mf]"); if(!el) return; const t=manCfg().tarefas[+el.closest("[data-mi]").dataset.mi]; if(!t) return;
+$("#manImps").addEventListener("click",e=>{const b=e.target.closest("[data-msel]"); if(!b) return; manSel=b.dataset.msel; renderManutencao()});
+$("#manLista").addEventListener("change",e=>{const el=e.target.closest("[data-mf]"); if(!el) return; const t=manTarefas(manImp())[+el.closest("[data-mi]").dataset.mi]; if(!t) return;
   if(el.dataset.mf==="cada") t.cada=Math.max(1,num(el.value)); else t.nome=el.value.trim()||t.nome; saveCfg(); renderManutencao()});
-$("#manLista").addEventListener("click",e=>{const b=e.target.closest("[data-ma2]"); if(!b) return; const M=manCfg(); const a=b.dataset.ma2;
-  if(a==="add"){M.tarefas.push({id:uid(),nome:"Nova tarefa",cada:100,feitoH:horasImpressas(),feitoData:hojeISO()})}
-  else if(a==="padrao"){const H=horasImpressas();for(const p of MAN_PADRAO) if(!M.tarefas.some(t=>t.id===p.id)) M.tarefas.push({...p,feitoH:H,feitoData:hojeISO()})}
+$("#manLista").addEventListener("click",e=>{const b=e.target.closest("[data-ma2]"); if(!b) return; const imp=manImp(), T=manTarefas(imp), H=+horasImpressas(imp).toFixed(2); const a=b.dataset.ma2;
+  if(a==="add"){T.push({id:uid(),nome:"Nova tarefa",cada:100,feitoH:H,feitoData:hojeISO()})}
+  else if(a==="padrao"){for(const p of MAN_PADRAO) if(!T.some(t=>t.id===p.id)) T.push({...p,feitoH:H,feitoData:hojeISO()})}
   else { const i=+b.closest("[data-mi]").dataset.mi;
-    if(a==="feito"){M.tarefas[i].feitoH=+horasImpressas().toFixed(2);M.tarefas[i].feitoData=hojeISO();toast("Manutenção registrada")}
-    if(a==="rm") M.tarefas.splice(i,1) }
+    if(a==="feito"){T[i].feitoH=H;T[i].feitoData=hojeISO();toast("Manutenção registrada")}
+    if(a==="rm") T.splice(i,1) }
   saveCfg(); renderManutencao()});
-$("#btnManExtra").addEventListener("click",()=>{const v=num($("#manExtra").value); if(!(v>0)) return; const M=manCfg(); M.extraH=+(num(M.extraH)+v).toFixed(2); $("#manExtra").value=""; saveCfg(); renderManutencao(); toast(`${fmtH(v)} somadas`)});
+$("#btnManExtra").addEventListener("click",()=>{const v=num($("#manExtra").value); if(!(v>0)) return; const imp=manImp(); imp.extraH=+(num(imp.extraH)+v).toFixed(2); $("#manExtra").value=""; saveCfg(); renderManutencao(); toast(`${fmtH(v)} somadas em ${imp.nome}`)});
 
 /* ---------- kits e cupons ---------- */
 let kitForm=null, cupForm=null;
@@ -1706,8 +1942,9 @@ function lembretesHtml(){
     <p class="note" style="margin:0">Compraram há mais de um mês. Uma mensagem com uma novidade costuma trazer uma compra nova.</p><ul class="hlist">
     ${volta.map(c=>{const msg=`Olá, ${c.nome.split(" ")[0]}! Aqui é da ${loja}. Obrigado de novo pela última compra! Fizemos peças novas e lembrei de você. Quer que eu mande umas fotos?${location.origin?`\nCatálogo: ${location.origin}/catalogo`:""}`;
       return `<li data-vz="${esc(c.whatsapp)}"><span>${esc(c.nome)} <span class="pcat">· gastou ${brl(c.total)} · última compra há ${c.dias} dias</span></span><span class="row" style="gap:6px;flex-wrap:nowrap"><a class="btn sm" target="_blank" rel="noopener" data-hv="chamei" href="${esc(waLink(c.whatsapp,msg))}">Chamar</a><button class="btn sm ghost" data-hv="nao" type="button">Agora não</button></span></li>`}).join("")}</ul></div>`);
-  const venc=pedCarregado?manEstado().filter(t=>t.venc):[];
-  if(venc.length) out.push(`<div class="card stack"><div class="row spread"><h3>Manutenção da impressora</h3><button class="btn sm" data-hg="manutencao">Ver manutenção</button></div><ul class="hlist">${venc.map(t=>`<li><span>${esc(t.nome)}</span><span class="pill bad">vencida há ${fmtH(-t.falta)||"0 min"}</span></li>`).join("")}</ul></div>`);
+  const varias=impLista().length>1;
+  const venc=manPronto()?impLista().flatMap(i=>manEstado(i).filter(t=>t.venc).map(t=>({...t,imp:i}))):[];
+  if(venc.length) out.push(`<div class="card stack"><div class="row spread"><h3>Manutenção ${varias?"das impressoras":"da impressora"}</h3><button class="btn sm" data-hg="manutencao">Ver manutenção</button></div><ul class="hlist">${venc.map(t=>`<li><span>${varias?`<b>${esc(t.imp.nome)}</b> · `:""}${esc(t.nome)}</span><span class="pill bad">vencida há ${fmtH(-t.falta)||"0 min"}</span></li>`).join("")}</ul></div>`);
   return out.join("");
 }
 function lerDispensa(){ try{ return JSON.parse(localStorage.getItem("prec3d.chamados")||"{}")||{} }catch(e){ return {} } }

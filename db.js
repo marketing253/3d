@@ -92,6 +92,25 @@ CREATE TABLE IF NOT EXISTS compras (
   data_compra TEXT,
   criado_em TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS impressoes (
+  id TEXT PRIMARY KEY,
+  impressora_id TEXT NOT NULL,     -- id em config.impressoras
+  pedido_id TEXT,
+  descricao TEXT NOT NULL,
+  inicio INTEGER NOT NULL,         -- epoch ms
+  duracao_s INTEGER NOT NULL,      -- tempo previsto
+  pausado_em INTEGER,              -- epoch ms enquanto pausada
+  pausa_s INTEGER NOT NULL DEFAULT 0,
+  fim INTEGER,                     -- epoch ms
+  status TEXT NOT NULL CHECK (status IN ('imprimindo','pausada','concluida','falhou','cancelada')),
+  origem TEXT NOT NULL DEFAULT 'manual',  -- manual | pedido | ponte
+  progresso REAL,                  -- 0-100, quando vier da impressora
+  restante_s INTEGER,              -- tempo restante informado pela impressora
+  atualizado_em INTEGER NOT NULL,
+  criado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS impressoes_impressora ON impressoes(impressora_id, status);
+CREATE INDEX IF NOT EXISTS impressoes_pedido ON impressoes(pedido_id);
 CREATE TABLE IF NOT EXISTS rolos (
   id TEXT PRIMARY KEY,
   filamento_id TEXT NOT NULL,
