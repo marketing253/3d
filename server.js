@@ -3,6 +3,7 @@
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
+const https = require("https");
 const express = require("express");
 const session = require("express-session");
 const helmet = require("helmet");
@@ -398,93 +399,6 @@ const upload = multer({
   limits: { fileSize: 8 * 1024 * 1024, files: 1 },
   fileFilter: (req, file, cb) => cb(null, Boolean(TIPOS[file.mimetype])),
 });
-// ---------- puxar foto (e nome) do link do modelo: MakerWorld, Printables, Thingiverse ----------
-const dnsP = require("dns").promises;
-const netMod = require("net");
-function ipPrivado(ip) {
-  if (netMod.isIPv6(ip)) {
-    const l = ip.toLowerCase();
-    if (l === "::1" || l === "::" || l.startsWith("fe80") || l.startsWith("fc") || l.startsWith("fd")) return true;
-    const m = l.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/); return m ? ipPrivado(m[1]) : false;
-  }
-  const [a, b] = ip.split(".").map(Number);
-  return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
-}
-async function urlSegura(u) {
-  let x; try { x = new URL(u); } catch { throw new Error("Link inválido."); }
-  if (!/^https?:$/.test(x.protocol) || (x.port && !["80", "443"].includes(x.port))) throw new Error("Use um link http ou https.");
-  const ips = await dnsP.lookup(x.hostname, { all: true }).catch(() => []);
-  if (!ips.length) throw new Error("Não encontrei esse site.");
-  if (ips.some(i => ipPrivado(i.address))) throw new Error("Link não permitido.");
-  return x.href;
-}
-const UA_NAVEGADOR = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
-async function buscaSegura(u, limite, aceita) {
-  let atual = u;
-  for (let i = 0; i < 4; i++) {
-    atual = await urlSegura(atual);
-    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 12000);
-    let r;
-    try {
-      r = await fetch(atual, { redirect: "manual", signal: ctrl.signal, headers: { "User-Agent": UA_NAVEGADOR, "Accept": aceita, "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8" } });
-    } catch (e) { clearTimeout(t); throw new Error("O site não respondeu."); }
-    if (r.status >= 300 && r.status < 400 && r.headers.get("location")) { clearTimeout(t); atual = new URL(r.headers.get("location"), atual).href; continue; }
-    if (!r.ok) { clearTimeout(t); const e = new Error("bloqueado"); e.status = r.status; throw e; }
-    const partes = []; let total = 0; const leitor = r.body.getReader();
-    try {
-      for (;;) { const { done, value } = await leitor.read(); if (done) break; total += value.length; if (total > limite) { leitor.cancel().catch(() => {}); break; } partes.push(value); }
-    } finally { clearTimeout(t); }
-    return { tipo: (r.headers.get("content-type") || "").split(";")[0].trim().toLowerCase(), corpo: Buffer.concat(partes.map(p => Buffer.from(p))), url: atual };
-  }
-  throw new Error("Redirecionamentos demais.");
-}
-const desHtml = s => String(s || "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&#x27;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
-function metaHtml(html, nomes) {
-  for (const n of nomes) {
-    const re1 = new RegExp(`<meta[^>]+(?:property|name)=["']${n}["'][^>]*content=["']([^"']+)["']`, "i");
-    const re2 = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']${n}["']`, "i");
-    const m = html.match(re1) || html.match(re2); if (m) return desHtml(m[1]);
-  }
-  return "";
-}
-function tipoImagem(b) {
-  if (b.length < 12) return null;
-  if (b[0] === 0xff && b[1] === 0xd8) return "image/jpeg";
-  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return "image/png";
-  if (b.toString("ascii", 0, 4) === "RIFF" && b.toString("ascii", 8, 12) === "WEBP") return "image/webp";
-  if (b.toString("ascii", 0, 3) === "GIF") return "image/gif";
-  return null;
-}
-const limiteFotoLink = rateLimit({ windowMs: 10 * 60 * 1000, limit: 40, standardHeaders: "draft-7", legacyHeaders: false, message: { erro: "Muitas buscas seguidas. Espere alguns minutos." } });
-app.post("/api/foto-do-link", exigeLogin, exigeEdicao, limiteFotoLink, async (req, res) => {
-  const link = String(req.body?.url || "").trim().slice(0, 2000);
-  const ajuda = "Abra a página do modelo, clique com o botão direito na foto, escolha \"Copiar imagem\" e cole aqui com Ctrl+V.";
-  try {
-    let pagina = await buscaSegura(link, 6 * 1024 * 1024, "text/html,application/xhtml+xml,image/*;q=0.8,*/*;q=0.5");
-    let titulo = "", imgBuf = null;
-    if (tipoImagem(pagina.corpo)) imgBuf = pagina.corpo;
-    else {
-      const html = pagina.corpo.toString("utf8");
-      titulo = metaHtml(html, ["og:title", "twitter:title"]) || desHtml((html.match(/<title[^>]*>([^<]+)<\/title>/i) || [])[1] || "");
-      titulo = titulo.replace(/\s*[-|–]\s*(Modelo gratuito|Free 3D|Download|Printables|Thingiverse|MakerWorld|Thangs).*$/i, "").replace(/\s*[|–-]\s*(MakerWorld|Printables\.com|Thingiverse)\s*$/i, "").trim().slice(0, 150);
-      let img = metaHtml(html, ["og:image", "og:image:url", "og:image:secure_url", "twitter:image", "twitter:image:src"]);
-      if (!img) return res.status(422).json({ erro: "Não achei a foto nessa página. " + ajuda, titulo });
-      img = new URL(img, pagina.url).href;
-      const foto = await buscaSegura(img, 10 * 1024 * 1024, "image/avif,image/webp,image/png,image/jpeg,image/*");
-      imgBuf = foto.corpo;
-    }
-    const tipo = tipoImagem(imgBuf);
-    if (!tipo) return res.status(422).json({ erro: "O site não entregou uma imagem que eu consiga usar. " + ajuda, titulo });
-    res.set("Content-Type", tipo);
-    res.set("X-Titulo", encodeURIComponent(titulo || ""));
-    res.set("Cache-Control", "no-store");
-    res.send(imgBuf);
-  } catch (e) {
-    if (e.status) return res.status(422).json({ erro: `O site bloqueou a busca automática (código ${e.status}). ` + ajuda });
-    res.status(422).json({ erro: (e.message || "Não deu para buscar.") + " " + ajuda });
-  }
-});
-
 app.post("/api/fotos", exigeLogin, exigeEdicao, (req, res) => {
   upload.single("foto")(req, res, err => {
     if (err) return res.status(400).json({ erro: err.code === "LIMIT_FILE_SIZE" ? "Imagem grande demais (máximo 8 MB)." : "Não deu para receber a imagem." });
@@ -501,6 +415,90 @@ app.delete("/api/fotos/:nome", exigeLogin, exigeEdicao, (req, res) => {
   const usada = db.prepare("SELECT 1 FROM produtos WHERE foto = ?").get(req.params.nome);
   if (!usada) apagaFoto(req.params.nome);
   res.json({ ok: true });
+});
+
+// ---------- dados do link do modelo (MakerWorld / Thingiverse) ----------
+// O navegador não consegue ler essas páginas (CORS), então o servidor busca.
+// Só fala com hosts fixos: o id do modelo vem da URL, nunca o endereço inteiro.
+const UA_MODELO = "Precificador3D/1.0 (pre-visualizacao de link)";
+const HOSTS_IMAGEM = /^(makerworld\.bblmw\.com|public\.bblmw\.cn|(resize|cdn)\.thingiverse\.com)$/;
+const limiteModelo = rateLimit({ windowMs: 60 * 1000, limit: 30, standardHeaders: "draft-7", legacyHeaders: false });
+// Usa https.get e não fetch: o Cloudflare do MakerWorld bloqueia o fetch do Node (403).
+function httpsGet(url, { max = 5 * 1024 * 1024, timeout = 12000 } = {}) {
+  return new Promise((ok, falha) => {
+    const req = https.get(url, { headers: { "User-Agent": UA_MODELO, Accept: "*/*" } }, r => {
+      const partes = []; let total = 0;
+      r.on("data", d => { total += d.length; if (total > max) { req.destroy(Object.assign(new Error("grande"), { grande: true })); return; } partes.push(d); });
+      r.on("end", () => ok({ status: r.statusCode, headers: r.headers, corpo: Buffer.concat(partes) }));
+      r.on("error", falha);
+    });
+    req.setTimeout(timeout, () => req.destroy(new Error("tempo")));
+    req.on("error", falha);
+  });
+}
+async function buscaModelo(url, tipo) {
+  let r;
+  try { r = await httpsGet(url); if (r.status >= 500 || r.status === 403 || r.status === 429) throw new Error("site " + r.status); }
+  catch (e) { console.warn("modelo-info: 1ª tentativa falhou:", url, e.message); await new Promise(ok => setTimeout(ok, 800)); r = await httpsGet(url); }
+  if (r.status !== 200) throw Object.assign(new Error("site " + r.status), { site: r.status });
+  const texto = r.corpo.toString("utf8");
+  return tipo === "json" ? JSON.parse(texto) : texto;
+}
+const metaTag = (html, prop) => {
+  const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]*>`, "i"));
+  const c = m && m[0].match(/content=["']([^"']*)["']/i);
+  return c ? c[1].replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'") : "";
+};
+const linkImagem = u => { try { const x = new URL(u); return x.protocol === "https:" && HOSTS_IMAGEM.test(x.hostname) ? "/api/modelo-imagem?u=" + encodeURIComponent(x.href) : null; } catch { return null; } };
+
+app.get("/api/modelo-info", exigeLogin, exigeEdicao, limiteModelo, async (req, res) => {
+  let u; try { u = new URL(String(req.query.url || "").trim()); } catch { return res.status(400).json({ erro: "Link inválido." }); }
+  try {
+    if (/(^|\.)makerworld\.com$/.test(u.hostname)) {
+      const id = (u.pathname.match(/\/models\/(\d+)/) || [])[1];
+      if (!id) return res.status(400).json({ erro: "Não achei o número do modelo nesse link." });
+      const d = await buscaModelo(`https://makerworld.com/api/v1/design-service/design/${id}`, "json");
+      const perfil = Number((u.hash.match(/profileId-(\d+)/) || [])[1]);
+      const lista = Array.isArray(d.instances) ? d.instances : [];
+      const ins = lista.find(i => perfil && i.profileId === perfil) || lista.find(i => i.id === d.defaultInstanceId) || lista[0] || {};
+      return res.json({
+        site: "MakerWorld",
+        titulo: txt(d.titleTranslated || d.title, 120),
+        perfil: txt(ins.title, 120),
+        segundos: Math.max(0, Math.round(Number(ins.prediction) || 0)),
+        filamentos: (Array.isArray(ins.instanceFilaments) ? ins.instanceFilaments : []).slice(0, 8)
+          .map(f => ({ tipo: txt(f.type, 30), cor: /^#[0-9a-f]{3,8}$/i.test(f.color) ? f.color : "", g: n(f.usedG) }))
+          .filter(f => f.g > 0),
+        imagem: linkImagem(d.coverUrl || ins.cover),
+      });
+    }
+    if (/(^|\.)thingiverse\.com$/.test(u.hostname)) {
+      const id = (u.pathname.match(/thing:(\d+)/) || [])[1];
+      if (!id) return res.status(400).json({ erro: "Não achei o número do modelo nesse link." });
+      const html = await buscaModelo(`https://www.thingiverse.com/thing:${id}`, "text");
+      return res.json({ site: "Thingiverse", titulo: txt(metaTag(html, "og:title").replace(/\s+by\s+.*$/i, ""), 120), segundos: 0, filamentos: [], imagem: linkImagem(metaTag(html, "og:image")) });
+    }
+    res.status(422).json({ erro: "Só dá para puxar os dados de links do MakerWorld e do Thingiverse. Nos outros sites, envie a foto manualmente." });
+  } catch (e) {
+    if (e.site !== 404) console.warn("modelo-info:", u.href, e.message);
+    res.status(502).json({ erro: e.site === 404 ? "Modelo não encontrado. Confira o link." : "O site do modelo não respondeu. Tente de novo ou envie a foto manualmente." });
+  }
+});
+
+app.get("/api/modelo-imagem", exigeLogin, exigeEdicao, limiteModelo, async (req, res) => {
+  let url = String(req.query.u || "");
+  try {
+    for (let salto = 0; ; salto++) {
+      const x = new URL(url);
+      if (x.protocol !== "https:" || !HOSTS_IMAGEM.test(x.hostname) || salto > 3) return res.status(400).end();
+      const r = await httpsGet(x.href, { max: 20 * 1024 * 1024, timeout: 20000 });
+      if (r.status >= 300 && r.status < 400 && r.headers.location) { url = new URL(r.headers.location, x).href; continue; }
+      if (r.status !== 200) return res.status(502).end();
+      res.set("Content-Type", "application/octet-stream");
+      res.set("Cache-Control", "private, no-store");
+      return res.send(r.corpo);
+    }
+  } catch (e) { res.status(e.grande ? 413 : 502).end(); }
 });
 
 // Remove fotos enviadas que nunca foram salvas em um produto (mais de 1 dia)

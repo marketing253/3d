@@ -358,24 +358,6 @@ async function setFoto(file){
   }
   renderFoto(); renderFicha();
 }
-async function puxaDoLink(auto){
-  if(!draft) return; const u=$("#f-link").value.trim(), m=$("#puxaMsg");
-  if(!safeUrl(u)){ if(!auto){ m.textContent="Cole o link do modelo no campo acima."; $("#f-link").focus() } return }
-  const b=$("#btnPuxaFoto"); b.disabled=true; m.textContent="Buscando a foto no site…";
-  try{
-    const r=await fetch("/api/foto-do-link",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({url:u})});
-    if(r.status===401){ showAuth(); return }
-    if(!r.ok){ const j=await r.json().catch(()=>({})); if(j.titulo&&!$("#f-nome").value.trim()){ $("#f-nome").value=j.titulo; readForm(); renderFicha() } m.textContent=j.erro||"Não deu para buscar a foto."; return }
-    const titulo=decodeURIComponent(r.headers.get("X-Titulo")||"");
-    const blob=await r.blob();
-    if(titulo&&!$("#f-nome").value.trim()){ $("#f-nome").value=titulo; readForm() }
-    await setFoto(new File([blob],"foto",{type:blob.type||"image/jpeg"}));
-    m.textContent=titulo?"Foto e nome puxados do site. Confira e clique em Salvar.":"Foto puxada do site. Clique em Salvar para guardar.";
-  }catch(e){ m.textContent="Não deu para buscar a foto. Copie a imagem na página do modelo e cole aqui com Ctrl+V." }
-  finally{ b.disabled=false }
-}
-$("#btnPuxaFoto").addEventListener("click",()=>puxaDoLink(false));
-$("#f-link").addEventListener("paste",()=>setTimeout(()=>{ if(draft&&!draft.fotoId) puxaDoLink(true) },50));
 $("#f-foto").addEventListener("change",e=>{const f=e.target.files&&e.target.files[0];e.target.value="";setFoto(f)});
 $("#fotoBtn").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("#f-foto").click()}});
 $("#fotoRm").addEventListener("click",()=>{discardUnsavedFoto();draft.fotoId="";$("#fotoMsg").textContent="Foto removida. Clique em Salvar para confirmar.";renderFoto();renderFicha()});
@@ -384,6 +366,44 @@ document.addEventListener("paste",e=>{
   const it=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith("image/"));
   if(it){e.preventDefault();setFoto(it.getAsFile())}
 });
+
+/* ---------- puxar foto, nome, tempo e peso do link do modelo ---------- */
+const LINK_PUXA=/^https?:\/\/([a-z0-9-]+\.)*(makerworld\.com\/.*models\/\d+|thingiverse\.com\/thing:\d+)/i;
+let linkPuxado="";
+async function puxaDoLink(forcar,manual){
+  if(!draft) return;
+  const url=$("#f-link").value.trim(), m=$("#linkMsg");
+  if(!LINK_PUXA.test(url)){ if(forcar||manual) m.textContent=url?"Esse site não deixa puxar os dados automaticamente. Abra a página do modelo, clique com o botão direito na foto, escolha \"Copiar imagem\" e cole aqui com Ctrl+V.":"Cole o link do modelo no campo acima."; return }
+  if(url===linkPuxado&&!forcar) return;
+  linkPuxado=url; m.textContent="Buscando dados do modelo…";
+  try{
+    const x=await api("GET","/api/modelo-info?url="+encodeURIComponent(url));
+    if(!draft||$("#f-link").value.trim()!==url) return;
+    readForm();
+    const feito=[], mantido=[];
+    if(x.titulo){ if(!draft.nome||forcar){draft.nome=x.titulo;$("#f-nome").value=x.titulo;feito.push("nome")} else mantido.push("nome") }
+    const semPeso=!draft.filamentos.some(l=>num(l.gramas)>0);
+    if(x.filamentos.length){ if(semPeso||forcar){draft.filamentos=x.filamentos.map(f=>({filId:filPorTipo(f.tipo),gramas:f.g}));feito.push(`${x.filamentos.length>1?x.filamentos.length+" cores":"filamento"} (${x.filamentos.map(f=>f.g.toLocaleString("pt-BR")+" g "+esc(f.tipo)).join(" + ")})`)} else mantido.push("gramas") }
+    if(x.segundos>0){ if(!(draft.horas||draft.minutos)||forcar){draft.horas=Math.floor(x.segundos/3600);draft.minutos=Math.round((x.segundos%3600)/60);$("#f-h").value=draft.horas;$("#f-m").value=draft.minutos;feito.push(fmtH(x.segundos/3600)+" de impressão")} else mantido.push("tempo") }
+    renderFilLines(); renderFicha();
+    if(x.imagem&&(!draft.fotoId||forcar)){
+      $("#fotoMsg").textContent="Baixando a foto do modelo…";
+      try{
+        const r=await fetch(x.imagem,{credentials:"same-origin"}); if(!r.ok) throw new Error();
+        const blob=await r.blob();
+        if(draft&&$("#f-link").value.trim()===url){ await setFoto(new File([blob],"modelo.jpg",{type:"image/jpeg"})); feito.unshift("foto") }
+      }catch(e){ $("#fotoMsg").textContent="Não deu para baixar a foto do modelo. Envie uma manualmente." }
+    } else if(x.imagem) mantido.push("foto");
+    m.innerHTML=(feito.length?`<b>Puxado do ${esc(x.site)}:</b> ${feito.join(", ")}.`:`Nada novo para puxar do ${esc(x.site)}.`)
+      +(x.perfil?` Perfil: ${esc(x.perfil)}.`:"")
+      +(mantido.length?` Mantive o que você já tinha preenchido (${mantido.join(", ")}). <button type="button" class="linkbtn" id="linkForca">Trocar pelos dados do link</button>`:"")
+      +(x.filamentos.length?" Confira o filamento de cada linha e quantas peças saem por impressão.":"");
+  }catch(err){ linkPuxado=""; m.textContent=err.message }
+}
+$("#f-link").addEventListener("change",()=>puxaDoLink(false));
+$("#f-link").addEventListener("paste",()=>setTimeout(()=>puxaDoLink(false),0));
+$("#btnPuxaFoto").addEventListener("click",()=>{linkPuxado="";puxaDoLink(false,true)});
+$("#linkMsg").addEventListener("click",e=>{ if(e.target.id==="linkForca") puxaDoLink(true) });
 
 /* ---------- configuração ---------- */
 const MAQ=[["tarifaKwh","Tarifa de energia","R$/kWh",0.01,"Na sua conta de luz, com impostos"],

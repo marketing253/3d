@@ -5,6 +5,7 @@ Sistema para cadastrar produtos impressos em 3D (Bambu Lab A1 Combo), calcular o
 - **Login com senha:** senhas guardadas com bcrypt, sessão em cookie `httpOnly`, limite de 10 tentativas a cada 15 minutos.
 - **Três tipos de acesso:** Administrador (tudo, inclusive usuários), Editor (cadastra e edita) e Só leitura (só consulta).
 - **Tela Hoje:** lucro do mês, pedidos com prazo vencendo, pedidos novos do catálogo, prontos para entregar, filamento acabando, contas em aberto, meta do mês e retorno do investimento.
+- **Puxar dados do link do modelo:** cole o link do MakerWorld e a foto, o nome, o tempo e o peso de cada cor entram sozinhos (do perfil escolhido, se o link tiver `#profileId-…`). Do Thingiverse vem a foto e o nome. Printables e Cults bloqueiam a leitura automática.
 - **Importar do Bambu Studio:** envie o arquivo fatiado (.gcode.3mf ou .gcode) e o peso de cada cor e o tempo entram sozinhos no produto ou no orçamento. O arquivo é lido no navegador, não vai para o servidor.
 - **Orçamento rápido:** preço de peça sob medida sem cadastrar produto, já com mensagem, link e Pix.
 - **Manutenção da impressora:** conta as horas impressas e avisa quando limpar, lubrificar ou trocar peças.
