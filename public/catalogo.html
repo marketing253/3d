@@ -7,7 +7,7 @@
 <meta name="description" content="Peças impressas em 3D sob encomenda e à pronta entrega.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap">
 <link rel="stylesheet" href="/app.css">
 <style>
 body{padding-block:0 120px}
@@ -37,6 +37,39 @@ body{padding-block:0 120px}
 .prod .de{text-decoration:line-through;color:var(--muted);font-size:13px;font-family:var(--mono)}
 .prod .eco{font:600 11.5px var(--mono);color:var(--accent)}
 .foot{margin-top:40px;color:var(--muted);font-size:13px}
+/* tema moderno do catálogo */
+body{background:var(--bg)}
+.hero{margin:16px 0 4px;padding:34px 28px;border-radius:20px;color:#fff;background:radial-gradient(circle at 85% 15%,rgba(74,222,128,.4),transparent 45%),linear-gradient(135deg,#0d3a24,#14532d 60%,#166534);box-shadow:var(--shadow-lg)}
+.hero h1{color:#fff;font-size:clamp(30px,6vw,44px)}
+.hero h1 small{color:#86efac}
+.hero p{color:#cfe9d9}
+.hero .pill{background:rgba(255,255,255,.12);color:#fff}
+.hero .pill.acc{background:#22c55e;color:#04170c;text-decoration:none}
+.chips{margin-top:18px}
+.cat-grid{gap:18px}
+.prod{transition:transform .18s,box-shadow .18s;border:0}
+.prod:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
+.prod .ph{background:linear-gradient(135deg,var(--sunken),var(--accent-soft));font:800 18px var(--body);color:var(--accent-strong);letter-spacing:.05em}
+.prod h2{font-size:16.5px;font-weight:700}
+.prod .preco{font:800 22px var(--body);letter-spacing:-.02em;color:var(--ink)}
+.prod .btn.primary{border-radius:999px;padding:9px 18px}
+.step{border-radius:999px;border-color:var(--line-strong)}
+.step button{font-weight:700}
+.cartbar{border-top:0;box-shadow:0 -10px 30px rgba(16,40,28,.12);border-radius:20px 20px 0 0;padding-top:16px}
+.cartbar .btn.primary{border-radius:999px;padding:11px 20px}
+#kits h2{font-size:20px}
+.prod .eco,.prod .de{font-family:var(--body)}
+@media (max-width:560px){
+  .cat-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .prod .bd{padding:11px;gap:4px}
+  .prod h2{font-size:14.5px}
+  .prod p{font-size:12.5px}
+  .prod .ft{flex-direction:column;align-items:stretch;gap:8px}
+  .prod .preco{font-size:19px}
+  .prod .btn.primary{padding:8px 10px;font-size:13px}
+  .step{justify-content:space-between}
+  .hero{padding:24px 20px}
+}
 </style>
 </head>
 <body>

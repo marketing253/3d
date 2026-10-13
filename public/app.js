@@ -1301,7 +1301,9 @@ function renderHoje(){
   const lemb=lembretesHtml(); if(lemb) avisos.push(lemb);
   if(contas.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Contas em aberto no mês</h3><button class="btn sm" data-hg="financeiro">Financeiro</button></div><ul class="hlist">${contas.sort((a,b)=>String(a[3]).localeCompare(String(b[3]))).map(c=>`<li><span>${esc(c[1])} <span class="pcat">· ${ddmm(c[3])}</span></span><span class="num ${c[0]==="pagar"?"neg":"pos"}">${c[0]==="pagar"?"pagar ":"receber "}${brl(c[2])}</span></li>`).join("")}</ul></div>`);
 
-  box.innerHTML=`<div class="row spread"><p style="margin:0;color:var(--muted)">${esc(nomeDia)}</p><div class="row" style="gap:8px"><button class="btn primary edit-only" data-hg="novoPed">+ Novo pedido</button><button class="btn edit-only" data-hg="venda">Registrar venda</button></div></div>
+  const hora=new Date().getHours(), saud=hora<12?"Bom dia":hora<18?"Boa tarde":"Boa noite";
+  const resumoDia=[urgentes.length?`${urgentes.length} ${urgentes.length===1?"pedido com prazo vencendo":"pedidos com prazo vencendo"}`:"",novosCat.length?`${novosCat.length} ${novosCat.length===1?"pedido novo":"pedidos novos"} do catálogo`:"",prontos.length?`${prontos.length} para entregar`:""].filter(Boolean).join(" · ")||"Tudo tranquilo por aqui";
+  box.innerHTML=`<div class="hojehero"><div><h2>${saud}, ${esc((me?.nome||"").split(" ")[0])}!</h2><p>${esc(nomeDia)} · ${esc(resumoDia)}</p></div><div class="row" style="gap:8px"><button class="btn primary edit-only" data-hg="novoPed">+ Novo pedido</button><button class="btn edit-only" data-hg="venda">Registrar venda</button></div></div>
     <div class="tiles">
       <div class="tile main"><span class="tl">Lucro no mês</span><span class="tv num ${lucro<0?"neg":""}">${brl(lucro)}</span><span class="ts">${brl(bruto)} vendidos · ${pecas.toLocaleString("pt-BR")} ${pecas===1?"peça":"peças"}</span></div>
       <div class="tile"><span class="tl">Na fila</span><span class="tv num">${f.length}</span><span class="ts">${!f.length?"impressora livre":horasFila>0?fmtH(horasFila)+" de impressão":"sem tempo informado"}</span></div>
