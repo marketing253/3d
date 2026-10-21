@@ -1235,6 +1235,11 @@ ${r.pagar > 0 ? linha('<span class="muted">Ainda a pagar</span>', r.pagar, "mute
 });
 
 // ---------- cobranças pendentes ----------
+// contas a pagar: todas as vencidas e as que vencem nos próximos 40 dias
+app.get("/api/a-pagar", exigeLogin, (req, res) => {
+  const limite = new Date(Date.now() + 40 * 86400000).toISOString().slice(0, 10);
+  res.json(db.prepare("SELECT id, data, tipo, descricao, categoria, valor, status, obs FROM lancamentos WHERE tipo = 'saida' AND status = 'pendente' AND data <= ? ORDER BY data, criado_em LIMIT 60").all(limite));
+});
 app.get("/api/cobrancas", exigeLogin, (req, res) => {
   const vs = db.prepare(`SELECT v.id, v.data, v.descricao, v.cliente, v.quantidade*v.preco_unit - v.taxas - v.frete AS valor, v.quantidade*v.preco_unit AS bruto, p.dados AS pdados, p.numero
     FROM vendas v LEFT JOIN pedidos p ON p.id = v.pedido_id WHERE v.status = 'pendente' ORDER BY v.data`).all();

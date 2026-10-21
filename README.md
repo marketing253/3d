@@ -24,6 +24,7 @@ Sistema para cadastrar produtos impressos em 3D (Bambu Lab A1 Combo), calcular o
 - **Fila das impressoras:** ordem de impressão por prazo, horas de máquina, previsão de cada pedido e aviso de atraso.
 - **Estoque:** rolos de filamento (o consumo sai sozinho quando o pedido fica pronto) e peças à pronta entrega.
 - **Catálogo público** em `/catalogo`: sem login, com fotos, preços e carrinho que envia o pedido pelo WhatsApp e já cria o orçamento no sistema.
+- **Gastos do mês e vencimentos:** a tela Hoje mostra o total gasto no mês (pago e a pagar), os gastos por categoria e as próximas contas a pagar (vencidas e dos próximos 40 dias), com botão **Paguei**. No Financeiro, cada conta pendente mostra quando vence ou há quantos dias está vencida.
 - **Compras parceladas:** em + Despesa, escolha **Parcelado**, o número de parcelas e o 1º vencimento. Cada parcela vira uma conta a pagar no seu mês (mesmo dia; em meses mais curtos, o último dia), e dá para marcar as que já foram pagas.
 - **Financeiro:** vendas (com taxa do canal, frete e lucro calculados), despesas e receitas, saldo do mês e acumulado, contas a pagar e a receber, gráfico dos últimos 12 meses, despesas por categoria, mais vendidos e exportação em CSV.
 - **Dados:** banco SQLite e fotos ficam na pasta `data/` (fora do Git).

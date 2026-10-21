@@ -1275,6 +1275,9 @@ const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
 const pl=(n,s,p)=>`${n.toLocaleString("pt-BR")} ${n===1?s:p}`;
 const addMes=(k,d)=>{const [a,m]=k.split("-").map(Number);const x=new Date(Date.UTC(a,m-1+d,1));return x.toISOString().slice(0,7)};
 const dataBRc=s=>s?s.split("-").reverse().join("/"):"";
+/* texto e cor do vencimento de uma conta pendente */
+function vence(iso){ const d=diasAte(iso);
+  return d<0?{t:`vencida há ${-d} ${d===-1?"dia":"dias"}`,c:"bad"}:d===0?{t:"vence hoje",c:"warn"}:d===1?{t:"vence amanhã",c:"warn"}:d<=7?{t:`vence em ${d} dias`,c:"warn"}:{t:`vence ${ddmm(iso)}`,c:""} }
 const CAT_SAIDA=["Filamento","Energia","Embalagem","Peças e manutenção","Frete e correios","Marketing e anúncios","Taxas e impostos","Equipamentos","Outros"];
 const CAT_ENTRADA=["Venda avulsa","Aporte","Reembolso","Outros"];
 const vendaTot=v=>{const bruto=v.quantidade*v.preco_unit, liq=bruto-v.taxas-v.frete, custo=v.quantidade*v.custo_unit;return {bruto,liq,custo,lucro:liq-custo}};
@@ -1310,7 +1313,7 @@ function renderFin(){
   $("#finTop").innerHTML=te.length?`<table class="mini"><thead><tr><th>Produto</th><th class="n">Qtd</th><th class="n">Lucro</th></tr></thead><tbody>${te.map(([k,x])=>`<tr><td>${esc(k)}</td><td class="n">${x.q.toLocaleString("pt-BR")}</td><td class="n">${brl(x.l)}</td></tr>`).join("")}</tbody></table>`:`<p class="note">Nenhuma venda neste mês.</p>`;
   // lista
   const itens=[...vs.map(v=>({k:"venda",d:v.data,o:v})),...ls.map(l=>({k:l.tipo,d:l.data,o:l}))].sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:0);
-  $("#finLista").innerHTML=itens.length?`<div class="tablewrap"><table style="min-width:720px"><thead><tr><th>Data</th><th>Descrição</th><th>Categoria / canal</th><th class="n">Valor</th><th>Situação</th><th class="edit-only"></th></tr></thead><tbody>
+  $("#finLista").innerHTML=itens.length?`<div class="tablewrap"><table style="min-width:720px"><thead><tr><th>Data / venc.</th><th>Descrição</th><th>Categoria / canal</th><th class="n">Valor</th><th>Situação</th><th class="edit-only"></th></tr></thead><tbody>
   ${itens.map(({k,o})=>{
     let desc,cat,val,sub="";
     if(k==="venda"){const t=vendaTot(o);desc=`${esc(o.descricao)}${o.quantidade!==1?` <span class="pcat">× ${o.quantidade.toLocaleString("pt-BR")}</span>`:""}`;cat=`<span class="pill">Venda</span> ${esc(o.canal||"")}`;val=t.liq;sub=`<div class="pcat">lucro ${brl(t.lucro)}${o.cliente?" · "+esc(o.cliente):""}</div>`}
@@ -1319,7 +1322,7 @@ function renderFin(){
     const stTxt=pend?(val>=0?"A receber":"A pagar"):(val>=0?"Recebido":"Pago");
     return `<tr data-fk="${k}" data-fid="${esc(o.id)}"><td class="num">${dataBRc(o.data)}</td><td><div class="pname">${desc}</div>${sub}</td><td>${cat}</td>
       <td class="n ${val<0?"neg":"pos"}">${val<0?"− ":"+ "}${brl(Math.abs(val))}</td>
-      <td><span class="pill ${pend?"":"good"}">${stTxt}</span></td>
+      <td><span class="pill ${pend?(vence(o.data).c==="bad"?"bad":""):"good"}">${stTxt}</span>${pend?`<div class="pcat ${vence(o.data).c==="bad"?"neg":""}">${vence(o.data).t}</div>`:""}</td>
       <td class="edit-only fact" style="white-space:nowrap;text-align:right">${pend?'<button class="btn ghost" data-fa="quitar">Quitar</button>':""}<button class="btn ghost" data-fa="edit">Editar</button><button class="btn ghost" data-fa="del">Excluir</button></td></tr>`}).join("")}
   </tbody></table></div>`:`<div class="card empty"><h2>Nada lançado em ${nomeMes(finMes)}</h2><p>Registre uma venda, uma despesa (filamento, luz, embalagem) ou uma receita para acompanhar o mês.</p></div>`;
 }
@@ -1406,6 +1409,7 @@ function abreForm(tipo,o){
       <div class="row"><button class="btn primary" type="submit">Salvar</button><span class="note" id="ffMsg"></span></div>
     </form>`;
   }
+  if(tipo!=="venda") atualizaParc();
   box.scrollIntoView({behavior:"smooth",block:"start"});
   box.querySelector("input:not([type=date]),select")?.focus();
 }
@@ -1444,9 +1448,10 @@ function parcelasPrev(){
   return {n,total:total/100,primeira:(base+total-base*n)/100,demais:base/100,ini:data,fim:somaMeses(data,n-1)};
 }
 function atualizaParc(){
-  const f=$("#fl-forma"); if(!f) return; const par=f.value==="n";
+  const f=$("#fl-forma"), par=!!f&&f.value==="n";
+  $("#fl-dlab").textContent=par?"1º vencimento":$("#fl-status").value==="pendente"?"Vencimento":"Data";
+  if(!f) return;
   $("#fl-parc").hidden=!par; $("#fl-prev").hidden=!par; $("#fl-stbox").hidden=par;
-  $("#fl-dlab").textContent=par?"1º vencimento":"Data";
   if(!par) return; const p=parcelasPrev();
   $("#fl-prev").innerHTML=p?`<span><b style="margin:0">${p.n}× de ${brl(p.demais)}</b>${p.primeira!==p.demais?` (1ª de ${brl(p.primeira)})`:""} · de ${dataBRc(p.ini)} a ${dataBRc(p.fim)} · total ${brl(p.total)}. Cada parcela entra como conta ${finForm.tipo==="entrada"?"a receber":"a pagar"} no mês do vencimento.</span>`
     :"Preencha o valor, o número de parcelas e o 1º vencimento.";
@@ -1526,11 +1531,11 @@ async function pixDe(p){
 }
 
 /* ---------- Hoje ---------- */
-let resumo=null, finHoje=null;
+let resumo=null, finHoje=null, aPagar=[];
 async function carregaHoje(){
   try{
-    const [ps,rs,fh,rz,cb,cl]=await Promise.all([api("GET","/api/pedidos"),api("GET","/api/rolos"),api("GET","/api/financeiro?mes="+hojeISO().slice(0,7)),api("GET","/api/resumo"),api("GET","/api/cobrancas"),api("GET","/api/clientes")]);
-    pedidos=ps; pedCarregado=true; rolos=rs; finHoje=fh; resumo=rz; cobrancas=cb; clientesHoje=cl;
+    const [ps,rs,fh,rz,cb,cl,ap]=await Promise.all([api("GET","/api/pedidos"),api("GET","/api/rolos"),api("GET","/api/financeiro?mes="+hojeISO().slice(0,7)),api("GET","/api/resumo"),api("GET","/api/cobrancas"),api("GET","/api/clientes"),api("GET","/api/a-pagar")]);
+    pedidos=ps; pedCarregado=true; rolos=rs; finHoje=fh; resumo=rz; cobrancas=cb; clientesHoje=cl; aPagar=ap;
     renderHoje(); atualizaBadge(); atualizaBadgeMan(); recalcCatalogo();
   }catch(e){ if(e.status!==401) toast(e.message) }
 }
@@ -1547,7 +1552,11 @@ function renderHoje(){
   const hoje=hojeISO(), amanha=addDias(hoje,1);
   let bruto=0,lucro=0,pecas=0,receber=0,pagar=0; const contas=[];
   for(const v of finHoje.vendas){const t=vendaTot(v); if(v.status==="pago"){bruto+=t.bruto;lucro+=t.lucro;pecas+=v.quantidade} else {receber+=t.liq;contas.push(["receber",v.descricao+(v.cliente?" · "+v.cliente:""),t.liq,v.data])}}
-  for(const l of finHoje.lancamentos) if(l.status!=="pago"){ if(l.tipo==="entrada") receber+=l.valor; else pagar+=l.valor; contas.push([l.tipo==="entrada"?"receber":"pagar",l.descricao,l.valor,l.data]) }
+  let gastoPago=0; const gastoCat={};
+  for(const l of finHoje.lancamentos){
+    if(l.tipo==="saida"){ gastoCat[l.categoria]=(gastoCat[l.categoria]||0)+l.valor; if(l.status==="pago") gastoPago+=l.valor; else pagar+=l.valor }
+    else if(l.status!=="pago"){ receber+=l.valor; contas.push(["receber",l.descricao,l.valor,l.data]) } }
+  const gastoTot=gastoPago+pagar;
   const ativos=pedidos.filter(p=>!["entregue","cancelado"].includes(p.status));
   const urgentes=ativos.filter(p=>p.status!=="orcamento"&&p.prazo&&p.prazo<=amanha).sort((a,b)=>a.prazo.localeCompare(b.prazo));
   const novosCat=pedidos.filter(p=>p.origem==="catalogo"&&p.status==="orcamento");
@@ -1595,7 +1604,7 @@ function renderHoje(){
   if(prontos.length) avisos.push(`<div class="card stack"><h3>Prontos para entregar</h3><ul class="hlist">${prontos.map(p=>linhaPed(p,`${totPed(p).receber>0?`<span class="num">falta ${brl(totPed(p).receber)}</span>`:""}<button class="btn sm" data-hm="pronto">Avisar cliente</button>`)).join("")}</ul></div>`);
   if(acabando.length) avisos.push(`<div class="warnbox">Filamento acabando: ${acabando.map(r=>`${esc(nomeFil(r.filamento_id))} ${esc(r.cor)} (${Math.round(r.restante)} g)`).join(", ")}.</div>`);
   const lemb=lembretesHtml(); if(lemb) avisos.push(lemb);
-  if(contas.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Contas em aberto no mês</h3><button class="btn sm" data-hg="financeiro">Financeiro</button></div><ul class="hlist">${contas.sort((a,b)=>String(a[3]).localeCompare(String(b[3]))).map(c=>`<li><span>${esc(c[1])} <span class="pcat">· ${ddmm(c[3])}</span></span><span class="num ${c[0]==="pagar"?"neg":"pos"}">${c[0]==="pagar"?"pagar ":"receber "}${brl(c[2])}</span></li>`).join("")}</ul></div>`);
+  if(contas.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>A receber no mês</h3><button class="btn sm" data-hg="financeiro">Financeiro</button></div><ul class="hlist">${contas.sort((a,b)=>String(a[3]).localeCompare(String(b[3]))).map(c=>`<li><span>${esc(c[1])} <span class="pcat">· ${ddmm(c[3])}</span></span><span class="num ${c[0]==="pagar"?"neg":"pos"}">${c[0]==="pagar"?"pagar ":"receber "}${brl(c[2])}</span></li>`).join("")}</ul></div>`);
 
   const hora=new Date().getHours(), saud=hora<12?"Bom dia":hora<18?"Boa tarde":"Boa noite";
   const resumoDia=[urgentes.length?`${urgentes.length} ${urgentes.length===1?"pedido com prazo vencendo":"pedidos com prazo vencendo"}`:"",novosCat.length?`${novosCat.length} ${novosCat.length===1?"pedido novo":"pedidos novos"} do catálogo`:"",prontos.length?`${prontos.length} para entregar`:""].filter(Boolean).join(" · ")||"Tudo tranquilo por aqui";
@@ -1604,11 +1613,27 @@ function renderHoje(){
       <div class="tile main"><span class="tl">Lucro no mês</span><span class="tv num ${lucro<0?"neg":""}">${brl(lucro)}</span><span class="ts">${brl(bruto)} vendidos · ${pecas.toLocaleString("pt-BR")} ${pecas===1?"peça":"peças"}</span></div>
       <div class="tile"><span class="tl">Na fila</span><span class="tv num">${f.length}</span><span class="ts">${!f.length?"nenhum pedido esperando":horasFila>0?fmtH(horasFila)+" de impressão":"sem tempo informado"}</span></div>
       <div class="tile"><span class="tl">A receber</span><span class="tv num">${brl(receber)}</span><span class="ts">vendas e entradas pendentes</span></div>
-      <div class="tile"><span class="tl">A pagar</span><span class="tv num ${pagar>0?"neg":""}">${brl(pagar)}</span><span class="ts">despesas pendentes do mês</span></div>
+      <div class="tile"><span class="tl">Gastos do mês</span><span class="tv num ${gastoTot>0?"neg":""}">${brl(gastoTot)}</span><span class="ts">${brl(gastoPago)} pagos · ${brl(pagar)} a pagar</span></div>
     </div>
     ${avisos.join("")||`<div class="card"><p style="margin:0">Nada urgente hoje. Nenhum pedido com prazo vencendo, nenhum filamento acabando.</p></div>`}
+    ${gastosHtml(gastoTot,gastoPago,pagar,gastoCat)}
     <div class="grid2">${metaHtml}${payHtml}</div>`;
 }
+function gastosHtml(tot,pago,pend,cats){
+  const ce=Object.entries(cats).sort((a,b)=>b[1]-a[1]), cmax=Math.max(1,...ce.map(x=>x[1]));
+  const lista=aPagar.slice(0,12), atras=aPagar.filter(l=>diasAte(l.data)<0);
+  return `<div class="card stack"><div class="row spread"><h3>Gastos do mês · ${brl(tot)}</h3><button class="btn sm" data-hg="financeiro">Financeiro</button></div>
+    ${tot>0?`<div class="rbar big" title="${brl(pago)} pagos de ${brl(tot)}"><i style="width:${pago/tot*100}%"></i></div><span class="pcat">${brl(pago)} já pagos · ${brl(pend)} a pagar neste mês</span>`:""}
+    <div class="grid2"><div class="stack" style="gap:8px"><h4 style="margin:0">Por categoria</h4>${ce.length?ce.map(([c,v])=>`<div class="hb" title="${esc(c)}: ${brl(v)}"><span class="hbl">${esc(c)}</span><span class="hbt"><i style="width:${v/cmax*100}%"></i></span><span class="hbv num">${brl(v)}</span></div>`).join(""):`<p class="note" style="margin:0">Nenhuma despesa lançada neste mês.</p>`}</div>
+    <div class="stack" style="gap:8px"><h4 style="margin:0">Próximas contas a pagar${atras.length?` <span class="pill bad">${atras.length} vencida${atras.length>1?"s":""}</span>`:""}</h4>
+      ${lista.length?`<ul class="hlist">${lista.map(l=>{const v=vence(l.data);return `<li data-ap="${esc(l.id)}"><span>${esc(l.descricao)} <span class="pcat">· ${dataBRc(l.data)}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap"><span class="pill ${v.c}">${v.t}</span><b class="num">${brl(l.valor)}</b><button class="btn sm edit-only" data-apg="1" type="button">Paguei</button></span></li>`}).join("")}</ul>${aPagar.length>lista.length?`<p class="note" style="margin:0">E mais ${aPagar.length-lista.length} nos próximos 40 dias.</p>`:""}`
+      :`<p class="note" style="margin:0">Nenhuma conta a pagar nos próximos 40 dias.</p>`}</div></div></div>`;
+}
+$("#hojeBox").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-apg]"); if(!b) return;
+  const l=aPagar.find(x=>x.id===b.closest("[data-ap]").dataset.ap); if(!l) return; b.disabled=true;
+  try{ await api("PUT","/api/lancamentos/"+encodeURIComponent(l.id),{...l,status:"pago"}); toast(`Pago: ${l.descricao}`); carregaHoje() }catch(err){ toast(err.message); b.disabled=false }
+});
 $("#hojeBox").addEventListener("click",e=>{
   const g=e.target.closest("[data-hg]");
   if(g){ const a=g.dataset.hg;
