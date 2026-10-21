@@ -368,6 +368,36 @@ function crud(tabela, limpa, cols) {
     res.json({ ok: true });
   });
 }
+// Compra parcelada: gera uma conta por mês (mesmo dia; em meses mais curtos, o último dia).
+// O valor total é dividido em centavos e a sobra do arredondamento vai na 1ª parcela.
+function somaMeses(iso, k) {
+  const [a, m, d] = iso.split("-").map(Number);
+  const ult = new Date(Date.UTC(a, m - 1 + k + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(a, m - 1 + k, Math.min(d, ult))).toISOString().slice(0, 10);
+}
+app.post("/api/lancamentos/parcelado", exigeLogin, exigeEdicao, (req, res) => {
+  const b = req.body || {};
+  const parcelas = Math.round(n(b.parcelas));
+  if (!(parcelas >= 2 && parcelas <= 60)) return res.status(400).json({ erro: "Informe de 2 a 60 parcelas." });
+  const { v, erro } = limpaLanc({ ...b, valor: b.valor, status: "pendente" }); if (erro) return res.status(400).json({ erro });
+  const centavos = Math.round(v.valor * 100);
+  const total = b.modo === "total" ? centavos : centavos * parcelas;
+  const base = Math.floor(total / parcelas), sobra = total - base * parcelas;
+  const pagas = Math.max(0, Math.min(parcelas, Math.round(n(b.pagas))));
+  const grupo = crypto.randomUUID().slice(0, 8);
+  const ins = db.prepare("INSERT INTO lancamentos (id, data, tipo, descricao, categoria, valor, status, obs, criado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  const criadas = [];
+  db.transaction(() => {
+    for (let k = 0; k < parcelas; k++) {
+      const valor = (base + (k === 0 ? sobra : 0)) / 100, data = somaMeses(v.data, k);
+      const obs = [`Parcela ${k + 1} de ${parcelas} · total ${(total / 100).toFixed(2).replace(".", ",")} · grupo ${grupo}`, v.obs].filter(Boolean).join(" · ").slice(0, 500);
+      ins.run(crypto.randomUUID(), data, v.tipo, `${v.descricao} (${k + 1}/${parcelas})`.slice(0, 150), v.categoria, valor, k < pagas ? "pago" : "pendente", obs, req.usuario.id);
+      criadas.push({ data, valor });
+    }
+  })();
+  res.json({ parcelas: criadas, total: total / 100 });
+});
+
 crud("vendas", limpaVenda, COLS_V);
 crud("lancamentos", limpaLanc, COLS_L);
 

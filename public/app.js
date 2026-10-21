@@ -1390,13 +1390,19 @@ function abreForm(tipo,o){
     box.innerHTML=`<form class="stack" id="ffLanc" autocomplete="off">
       <div class="row spread"><h2>${o.id?"Editar":"Nova"} ${ent?"receita":"despesa"}</h2><button type="button" class="btn ghost" data-ff="fechar">Fechar</button></div>
       <div class="fields">
-        <label class="f">Data<input type="date" id="fl-data" required value="${esc(data)}"></label>
+        <label class="f"><span id="fl-dlab">Data</span><input type="date" id="fl-data" required value="${esc(data)}"></label>
         <label class="f">Descrição<input id="fl-desc" required maxlength="150" placeholder="${ent?"Ex.: venda na feira":"Ex.: 2 rolos PLA preto"}" value="${esc(o.descricao||"")}"></label>
         <label class="f">Categoria<select id="fl-cat">${cats.map(c=>`<option${c===o.categoria?" selected":""}>${c}</option>`).join("")}</select></label>
         <label class="f">Valor<div class="unit pre"><span>R$</span><input id="fl-valor" type="number" min="0.01" step="0.01" required value="${esc(o.valor??"")}"></div></label>
-        <label class="f">Situação<select id="fl-status"><option value="pago"${st==="pago"?" selected":""}>${ent?"Recebido":"Pago"}</option><option value="pendente"${st==="pendente"?" selected":""}>${ent?"A receber":"A pagar"}</option></select></label>
+        <label class="f" id="fl-stbox">Situação<select id="fl-status"><option value="pago"${st==="pago"?" selected":""}>${ent?"Recebido":"Pago"}</option><option value="pendente"${st==="pendente"?" selected":""}>${ent?"A receber":"A pagar"}</option></select></label>
+        ${o.id?"":`<label class="f">Forma<select id="fl-forma"><option value="1">${ent?"De uma vez":"À vista"}</option><option value="n">Parcelado</option></select></label>`}
         <label class="f">Observação<input id="fl-obs" maxlength="500" value="${esc(o.obs||"")}"></label>
       </div>
+      ${o.id?"":`<div class="fields" id="fl-parc" hidden>
+        <label class="f">Número de parcelas<input id="fl-np" type="number" min="2" max="60" step="1" value="10"></label>
+        <label class="f">O valor informado é<select id="fl-modo"><option value="parcela">O de cada parcela</option><option value="total">O total da compra</option></select></label>
+        <label class="f">Parcelas já pagas<span class="hint">Ex.: 1 se a primeira já saiu da conta</span><input id="fl-pagas" type="number" min="0" step="1" value="0"></label>
+      </div><div class="vresumo" id="fl-prev" hidden></div>`}
       <div class="row"><button class="btn primary" type="submit">Salvar</button><span class="note" id="ffMsg"></span></div>
     </form>`;
   }
@@ -1429,6 +1435,24 @@ $("#finForm").addEventListener("input",e=>{
 });
 $("#finForm").addEventListener("change",e=>{ if(e.target.id==="fv-prod"||e.target.id==="fv-canal"){ if(e.target.id==="fv-prod"){finForm.custoManual=false;finForm.precoManual=false} aplicaProduto(); atualizaVenda() } });
 $("#finForm").addEventListener("click",e=>{ if(e.target.closest('[data-ff="fechar"]')) fechaForm() });
+/* compra parcelada: uma conta por mês, no mesmo dia (último dia em meses mais curtos) */
+function somaMeses(iso,k){const [a,m,d]=iso.split("-").map(Number);const ult=new Date(Date.UTC(a,m+k,0)).getUTCDate();return new Date(Date.UTC(a,m-1+k,Math.min(d,ult))).toISOString().slice(0,10)}
+function parcelasPrev(){
+  const n=Math.round(num($("#fl-np").value)), v=Math.round(num($("#fl-valor").value)*100), data=$("#fl-data").value;
+  if(!(n>=2&&n<=60)||!(v>0)||!data) return null;
+  const total=$("#fl-modo").value==="total"?v:v*n, base=Math.floor(total/n);
+  return {n,total:total/100,primeira:(base+total-base*n)/100,demais:base/100,ini:data,fim:somaMeses(data,n-1)};
+}
+function atualizaParc(){
+  const f=$("#fl-forma"); if(!f) return; const par=f.value==="n";
+  $("#fl-parc").hidden=!par; $("#fl-prev").hidden=!par; $("#fl-stbox").hidden=par;
+  $("#fl-dlab").textContent=par?"1º vencimento":"Data";
+  if(!par) return; const p=parcelasPrev();
+  $("#fl-prev").innerHTML=p?`<span><b style="margin:0">${p.n}× de ${brl(p.demais)}</b>${p.primeira!==p.demais?` (1ª de ${brl(p.primeira)})`:""} · de ${dataBRc(p.ini)} a ${dataBRc(p.fim)} · total ${brl(p.total)}. Cada parcela entra como conta ${finForm.tipo==="entrada"?"a receber":"a pagar"} no mês do vencimento.</span>`
+    :"Preencha o valor, o número de parcelas e o 1º vencimento.";
+}
+$("#finForm").addEventListener("input",e=>{ if(e.target.closest("#ffLanc")) atualizaParc() });
+$("#finForm").addEventListener("change",e=>{ if(e.target.closest("#ffLanc")) atualizaParc() });
 function fechaForm(){finForm=null;$("#finForm").hidden=true;$("#finForm").innerHTML=""}
 $("#finForm").addEventListener("submit",async e=>{
   e.preventDefault(); const m=$("#ffMsg"); const btn=e.submitter; if(btn) btn.disabled=true;
@@ -1440,6 +1464,11 @@ $("#finForm").addEventListener("submit",async e=>{
     }else{
       body={data:$("#fl-data").value,tipo:finForm.tipo,descricao:$("#fl-desc").value,categoria:$("#fl-cat").value,valor:num($("#fl-valor").value),status:$("#fl-status").value,obs:$("#fl-obs").value};
       url="/api/lancamentos";
+    }
+    if(!finForm.id&&$("#fl-forma")?.value==="n"){
+      const r=await api("POST","/api/lancamentos/parcelado",{...body,parcelas:num($("#fl-np").value),modo:$("#fl-modo").value,pagas:num($("#fl-pagas").value)});
+      toast(`${r.parcelas.length} parcelas lançadas · total ${brl(r.total)}`);
+      const mesNovo=r.parcelas[Math.min(r.parcelas.length-1,Math.round(num($("#fl-pagas").value)))].data.slice(0,7); fechaForm(); finMes=mesNovo; carregaFin(); return;
     }
     if(finForm.id) await api("PUT",url+"/"+encodeURIComponent(finForm.id),body); else await api("POST",url,body);
     if(body.baixarEstoque&&!finForm.id){const pp=produtos.find(x=>x.id===body.produto_id);if(pp)pp.estoque=Math.max(0,num(pp.estoque)-body.quantidade)}
