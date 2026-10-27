@@ -524,6 +524,20 @@ function totPed(p){
   const lucro=total-num(p.taxas)-num(p.freteVoce)-custo-num(p.freteCliente)*0;
   return {bruto,total,custo,horas,gramas,lucro,receber:Math.max(0,total-num(p.sinal))};
 }
+/* etapas do pedido: 1 orçamento → 2 entrada (50%) → 3 arte → 4 produção → 5 pronto → entregue.
+   O servidor manda a etapa em p.etapa e não deixa pular (sem entrada e arte não vai para a produção). */
+const ETAPA={orcamento:["1 · Orçamento",""],pagamento:["2 · Aguardando entrada","warn"],arte:["3 · Arte","acc"],producao:["4 · Produção","acc"],pronto:["5 · Pronto","good"],entregue:["Entregue","good"],recusado:["Recusado","bad"],cancelado:["Cancelado","bad"]};
+const etapaPed=p=>p.etapa||(p.status==="aprovado"||p.status==="imprimindo"?"producao":p.status);
+/* o próximo passo de cada etapa: [texto do botão, ação, destaque] */
+function proximoPasso(p){
+  const e=etapaPed(p), a=(p.artes||[]).at(-1);
+  if(e==="orcamento") return ["Mandar orçamento","msg",true];
+  if(e==="pagamento") return ["Confirmar entrada","entrada",!!p.pagInformado];
+  if(e==="arte") return !a||a.status==="ajuste"?[a?"Enviar nova versão da arte":"Enviar arte","arte",true]:["Arte com o cliente","arte",false];
+  if(e==="producao") return p.status==="imprimindo"?["Marcar pronto","pronto",true]:["Começar a imprimir","imprimindo",true];
+  if(e==="pronto") return ["Entregar","entregue",true];
+  return null;
+}
 /* entrada pedida ao cliente: valor do pedido ou % padrão da loja */
 const entradaPct=()=>cfg.loja.entradaPct===""||cfg.loja.entradaPct==null?50:Math.max(0,Math.min(100,num(cfg.loja.entradaPct)));
 const entradaPed=p=>{const t=totPed(p).total; return p.entrada!=null&&p.entrada!==""?Math.min(num(p.entrada),t):+(t*entradaPct()/100).toFixed(2)};
@@ -538,8 +552,10 @@ async function carregaPedidos(){
 function filtraPed(){
   const b=pedBusca.trim().toLowerCase();
   return pedidos.filter(p=>{
-    if(pedFiltro==="ativos"&&["entregue","cancelado"].includes(p.status)) return false;
-    if(!["ativos","todos"].includes(pedFiltro)&&p.status!==pedFiltro) return false;
+    const e=etapaPed(p);
+    if(pedFiltro==="ativos"&&["entregue","cancelado","recusado"].includes(e)) return false;
+    if(pedFiltro==="fim"&&!["cancelado","recusado"].includes(e)) return false;
+    if(!["ativos","todos","fim"].includes(pedFiltro)&&e!==pedFiltro) return false;
     if(b&&!(`#${p.numero} ${p.cliente} ${resumoItens(p)} ${p.whatsapp||""}`.toLowerCase().includes(b))) return false;
     return true;
   });
@@ -553,34 +569,51 @@ function prazoPill(p){
   return `<span class="num">${ddmm(p.prazo)}</span> <span class="pill ${cls}">${t}</span>`;
 }
 function renderPedidos(){
-  const cont={ativos:0,todos:pedidos.length}; for(const k in ST) cont[k]=0;
-  for(const p of pedidos){cont[p.status]++; if(!["entregue","cancelado"].includes(p.status)) cont.ativos++}
-  const chips=[["ativos","Em andamento"],...Object.entries(ST),["todos","Todos"]];
+  const cont={ativos:0,todos:pedidos.length,fim:0};
+  for(const p of pedidos){const e=etapaPed(p); cont[e]=(cont[e]||0)+1; if(["cancelado","recusado"].includes(e)) cont.fim++; else if(e!=="entregue") cont.ativos++}
+  const chips=[["ativos","Em andamento"],["orcamento","1 Orçamento"],["pagamento","2 Entrada"],["arte","3 Arte"],["producao","4 Produção"],["pronto","5 Pronto"],["entregue","Entregues"],["fim","Recusados"],["todos","Todos"]];
   $("#pedChips").innerHTML=chips.map(([k,n])=>`<button class="chip${pedFiltro===k?" on":""}" data-pf="${k}">${n} <b>${cont[k]||0}</b></button>`).join("");
   const lst=filtraPed();
   if(!pedCarregado){ $("#pedLista").innerHTML=`<div class="card empty"><h2>Carregando pedidos…</h2></div>`; return }
   if(!lst.length){ $("#pedLista").innerHTML=`<div class="card empty"><h2>${pedidos.length?"Nenhum pedido neste filtro":"Nenhum pedido ainda"}</h2><p>Crie um orçamento com os produtos, gere a mensagem para o WhatsApp e acompanhe até a entrega. Quando o pedido é entregue, a venda entra sozinha no Financeiro.</p><button class="btn primary edit-only" data-pa="novo">+ Novo pedido</button></div>`; return }
-  $("#pedLista").innerHTML=`<div class="tablewrap"><table style="min-width:860px"><thead><tr><th>Nº</th><th>Cliente</th><th>Itens</th><th>Prazo</th><th class="n">Total</th><th>Status</th><th></th></tr></thead><tbody>
-  ${lst.map(p=>{const t=totPed(p);const nx=ST_NEXT[p.status];
+  $("#pedLista").innerHTML=`<div class="tablewrap"><table style="min-width:560px"><thead><tr><th>Nº</th><th>Cliente e itens</th><th class="n">Total</th><th>Etapa e próximo passo</th><th></th></tr></thead><tbody>
+  ${lst.map(p=>{const t=totPed(p), e=etapaPed(p), et=ETAPA[e]||["",""], px=proximoPasso(p), a=(p.artes||[]).at(-1);
+    const det=e==="pagamento"?(p.pagInformado?"cliente avisou que pagou":`falta ${brl(Math.max(0,entradaPed(p)-num(p.sinal)))}`)
+      :e==="arte"?(!a?"enviar a arte":a.status==="ajuste"?"cliente pediu ajuste":`${VV(a.v)} com o cliente`)
+      :e==="producao"?(p.status==="imprimindo"?"imprimindo":"na fila"):e==="pronto"&&t.receber>0?`falta ${brl(t.receber)}`:e==="recusado"&&p.resposta?.motivo?`“${p.resposta.motivo}”`:"";
     return `<tr data-pid="${esc(p.id)}"><td class="num">#${p.numero}</td>
-      <td><div class="pname">${esc(p.cliente)}${p.origem==="catalogo"?' <span class="pill acc">catálogo</span>':""}${p.resposta?` <span class="pill ${p.resposta.acao==="aprovado"?"good":"bad"}" title="${esc(p.resposta.motivo||"")}">${p.resposta.acao==="aprovado"?"aprovado pelo cliente":"recusado pelo cliente"}</span>`:""}${(p.artes||[]).length?(a=>` <span class="pill ${(ARTE_ST[a.status]||[])[1]||""}" title="${esc(a.comentario||"")}">arte ${VV(a.v)}: ${(ARTE_ST[a.status]||[""])[0]}</span>`)(p.artes.at(-1)):""}</div><div class="pcat">${esc(p.canal||"")}${p.whatsapp?" · "+esc(p.whatsapp):""}</div></td>
-      <td style="max-width:260px"><div class="clip">${esc(resumoItens(p))}</div><div class="pcat">${t.horas?fmtH(t.horas)+" de máquina":"pronta entrega"}</div></td>
-      <td>${prazoPill(p)}</td>
-      <td class="n">${brl(t.total)}${num(p.sinal)>0&&p.status!=="entregue"?`<div class="pcat">falta ${brl(t.receber)}</div>`:""}</td>
-      <td><span class="pill ${ST_CLS[p.status]}">${ST[p.status]}</span></td>
+      <td style="max-width:320px"><div class="pname">${esc(p.cliente)}${p.origem==="catalogo"?' <span class="pill acc">catálogo</span>':""}</div><div class="pcat clip">${esc(resumoItens(p))}${p.prazo&&!["entregue","recusado","cancelado"].includes(e)?` · até ${ddmm(p.prazo)}`:""}</div></td>
+      <td class="n">${brl(t.total)}</td>
+      <td><span class="pill ${et[1]}">${et[0]}</span>${det?`<div class="pcat">${esc(det)}</div>`:""}${px?`<div style="margin-top:6px"><button class="btn sm ${px[2]?"primary":""} edit-only" data-pa="passo">${px[0]}</button></div>`:""}</td>
       <td class="pact"><div class="row" style="gap:4px;justify-content:flex-end;flex-wrap:nowrap">
-        ${nx?`<button class="btn sm primary edit-only" data-pa="next">${nx[1]}</button>`:""}
-        <button class="btn sm" data-pa="msg">WhatsApp</button>
-        <button class="btn sm ghost edit-only" data-pa="prop" title="Proposta comercial em PDF">Proposta</button>
-        <button class="btn sm ghost" data-pa="arte" title="Arte para o cliente aprovar">Arte</button>
-        ${p.status!=="entregue"?'<button class="btn sm ghost edit-only" data-pa="edit">Editar</button>':""}
-        <select class="sm edit-only" data-pa="st" aria-label="Mudar status">${Object.entries(ST).map(([k,n])=>`<option value="${k}"${k===p.status?" selected":""}>${n}</option>`).join("")}</select>
+        <details class="mais"><summary class="btn sm ghost" aria-label="Mais opções">⋯</summary><div class="menu">
+          <button data-pa="msg">Mensagem no WhatsApp</button>
+          <button data-pa="link">Copiar link do cliente</button>
+          ${p.status!=="entregue"?'<button class="edit-only" data-pa="edit">Editar pedido</button>':""}
+          <button class="edit-only" data-pa="arte">Arte</button>
+          <button class="edit-only" data-pa="prop">Proposta em PDF</button>
+          <label class="edit-only">Mudar status <select data-pa="st">${Object.entries(ST).map(([k,n])=>`<option value="${k}"${k===p.status?" selected":""}>${n}</option>`).join("")}</select></label>
+        </div></details>
       </div></td></tr>`}).join("")}
   </tbody></table></div>`;
 }
 $("#pedChips").addEventListener("click",e=>{const b=e.target.closest("[data-pf]");if(!b)return;pedFiltro=b.dataset.pf;renderPedidos()});
 $("#pedBusca").addEventListener("input",e=>{pedBusca=e.target.value;renderPedidos()});
 $("#btnNovoPed").addEventListener("click",()=>abrePedido(null));
+async function executaPasso(p,b){
+  const px=proximoPasso(p); if(!px) return;
+  b?.closest("details")?.removeAttribute("open");
+  if(px[1]==="msg") return abreMsg(p,"orcamento");
+  if(px[1]==="arte") return abreArte(p);
+  if(px[1]==="entrada"){
+    const v=Math.max(0,entradaPed(p)-num(p.sinal));
+    if(b&&b.dataset.ok!=="1"){ b.dataset.ok="1"; b.textContent=`Confirmar ${brl(v)} recebidos?`; b.classList.add("primary"); setTimeout(()=>{ if(b.isConnected&&b.dataset.ok==="1"){ b.dataset.ok=""; b.textContent=px[0] } },6000); return }
+    try{ const r=await api("POST","/api/pedidos/"+encodeURIComponent(p.id)+"/confirmar-entrada"); const i=pedidos.findIndex(x=>x.id===p.id); if(i>=0) pedidos[i]=r;
+      toast(`Entrada confirmada e lançada no caixa.${r.etapa==="arte"?" Agora envie a arte.":""}`); renderPedidos(); renderFila(); if(r.etapa==="arte") abreArte(r) }catch(err){ toast(err.message) }
+    return;
+  }
+  return mudaStatus(p,px[1]);
+}
 async function mudaStatus(p,novo){
   try{
     const g=["aprovado","imprimindo"].includes(p.status)&&["pronto","entregue"].includes(novo)?agenda().res.get(p.id):null; // horas vão para a impressora da fila
@@ -595,12 +628,15 @@ async function mudaStatus(p,novo){
 }
 $("#pedLista").addEventListener("click",e=>{
   const b=e.target.closest("[data-pa]"); if(!b||b.tagName==="SELECT") return;
+  if(b.tagName==="BUTTON") b.closest("details.mais")?.removeAttribute("open");
   if(b.dataset.pa==="novo") return abrePedido(null);
   const p=pedidos.find(x=>x.id===b.closest("[data-pid]")?.dataset.pid); if(!p) return;
   const a=b.dataset.pa;
   if(a==="next") mudaStatus(p,ST_NEXT[p.status][0]);
   if(a==="edit") abrePedido(p);
   if(a==="msg") abreMsg(p);
+  if(a==="link") linkDe(p).then(async l=>{ if(!l) return toast("Não deu para gerar o link."); try{await navigator.clipboard.writeText(l);toast("Link do cliente copiado")}catch(e){toast(l)} });
+  if(a==="passo") executaPasso(p,b);
   if(a==="prop") abreProposta(p);
   if(a==="arte") abreArte(p);
 });
@@ -638,6 +674,7 @@ function abrePedido(p){
       <label class="f">Frete cobrado do cliente<div class="unit pre"><span>R$</span><input id="pf-fc" type="number" min="0" step="0.01" value="${esc(d.freteCliente)}"></div></label>
       <label class="f">Frete pago por você<div class="unit pre"><span>R$</span><input id="pf-fv" type="number" min="0" step="0.01" value="${esc(d.freteVoce)}"></div></label>
       <label class="f">Taxas do canal<span class="hint">Calculada; pode ajustar</span><div class="unit pre"><span>R$</span><input id="pf-taxas" type="number" min="0" step="0.01" value="${esc(d.taxas)}"></div></label>
+      <label class="f">Arte<span class="hint">Peças personalizadas passam pela aprovação da arte</span><span class="chk"><input type="checkbox" id="pf-arte" ${d.semArte?"":"checked"}> O cliente aprova a arte antes da produção</span></label>
       <label class="f">Entrada pedida<span class="hint">Cobrada no link depois que o cliente aprova; vazio = ${entradaPct()}% do total</span><div class="unit pre"><span>R$</span><input id="pf-entrada" type="number" min="0" step="0.01" placeholder="${entradaPct()}%" value="${esc(d.entrada??"")}"></div></label>
       <label class="f">Sinal já recebido<span class="hint">Entra no caixa (Financeiro) na data de hoje</span><div class="unit pre"><span>R$</span><input id="pf-sinal" type="number" min="0" step="0.01" value="${esc(d.sinal)}"></div></label>
       <label class="f">Observação<input id="pf-obs" maxlength="1000" value="${esc(d.obs)}"></label>
@@ -667,7 +704,7 @@ function lePf(){
   const d=pedForm.d;
   d.cliente=$("#pf-cliente").value.trim(); d.whatsapp=$("#pf-whats").value.trim(); d.canal=$("#pf-canal").value;
   d.data=$("#pf-data").value; d.prazo=$("#pf-prazo").value; d.desconto=num($("#pf-desc").value); d.freteCliente=num($("#pf-fc").value);
-  d.freteVoce=num($("#pf-fv").value); d.taxas=num($("#pf-taxas").value); d.sinal=num($("#pf-sinal").value); d.entrada=$("#pf-entrada").value===""?"":num($("#pf-entrada").value); d.obs=$("#pf-obs").value.trim();
+  d.freteVoce=num($("#pf-fv").value); d.taxas=num($("#pf-taxas").value); d.sinal=num($("#pf-sinal").value); d.entrada=$("#pf-entrada").value===""?"":num($("#pf-entrada").value); d.semArte=!$("#pf-arte").checked; d.obs=$("#pf-obs").value.trim();
   if($("#pf-status")) d.status=$("#pf-status").value;
 }
 function atualizaPf(){
@@ -721,7 +758,7 @@ function textoMsg(p,tipo){
   const linhas=(p.itens||[]).map(i=>`• ${num(i.quantidade).toLocaleString("pt-BR")}× ${i.descricao} — ${brl(num(i.preco_unit))} cada = ${brl(num(i.quantidade)*num(i.preco_unit))}${i.personalizacao?`\n   Personalização: ${i.personalizacao}`:""}`).join("\n");
   const extras=[num(p.desconto)>0?`Desconto: -${brl(num(p.desconto))}`:"",num(p.freteCliente)>0?`Frete: ${brl(num(p.freteCliente))}`:""].filter(Boolean).join("\n");
   const pag=cfg.loja.pagamento?`\nPagamento: ${cfg.loja.pagamento}`:"";
-  if(tipo==="orcamento") return `Olá, ${nome}! Segue o orçamento da ${loja}:\n\n${linhas}${extras?"\n"+extras:""}\n\n*Total: ${brl(t.total)}*\n${p.prazo?`Prazo: fica pronto até ${dataBRc(p.prazo)}`:""}${pag}${entradaPed(p)>0?`\nEntrada para começar a produção: ${brl(entradaPed(p))}`:""}\n\nPosso confirmar o pedido?`;
+  if(tipo==="orcamento") return `Olá, ${nome}! Segue o seu orçamento da ${loja}:\n\n${linhas}${extras?"\n"+extras:""}\n\n*Total: ${brl(t.total)}*${p.prazo?`\nPronto até ${dataBRc(p.prazo)}`:""}\n\nComo funciona:\n1. Você aprova o orçamento pelo link\n2. Paga ${entradaPed(p)>0?`${brl(entradaPed(p))} (entrada)`:"o pedido"} por Pix ali mesmo\n3. Aprova a arte${p.semArte?" (se houver)":""}\n4. Produzimos e avisamos quando ficar pronto`;
   if(tipo==="confirmado") return `Olá, ${nome}! Pedido #${p.numero} confirmado na ${loja}.\n\n${linhas}\n\n*Total: ${brl(t.total)}*${num(p.sinal)>0?`\nSinal recebido: ${brl(num(p.sinal))}\nRestante na entrega: ${brl(t.receber)}`:""}\n${p.prazo?`Previsão: ${dataBRc(p.prazo)}`:""}\n\nAviso assim que estiver pronto!`;
   if(tipo==="pronto") return `Olá, ${nome}! Seu pedido #${p.numero} da ${loja} está pronto.\n\n${resumoItens(p)}\n${t.receber>0?`\nValor a pagar: *${brl(t.receber)}*${pag}`:"\nJá está todo pago."}\n\nComo prefere receber: retirada ou entrega?`;
   if(tipo==="cobranca") return `Olá, ${nome}! Passando para lembrar do pedido #${p.numero} da ${loja}.\nValor em aberto: *${brl(t.receber)}*${pag}\n\nQualquer dúvida, estou à disposição.`;
@@ -741,7 +778,7 @@ async function abreMsg(p,tipo){
   const [pix,link]=await Promise.all([usaPix?pixDe(p):null,linkDe(p)]); if(msgPed!==p) return;
   msgPix=pix&&pix.payload?pix:null; msgLink=link;
   let txt=textoMsg(p,tipo);
-  if(link&&tipo!=="obrigado") txt+=`\n\n${tipo==="orcamento"?"Veja o orçamento e *aprove ou recuse* por este link (depois de aprovar, aparece o Pix da entrada)":"Acompanhe seu pedido"}: ${link}`;
+  if(link&&tipo!=="obrigado") txt+=`\n\n${tipo==="orcamento"?"Aprove aqui":"Acompanhe seu pedido"}: ${link}`;
   if(msgPix) txt+=`\n\nPix copia e cola (${brl(totPed(p).receber)}):\n${msgPix.payload}`;
   box.innerHTML=`<div class="row spread"><h2>Mensagem para ${esc(p.cliente)} · pedido #${p.numero}</h2><button class="btn ghost" data-ma="fechar">Fechar</button></div>
     <div class="row">${[["orcamento","Orçamento"],["confirmado","Confirmação"],["pronto","Pedido pronto"],["cobranca","Cobrança"],["obrigado","Agradecimento"]].map(([k,n])=>`<button class="chip${k===tipo?" on":""}" data-mt="${k}">${n}</button>`).join("")}</div>
@@ -801,7 +838,7 @@ const fmtSeg=s=>{s=Math.max(0,Math.round(s));const h=Math.floor(s/3600),m=Math.f
 /* fila: distribui os pedidos entre as impressoras pela ordem de prazo.
    Pedido com impressora escolhida vai para ela; os outros vão para a que fica livre primeiro. */
 function filaOrdenada(excluiId){
-  return pedidos.filter(p=>["aprovado","imprimindo"].includes(p.status)&&p.id!==excluiId)
+  return pedidos.filter(p=>["aprovado","imprimindo"].includes(p.status)&&etapaPed(p)==="producao"&&p.id!==excluiId)
     .sort((a,b)=>(a.status==="imprimindo"?0:1)-(b.status==="imprimindo"?0:1)||(a.prazo||"9999").localeCompare(b.prazo||"9999")||a.numero-b.numero);
 }
 function agenda(excluiId){
@@ -1611,6 +1648,8 @@ function renderHoje(){
 
   const avisos=[];
   const resp=pedidos.filter(p=>p.resposta&&!p.resposta.visto).sort((a,b)=>String(b.resposta.em).localeCompare(a.resposta.em));
+  const pagos=pedidos.filter(p=>etapaPed(p)==="pagamento"&&p.pagInformado);
+  if(pagos.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Confirmar pagamentos <span class="pill warn">${pagos.length}</span></h3></div><p class="note" style="margin:0">O cliente avisou que pagou a entrada. Confira no banco e confirme: a arte é liberada em seguida.</p><ul class="hlist">${pagos.map(p=>`<li data-hp="${esc(p.id)}"><span><b class="num">#${p.numero}</b> ${esc(p.cliente)} <span class="pcat">· avisou ${new Date(p.pagInformado).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap"><b class="num">${brl(Math.max(0,entradaPed(p)-num(p.sinal)))}</b><button class="btn sm primary edit-only" data-hr="entrada">Confirmar</button></span></li>`).join("")}</ul></div>`);
   const respArte=pedidos.map(p=>({p,a:(p.artes||[]).at(-1)})).filter(x=>x.a&&["aprovada","ajuste"].includes(x.a.status)&&!x.a.visto);
   if(respArte.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Respostas das artes <span class="pill acc">${respArte.length}</span></h3></div><ul class="hlist">${respArte.map(({p,a})=>`<li data-hp="${esc(p.id)}"><span><b class="num">#${p.numero}</b> ${esc(p.cliente)} <span class="pill ${a.status==="aprovada"?"good":"bad"}">${a.status==="aprovada"?`aprovou a ${VV(a.v)}`:`pediu ajuste na ${VV(a.v)}`}</span>${a.comentario?` <span class="pcat">· “${esc(a.comentario)}”</span>`:""}</span><span class="row" style="gap:6px;flex-wrap:nowrap">${a.status==="ajuste"?'<button class="btn sm primary edit-only" data-hr="arte">Mandar nova versão</button>':""}<button class="btn sm" data-hr="okarte">Ok, vi</button></span></li>`).join("")}</ul></div>`);
   if(resp.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Respostas dos clientes <span class="pill acc">${resp.length}</span></h3><button class="btn sm" data-hg="pedidos">Ver pedidos</button></div><ul class="hlist">${resp.map(p=>{const ap=p.resposta.acao==="aprovado", fe=Math.max(0,entradaPed(p)-num(p.sinal));
@@ -1650,6 +1689,8 @@ function gastosHtml(tot,pago,pend,cats){
 $("#hojeBox").addEventListener("click",async e=>{
   const v=e.target.closest("[data-hr]"); if(!v) return; const id=v.closest("[data-hp]").dataset.hp;
   if(v.dataset.hr==="arte"){ const p=pedidos.find(x=>x.id===id); setTab("pedidos"); if(p) setTimeout(()=>abreArte(p),50); return }
+  if(v.dataset.hr==="entrada"){ const p=pedidos.find(x=>x.id===id); if(!p) return; v.disabled=true;
+    try{ const r=await api("POST","/api/pedidos/"+encodeURIComponent(id)+"/confirmar-entrada"); const i=pedidos.findIndex(x=>x.id===id); if(i>=0) pedidos[i]=r; toast("Entrada confirmada. Agora envie a arte."); renderHoje() }catch(err){ toast(err.message); v.disabled=false } return }
   v.disabled=true;
   try{ const r=await api("POST","/api/pedidos/"+encodeURIComponent(id)+(v.dataset.hr==="okarte"?"/arte-vista":"/resposta-vista")); const i=pedidos.findIndex(x=>x.id===id); if(i>=0) pedidos[i]=r; renderHoje() }catch(err){ toast(err.message); v.disabled=false }
 });
@@ -1769,10 +1810,12 @@ function renderQo(){
         <label class="f">Tempo de impressão<div class="unit"><input id="qo-h" type="number" min="0" step="1" value="${esc(qo.horas)}"><span>h</span></div></label>
         <label class="f">&nbsp;<div class="unit"><input id="qo-m" type="number" min="0" max="59" step="1" value="${esc(qo.minutos)}"><span>min</span></div></label>
         <label class="f">Peças por impressão<input id="qo-unid" type="number" min="1" step="1" value="${esc(qo.unidades)}"></label>
+      </div>
+      <details class="ajustes"><summary>Ajustes do cálculo (mão de obra, embalagem, margem)</summary><div class="fields" style="margin-top:10px">
         <label class="f">Trabalho manual por peça<div class="unit"><input id="qo-man" type="number" min="0" step="1" value="${esc(qo.manualMin)}"><span>min</span></div></label>
         <label class="f">Embalagem por peça<div class="unit pre"><span>R$</span><input id="qo-emb" type="number" min="0" step="0.01" value="${esc(qo.embalagem)}"></div></label>
         <label class="f">Margem %<input id="qo-marg" type="number" min="0" max="90" step="1" placeholder="${esc(cfg.margemPct)}" value="${esc(qo.margemPct)}"></label>
-      </div></div>`;
+      </div></details></div>`;
   calcQo();
 }
 function leQo(){
@@ -1797,9 +1840,8 @@ function calcQo(){
     <table class="mini"><thead><tr><th>Canal</th><th class="n">Sugerido</th></tr></thead><tbody>${r.canais.map(c=>`<tr${c.id===cnl?.id?' class="on"':""}><td>${esc(c.nome)}</td><td class="n">${brl(c.sugerido)}</td></tr>`).join("")}</tbody></table>
     <label class="f">Preço que vou cobrar por peça<span class="hint">Vazio = usa o sugerido do canal</span><div class="unit pre"><span>R$</span><input id="qo-preco" type="number" min="0" step="0.01" placeholder="${(ch?.sugerido||0).toFixed(2)}" value="${esc(qo.preco)}"></div></label>
     <div id="qoTot">${qoTotHtml()}</div>
-    <div class="stack" style="gap:8px"><button type="button" class="btn primary" data-qa="criar">Criar orçamento e mensagem</button>
-      <button type="button" class="btn" data-qa="criarProp">Criar orçamento e proposta em PDF</button>
-      <button type="button" class="btn" data-qa="produto">Salvar como produto</button>
+    <div class="stack" style="gap:8px"><button type="button" class="btn primary" data-qa="criar">Criar orçamento e mandar ao cliente</button>
+      <div class="row" style="gap:6px"><button type="button" class="btn sm ghost" data-qa="criarProp">Com proposta em PDF</button><button type="button" class="btn sm ghost" data-qa="produto">Salvar como produto</button></div>
       <span class="note" id="qoMsg"></span></div>`;
   function qoTotHtml(){
     const r2=calc(qoProd()), ch2=r2.canais.find(c=>c.id===cnl?.id)||r2.canais[0];
@@ -1885,6 +1927,7 @@ function renderArte(){
   const zap=link&&ult?waLink(p.whatsapp,`Olá, ${(p.cliente||"").split(" ")[0]}! Segue a arte ${VV(ult.v)} do seu pedido #${p.numero} para aprovação. É só abrir o link, conferir e clicar em Aprovar ou Pedir ajuste:\n${link}`):"";
   box.innerHTML=`<div class="row spread"><h2>Arte do pedido #${p.numero} · ${esc(p.cliente)}</h2><button class="btn ghost" data-aa="fechar">Fechar</button></div>
     ${ult?`<div class="row" style="gap:8px">${link?`<span class="num clip" style="max-width:100%">${esc(link)}</span><button class="btn sm" data-aa="copiar">Copiar link</button><a class="btn sm primary" target="_blank" rel="noopener" href="${esc(zap)}">Mandar no WhatsApp ↗</a><a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(link)}">Ver como o cliente vê ↗</a>`:""}</div>`:""}
+    ${["orcamento","pagamento"].includes(etapaPed(p))?`<div class="warnbox">${etapaPed(p)==="orcamento"?"O cliente ainda não aprovou o orçamento.":"A entrada ainda não foi confirmada."} A arte só vai para o cliente depois do pagamento da entrada.</div>`:""}
     <div class="importbox stack edit-only" style="gap:8px;align-items:stretch;text-align:left">
       <b>${ult?`Enviar nova versão (${VV(artes.length+1)})`:"Enviar a arte para o cliente aprovar"}</b>
       <div class="fields"><label class="f">Imagem da arte (mockup)<input id="ar-arq" type="file" accept="image/png,image/jpeg,image/webp"></label>
@@ -2331,3 +2374,13 @@ async function boot(){
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden&&me&&!draft) carregaDados() });
 boot();
 })();
+
+/* menu ⋯ da lista: fica por cima da tabela (que tem rolagem) e fecha ao clicar fora */
+$("#pedLista").addEventListener("toggle",e=>{
+  const d=e.target; if(!d.matches||!d.matches("details.mais")||!d.open) return;
+  document.querySelectorAll("details.mais[open]").forEach(x=>{ if(x!==d) x.removeAttribute("open") });
+  const r=d.querySelector("summary").getBoundingClientRect(), m=d.querySelector(".menu");
+  m.style.position="fixed"; m.style.right="auto"; m.style.top=Math.min(r.bottom+4,innerHeight-m.offsetHeight-8)+"px"; m.style.left=Math.max(8,r.right-m.offsetWidth)+"px";
+},true);
+document.addEventListener("click",e=>{ if(!e.target.closest("details.mais")) document.querySelectorAll("details.mais[open]").forEach(x=>x.removeAttribute("open")) });
+window.addEventListener("scroll",()=>document.querySelectorAll("details.mais[open]").forEach(x=>x.removeAttribute("open")),true);

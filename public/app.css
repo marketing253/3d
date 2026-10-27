@@ -510,3 +510,13 @@ td .pcell{min-width:230px}
 .artes{display:flex;flex-direction:column;gap:10px}
 .arte{display:grid;grid-template-columns:110px minmax(0,1fr);gap:12px;align-items:start;border:1px solid var(--line);border-radius:var(--r-sm,8px);padding:10px}
 .arte img{width:110px;height:110px;object-fit:contain;background:#0b1322;border-radius:6px}
+
+/* menu ⋯ da lista de pedidos */
+details.mais{position:relative}
+details.mais summary{list-style:none;cursor:pointer}
+details.mais summary::-webkit-details-marker{display:none}
+details.mais .menu{position:absolute;right:0;top:calc(100% + 4px);z-index:15;min-width:220px;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow-lg);padding:6px;display:flex;flex-direction:column}
+details.mais .menu button{background:none;border:0;text-align:left;font:inherit;color:var(--ink);padding:8px 10px;border-radius:6px;cursor:pointer}
+details.mais .menu button:hover{background:var(--sunken)}
+details.mais .menu label{display:flex;flex-direction:column;gap:4px;padding:8px 10px;font-size:13px;color:var(--muted)}
+details.ajustes summary{cursor:pointer;color:var(--muted);font-size:14px}

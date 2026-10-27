@@ -649,8 +649,25 @@ function limpaPedido(b) {
     obs: txt(b.obs, 1000), ...(b.origem === "catalogo" ? { origem: "catalogo" } : {}), ...(b.cupom ? { cupom: txt(b.cupom, 30).toUpperCase() } : {}),
     ...(b.impressora ? { impressora: txt(b.impressora, 60) } : {}),
     ...(b.entrada !== "" && b.entrada != null && Number.isFinite(Number(b.entrada)) ? { entrada: Math.max(0, n(b.entrada)) } : {}),
+    ...(b.semArte ? { semArte: true } : {}),
   } };
 }
+// ---------- etapas do pedido ----------
+// 1 orçamento → 2 pagamento da entrada → 3 arte aprovada → 4 produção → 5 pronto → entregue.
+// Não dá para pular: sem entrada confirmada e arte aprovada o pedido não vai para a produção.
+// Pronta entrega (só itens do estoque) e pedidos marcados "sem arte" pulam a etapa da arte.
+function totalPedido(p) { return n(p.itens.reduce((s, i) => s + i.quantidade * i.preco_unit, 0) - (p.desconto || 0) + (p.freteCliente || 0)); }
+function etapaDe(status, p) {
+  if (status === "cancelado") return p.resposta?.acao === "recusado" ? "recusado" : "cancelado";
+  if (["orcamento", "pronto", "entregue"].includes(status)) return status;
+  // pronta entrega e pedidos de antes do passo a passo (sem p.fluxo) não exigem entrada nem arte
+  const estoque = !p.fluxo || (p.itens.length > 0 && p.itens.every(i => i.doEstoque));
+  if (!estoque && n(p.sinal) + 0.004 < entradaDe(p, totalPedido(p), lojaConfig())) return "pagamento";
+  if (!estoque && !p.semArte && (p.artes || []).at(-1)?.status !== "aprovada") return "arte";
+  return "producao";
+}
+const FALTA_ETAPA = { pagamento: "Falta confirmar o pagamento da entrada.", arte: "Falta o cliente aprovar a arte.", orcamento: "O cliente ainda não aprovou o orçamento." };
+
 // ---------- sinal do pedido entra no caixa no dia em que foi recebido ----------
 // Cada aumento do sinal vira uma receita "Sinal do pedido #N" com a data de hoje; se o sinal diminuir,
 // tira das receitas mais novas. Na entrega, a venda guarda esse valor em "adiantado".
@@ -671,12 +688,13 @@ function sincronizaSinal(pedidoId, uid) {
     }
   }
 }
-function linhaPedido(r) { return { ...JSON.parse(r.dados), id: r.id, numero: r.numero, status: r.status, prazo: r.prazo, token: r.token || null, criadoEm: r.criado_em, atualizadoEm: r.atualizado_em }; }
+function linhaPedido(r) { const d = JSON.parse(r.dados); return { ...d, etapa: etapaDe(r.status, d), id: r.id, numero: r.numero, status: r.status, prazo: r.prazo, token: r.token || null, criadoEm: r.criado_em, atualizadoEm: r.atualizado_em }; }
 app.get("/api/pedidos", exigeLogin, (req, res) => {
   res.json(db.prepare("SELECT * FROM pedidos ORDER BY numero DESC LIMIT 1000").all().map(linhaPedido));
 });
 app.post("/api/pedidos", exigeLogin, exigeEdicao, (req, res) => {
   const { v, erro } = limpaPedido(req.body); if (erro) return res.status(400).json({ erro });
+  v.fluxo = 2; // passo a passo: orçamento → entrada → arte → produção
   const status = STATUS_PEDIDO.includes(req.body.status) && !["entregue", "pronto"].includes(req.body.status) ? req.body.status : "orcamento";
   const id = crypto.randomUUID();
   const numero = (db.prepare("SELECT COALESCE(MAX(numero),0) m FROM pedidos").get().m) + 1;
@@ -694,6 +712,8 @@ app.put("/api/pedidos/:id", exigeLogin, exigeEdicao, (req, res) => {
   const ant = JSON.parse(atual.dados); if (ant.proposta) v.proposta = ant.proposta; // a proposta tem rota própria
   if (ant.resposta) v.resposta = ant.resposta; // aprovação/recusa feita pelo cliente no link
   if (ant.artes) v.artes = ant.artes; // versões da arte enviadas para aprovação
+  if (ant.pagInformado) v.pagInformado = ant.pagInformado; // cliente avisou que pagou a entrada
+  if (ant.fluxo) v.fluxo = ant.fluxo;
   db.transaction(() => {
     db.prepare("UPDATE pedidos SET dados = ?, prazo = ?, atualizado_em = datetime('now') WHERE id = ?").run(JSON.stringify(v), v.prazo, req.params.id);
     sincronizaSinal(req.params.id, req.usuario.id);
@@ -706,6 +726,9 @@ app.post("/api/pedidos/:id/status", exigeLogin, exigeEdicao, (req, res) => {
   const r = db.prepare("SELECT * FROM pedidos WHERE id = ?").get(req.params.id);
   if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
   const p = JSON.parse(r.dados);
+  const et = etapaDe(r.status, p);
+  if (["imprimindo", "pronto", "entregue"].includes(novo) && ["pagamento", "arte"].includes(et))
+    return res.status(409).json({ erro: FALTA_ETAPA[et] + " Depois disso o pedido segue para a produção." });
   const avisos = [];
   db.transaction(() => {
     const ordem = s => STATUS_PEDIDO.indexOf(s);
@@ -761,6 +784,16 @@ app.delete("/api/pedidos/:id", exigeLogin, exigeEdicao, (req, res) => {
   db.prepare("UPDATE impressoes SET pedido_id = NULL WHERE pedido_id = ?").run(req.params.id);
   db.prepare("DELETE FROM lancamentos WHERE pedido_id = ?").run(req.params.id); // pedido apagado: tira o sinal do caixa
   res.json({ ok: true });
+});
+app.post("/api/pedidos/:id/confirmar-entrada", exigeLogin, exigeEdicao, (req, res) => {
+  const r = db.prepare("SELECT * FROM pedidos WHERE id = ?").get(req.params.id);
+  if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  if (!["aprovado", "imprimindo"].includes(r.status)) return res.status(400).json({ erro: "O pedido precisa estar aprovado." });
+  const p = JSON.parse(r.dados), entrada = entradaDe(p, totalPedido(p), lojaConfig());
+  const valor = req.body?.valor != null && n(req.body.valor) > 0 ? n(req.body.valor) : entrada;
+  p.sinal = n(Math.max(n(p.sinal), valor)); delete p.pagInformado;
+  db.transaction(() => { db.prepare("UPDATE pedidos SET dados = ?, atualizado_em = datetime('now') WHERE id = ?").run(JSON.stringify(p), r.id); sincronizaSinal(r.id, req.usuario.id); })();
+  res.json(linhaPedido(db.prepare("SELECT * FROM pedidos WHERE id = ?").get(r.id)));
 });
 app.post("/api/pedidos/:id/impressora", exigeLogin, exigeEdicao, (req, res) => {
   const r = db.prepare("SELECT * FROM pedidos WHERE id = ?").get(req.params.id);
@@ -970,6 +1003,8 @@ app.post("/api/impressoes", exigeLogin, exigeEdicao, (req, res) => {
   if (b.pedido) {
     pedido = db.prepare("SELECT * FROM pedidos WHERE id = ?").get(txt(b.pedido, 60));
     if (!pedido) return res.status(404).json({ erro: "Pedido não encontrado." });
+    const et = etapaDe(pedido.status, JSON.parse(pedido.dados));
+    if (et !== "producao") return res.status(409).json({ erro: (FALTA_ETAPA[et] || "Este pedido não está na etapa de produção.") + " Só dá para imprimir depois." });
   }
   const descricao = txt(b.descricao, 150) || (pedido ? `Pedido #${pedido.numero}` : "Impressão avulsa");
   const id = crypto.randomUUID(), agora = Date.now();
@@ -1272,7 +1307,7 @@ app.post("/api/publico/pedido", limitePedidoPublico, (req, res) => {
   const bruto = itens.reduce((s, i) => s + i.quantidade * i.preco_unit, 0);
   const cup = b.cupom ? cupomValido(b.cupom, bruto) : null;
   const dados = { cliente: nome, whatsapp: txt(b.whatsapp, 30).replace(/[^\d+]/g, ""), canal, data: hoje, prazo: prazoD.toISOString().slice(0, 10),
-    itens, desconto: cup && !cup.erro ? cup.desconto : 0, freteCliente: 0, freteVoce: 0, taxas: 0, sinal: 0,
+    itens, desconto: cup && !cup.erro ? cup.desconto : 0, freteCliente: 0, freteVoce: 0, taxas: 0, sinal: 0, fluxo: 2,
     obs: "Pedido feito pelo catálogo do site" + (cup && !cup.erro ? ` · cupom ${cup.codigo}` : ""), origem: "catalogo",
     ...(cup && !cup.erro ? { cupom: cup.codigo } : {}) };
   const id = crypto.randomUUID();
@@ -1503,6 +1538,14 @@ app.post("/api/publico/pedido/:token/resposta", limiteResposta, (req, res) => {
     .run(JSON.stringify(p), acao === "aprovar" ? "aprovado" : "cancelado", r.id);
   res.json({ ok: true });
 });
+app.post("/api/publico/pedido/:token/paguei", limiteResposta, (req, res) => {
+  const r = pedidoPorToken(req.params.token); if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  const p = JSON.parse(r.dados);
+  if (etapaDe(r.status, p) !== "pagamento") return res.status(409).json({ erro: "Este pedido não está aguardando pagamento." });
+  p.pagInformado = new Date().toISOString();
+  db.prepare("UPDATE pedidos SET dados = ? WHERE id = ?").run(JSON.stringify(p), r.id);
+  res.json({ ok: true });
+});
 app.post("/api/pedidos/:id/resposta-vista", exigeLogin, (req, res) => {
   const r = db.prepare("SELECT dados FROM pedidos WHERE id = ?").get(req.params.id);
   if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
@@ -1518,8 +1561,8 @@ app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
   const receber = n(Math.max(0, total - (p.sinal || 0)));
   const entrada = entradaDe(p, total, L), faltaEntrada = n(Math.max(0, entrada - (p.sinal || 0)));
   // Pix: nada antes de aprovar; depois, primeiro a entrada e, paga a entrada, o restante.
-  const pixTipo = ["orcamento", "cancelado", "entregue"].includes(r.status) || receber <= 0 ? null
-    : faltaEntrada > 0.004 && ["aprovado", "imprimindo"].includes(r.status) ? "entrada" : "restante";
+  const etP = etapaDe(r.status, p);
+  const pixTipo = receber <= 0 ? null : etP === "pagamento" ? "entrada" : etP === "pronto" ? "restante" : null;
   const pixValor = pixTipo === "entrada" ? faltaEntrada : receber;
   const pix = pixTipo ? await pixPara(pixValor, (pixTipo === "entrada" ? "ENT" : "PED") + r.numero) : null;
   res.set("Cache-Control", "no-store");
@@ -1532,7 +1575,8 @@ app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
       foto: fotoDoItem(i) ? `/pedido/${r.token}/foto/${k}` : null })),
     desconto: n(p.desconto), frete: n(p.freteCliente), total, sinal: n(p.sinal), receber,
     entrada, faltaEntrada, resposta: p.resposta ? { acao: p.resposta.acao, em: p.resposta.em } : null,
-    arte: p.artes && p.artes.length ? { v: p.artes.at(-1).v, status: p.artes.at(-1).status } : null,
+    etapa: etapaDe(r.status, p), pagInformado: p.pagInformado || null, semArte: !!p.semArte,
+    arte: p.artes && p.artes.length ? (a => ({ v: a.v, status: a.status, nota: a.nota || "", comentario: a.comentario || "", respondidoEm: a.respondidoEm || null, imagem: `/aprovacao/${r.token}/arte/${a.v}` }))(p.artes.at(-1)) : null,
     pix: pix ? { payload: pix.payload, svg: pix.svg, tipo: pixTipo, valor: pixValor, chave: txt(L.pixChave, 77), nome: txt(L.pixNome || L.nome, 60) } : null,
   });
 });
@@ -1550,6 +1594,8 @@ app.post("/api/pedidos/:id/arte", exigeLogin, exigeEdicao, (req, res) => {
   if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
   const foto = txt(req.body?.foto, 60);
   if (!FOTO_RE.test(foto)) return res.status(400).json({ erro: "Envie a imagem da arte." });
+  const etA = etapaDe(r.status, JSON.parse(r.dados));
+  if (["orcamento", "pagamento"].includes(etA)) return res.status(409).json({ erro: FALTA_ETAPA[etA] + " A arte vai para o cliente depois do pagamento da entrada." });
   const p = JSON.parse(r.dados); p.artes = Array.isArray(p.artes) ? p.artes : [];
   if (p.artes.length >= 30) return res.status(400).json({ erro: "Limite de 30 versões por pedido." });
   // versão anterior ainda sem resposta fica marcada como substituída
@@ -1610,9 +1656,8 @@ app.post("/api/publico/arte/:token/resposta", limiteResposta, (req, res) => {
   res.json({ ok: true });
 });
 app.get("/aprovacao/:token", limitePublico, (req, res) => {
-  if (!pedidoPorToken(req.params.token)) return res.status(404).send("Link não encontrado. Peça um novo link para a loja.");
-  res.set("Cache-Control", "no-store");
-  res.sendFile(path.join(__dirname, "public", "aprovacao.html"));
+  if (!TOKEN_RE.test(req.params.token)) return res.status(404).end();
+  res.redirect(302, "/pedido/" + req.params.token); // a arte agora é a etapa 3 do link do pedido
 });
 
 // logo da loja para as páginas públicas (pedido e catálogo)
