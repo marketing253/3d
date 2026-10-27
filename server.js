@@ -375,6 +375,23 @@ function somaMeses(iso, k) {
   const ult = new Date(Date.UTC(a, m - 1 + k + 1, 0)).getUTCDate();
   return new Date(Date.UTC(a, m - 1 + k, Math.min(d, ult))).toISOString().slice(0, 10);
 }
+// gera as parcelas (centavos inteiros; a sobra do arredondamento vai na 1ª) dentro de uma transação
+function criaParcelas({ data, tipo, descricao, categoria, obs, total, parcelas, pagas = 0, uid }) {
+  const base = Math.floor(total / parcelas), sobra = total - base * parcelas;
+  pagas = Math.max(0, Math.min(parcelas, pagas));
+  const grupo = crypto.randomUUID().slice(0, 8);
+  const ins = db.prepare("INSERT INTO lancamentos (id, data, tipo, descricao, categoria, valor, status, obs, criado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  const criadas = [];
+  db.transaction(() => {
+    for (let k = 0; k < parcelas; k++) {
+      const valor = (base + (k === 0 ? sobra : 0)) / 100, d = somaMeses(data, k);
+      const o = [`Parcela ${k + 1} de ${parcelas} · total ${(total / 100).toFixed(2).replace(".", ",")} · grupo ${grupo}`, obs].filter(Boolean).join(" · ").slice(0, 500);
+      ins.run(crypto.randomUUID(), d, tipo, `${descricao} (${k + 1}/${parcelas})`.slice(0, 150), categoria, valor, k < pagas ? "pago" : "pendente", o, uid);
+      criadas.push({ data: d, valor });
+    }
+  })();
+  return criadas;
+}
 app.post("/api/lancamentos/parcelado", exigeLogin, exigeEdicao, (req, res) => {
   const b = req.body || {};
   const parcelas = Math.round(n(b.parcelas));
@@ -382,19 +399,7 @@ app.post("/api/lancamentos/parcelado", exigeLogin, exigeEdicao, (req, res) => {
   const { v, erro } = limpaLanc({ ...b, valor: b.valor, status: "pendente" }); if (erro) return res.status(400).json({ erro });
   const centavos = Math.round(v.valor * 100);
   const total = b.modo === "total" ? centavos : centavos * parcelas;
-  const base = Math.floor(total / parcelas), sobra = total - base * parcelas;
-  const pagas = Math.max(0, Math.min(parcelas, Math.round(n(b.pagas))));
-  const grupo = crypto.randomUUID().slice(0, 8);
-  const ins = db.prepare("INSERT INTO lancamentos (id, data, tipo, descricao, categoria, valor, status, obs, criado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-  const criadas = [];
-  db.transaction(() => {
-    for (let k = 0; k < parcelas; k++) {
-      const valor = (base + (k === 0 ? sobra : 0)) / 100, data = somaMeses(v.data, k);
-      const obs = [`Parcela ${k + 1} de ${parcelas} · total ${(total / 100).toFixed(2).replace(".", ",")} · grupo ${grupo}`, v.obs].filter(Boolean).join(" · ").slice(0, 500);
-      ins.run(crypto.randomUUID(), data, v.tipo, `${v.descricao} (${k + 1}/${parcelas})`.slice(0, 150), v.categoria, valor, k < pagas ? "pago" : "pendente", obs, req.usuario.id);
-      criadas.push({ data, valor });
-    }
-  })();
+  const criadas = criaParcelas({ ...v, total, parcelas, pagas: Math.round(n(b.pagas)), uid: req.usuario.id });
   res.json({ parcelas: criadas, total: total / 100 });
 });
 
@@ -1103,7 +1108,16 @@ app.post("/api/compras/:id/comprar", exigeLogin, exigeEdicao, (req, res) => {
   if (!r) return res.status(404).json({ erro: "Item não encontrado." });
   const valor = n(req.body?.valor); const data = DATA_RE.test(req.body?.data || "") ? req.body.data : new Date().toISOString().slice(0, 10);
   if (valor <= 0) return res.status(400).json({ erro: "Informe quanto você pagou." });
-  const c = JSON.parse(r.dados);
+  const c = JSON.parse(r.dados), parcelas = Math.round(n(req.body.parcelas));
+  if (req.body.lancarDespesa && parcelas >= 2) {
+    // compra parcelada: uma conta a pagar por mês a partir do 1º vencimento, em vez do valor total de uma vez
+    if (parcelas > 60) return res.status(400).json({ erro: "Informe até 60 parcelas." });
+    const venc = DATA_RE.test(req.body.vencimento || "") ? req.body.vencimento : data;
+    db.prepare("UPDATE compras SET status = 'comprado', valor_pago = ?, data_compra = ? WHERE id = ?").run(valor, data, r.id);
+    criaParcelas({ data: venc, tipo: "saida", descricao: `${c.quantidade > 1 ? c.quantidade + "× " : ""}${c.nome}`, categoria: CAT_COMPRA[c.categoria] || "Outros",
+      obs: "Lista de compras", total: Math.round(valor * 100), parcelas, pagas: Math.round(n(req.body.pagas)), uid: req.usuario.id });
+    return res.json(linhaCompra(db.prepare("SELECT * FROM compras WHERE id = ?").get(r.id)));
+  }
   db.transaction(() => {
     db.prepare("UPDATE compras SET status = 'comprado', valor_pago = ?, data_compra = ? WHERE id = ?").run(valor, data, r.id);
     if (req.body.lancarDespesa) db.prepare("INSERT INTO lancamentos (id, data, tipo, descricao, categoria, valor, status, obs, criado_por) VALUES (?, ?, 'saida', ?, ?, ?, 'pago', ?, ?)")

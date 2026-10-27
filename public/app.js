@@ -1316,12 +1316,18 @@ $("#cmpLista").addEventListener("click",async e=>{
   if(a==="comprar"){const m=melhorCot(c);const cell=b.closest("td");
     cell.innerHTML=`<div class="buyrow"><div class="unit pre"><span>R$</span><input type="number" min="0" step="0.01" class="bv" value="${m?(num(m.preco)*num(c.quantidade)).toFixed(2):""}" placeholder="total pago" aria-label="Valor pago"></div>
       <input type="date" class="bd" value="${hojeISO()}" aria-label="Data da compra"><label class="chk"><input type="checkbox" class="bl" checked> Lançar no Financeiro</label>
+      <select class="bp" aria-label="Forma de pagamento"><option value="1">À vista</option><option value="n">Parcelado</option></select>
+      <span class="bparc" hidden><input type="number" class="bn" min="2" max="60" step="1" value="10" style="width:70px" aria-label="Número de parcelas"> parcelas · 1º vencimento <input type="date" class="bvenc" value="${addDias(hojeISO(),30)}" aria-label="Primeiro vencimento"></span>
       <button class="btn sm primary" data-cmpa="comprarok">Confirmar</button><button class="btn sm ghost" data-cmpa="cancel">Cancelar</button></div>`;
-    cell.querySelector(".bv").focus(); return}
+    cell.querySelector(".bv").focus();
+    cell.querySelector(".bp").addEventListener("change",e=>{cell.querySelector(".bparc").hidden=e.target.value!=="n"});
+    return}
   if(a==="cancel") return renderCompras();
   try{
     let r;
-    if(a==="comprarok"){const cell=b.closest("td");r=await api("POST","/api/compras/"+encodeURIComponent(c.id)+"/comprar",{valor:num(cell.querySelector(".bv").value),data:cell.querySelector(".bd").value,lancarDespesa:cell.querySelector(".bl").checked});toast(cell.querySelector(".bl").checked?"Comprado e lançado no Financeiro":"Marcado como comprado")}
+    if(a==="comprarok"){const cell=b.closest("td");const parc=cell.querySelector(".bp").value==="n"?Math.round(num(cell.querySelector(".bn").value)):1;
+      r=await api("POST","/api/compras/"+encodeURIComponent(c.id)+"/comprar",{valor:num(cell.querySelector(".bv").value),data:cell.querySelector(".bd").value,lancarDespesa:cell.querySelector(".bl").checked,parcelas:parc,vencimento:cell.querySelector(".bvenc").value});
+      toast(!cell.querySelector(".bl").checked?"Marcado como comprado":parc>1?`Comprado: ${parc} parcelas lançadas em Contas a pagar`:"Comprado e lançado no Financeiro")}
     if(a==="desfazer"){r=await api("POST","/api/compras/"+encodeURIComponent(c.id)+"/desfazer");toast("Voltou para a lista. Se lançou no Financeiro, exclua a despesa por lá.")}
     if(r){compras[compras.findIndex(x=>x.id===r.id)]=r;renderCompras()}
   }catch(err){ toast(err.message) }
