@@ -176,34 +176,31 @@ function renderLista(){
   const key={lucroH:x=>-(x.ch?.lucroH??-1e9),lucro:x=>-(x.ch?.lucro??-1e9),margem:x=>-(x.ch?.margem??-1e9),custo:x=>x.r.custo,nome:x=>x.p.nome.toLowerCase()}[sort];
   rows.sort((a,b)=>{const A=key(a),B=key(b);return A<B?-1:A>B?1:0});
   const maxLH=Math.max(...rows.map(x=>x.ch?.lucroH||0),1);
-  box.innerHTML=`<div class="tablewrap"><table><thead><tr>
-    <th></th><th>Produto</th><th class="n">Tempo/un.</th><th class="n">Filamento/un.</th><th class="n">Custo/un.</th>
-    <th class="n">Preço</th><th class="n">Lucro/un.</th><th class="n">Margem</th><th class="n">Lucro/h impressora</th><th></th></tr></thead><tbody>
+  box.innerHTML=`<div class="tablewrap"><table class="ajusta prods"><thead><tr>
+    <th>Produto</th><th class="n">Custo</th><th class="n">Preço</th><th class="n">Lucro</th><th class="n">Lucro/h</th><th></th></tr></thead><tbody>
     ${rows.map((x,i)=>{const {p,r,ch}=x;const lh=ch?.lucroH;
       const mCls=ch?.margem==null?"":ch.margem<0.15?"bad":ch.margem>=0.3?"good":"";
       return `<tr>
-      <td class="rank">${i+1}</td>
       <td><div class="pcell">${fotoSrc(p)?`<img class="thumb" src="${esc(fotoSrc(p))}" alt="" loading="lazy">`:`<span class="thumb ph">3D</span>`}
         <div style="min-width:0"><div class="pname">${esc(p.nome)}</div><div class="pcat">${esc(p.categoria||"Sem categoria")}${r.uni>1?` · ${r.uni} por mesa`:""}${num(p.estoque)>0?` · <span class="pill good">${num(p.estoque)} pronto${num(p.estoque)>1?"s":""}</span>`:""}${p.catalogo?` <span class="pill acc">catálogo</span>`:""}${safeUrl(p.linkModelo)?`<br><a href="${esc(safeUrl(p.linkModelo))}" target="_blank" rel="noopener">abrir modelo ↗</a>`:""}</div></div></div></td>
-      <td class="n">${fmtH(r.horasUnid)}</td>
-      <td class="n">${r.gramasUnid.toLocaleString("pt-BR",{maximumFractionDigits:1})} g</td>
-      <td class="n">${brl(r.custo)}</td>
+      <td class="n">${brl(r.custo)}<div class="pcat">${fmtH(r.horasUnid)} · ${r.gramasUnid.toLocaleString("pt-BR",{maximumFractionDigits:0})} g</div></td>
       <td class="n">${brl(ch?.usado)}${ch&&!ch.real?`<div class="pcat">sugerido</div>`:""}</td>
-      <td class="n">${brl(ch?.lucro)}</td>
-      <td class="n"><span class="pill ${mCls}">${pct(ch?.margem)}</span></td>
-      <td class="n"><div class="meter"><b style="width:${lh>0?Math.max(2,lh/maxLH*70):2}px"></b>${brl(lh)}</div></td>
-      <td style="white-space:nowrap;text-align:right" data-id="${esc(p.id)}" class="edit-only">
-        <button class="btn ghost" data-act="edit">Editar</button>
-        <button class="btn ghost" data-act="vender">Vendi</button>
-        ${p.catalogo&&num(p.precoCatalogo)>0?'<button class="btn ghost" data-act="link" title="Copiar o link deste produto no catálogo para mandar ao cliente">Link</button>':""}
-        <button class="btn ghost" data-act="dup">Duplicar</button>
-        <button class="btn ghost" data-act="del">Excluir</button></td></tr>`}).join("")}
+      <td class="n">${brl(ch?.lucro)}<div><span class="pill ${mCls}">${pct(ch?.margem)}</span></div></td>
+      <td class="n"><div class="meter"><b style="width:${lh>0?Math.max(2,lh/maxLH*50):2}px"></b>${brl(lh)}</div></td>
+      <td style="white-space:nowrap;text-align:right" data-id="${esc(p.id)}" class="edit-only"><div class="row" style="gap:4px;justify-content:flex-end;flex-wrap:nowrap">
+        <button class="btn sm" data-act="edit">Editar</button>
+        <details class="mais"><summary class="btn sm ghost" aria-label="Mais opções">⋯</summary><div class="menu">
+          <button data-act="vender">Vendi (registrar venda)</button>
+          ${p.catalogo&&num(p.precoCatalogo)>0?'<button data-act="link">Copiar link do catálogo</button>':""}
+          <button data-act="dup">Duplicar</button>
+          <button data-act="del">Excluir</button>
+        </div></details></div></td></tr>`}).join("")}
   </tbody></table></div>`;
 }
 function fmtH(h){if(!h)return "—";const t=Math.round(h*60);const H=Math.floor(t/60),M=t%60;return H?`${H}h${String(M).padStart(2,"0")}`:`${M} min`}
 $("#lista").addEventListener("click",async e=>{
   const b=e.target.closest("button[data-act]"); if(!b) return;
-  const act=b.dataset.act;
+  const act=b.dataset.act; b.closest("details.mais")?.removeAttribute("open");
   if(act==="novo"){startForm(null);setTab("novo");return}
   const id=b.closest("[data-id]")?.dataset.id; const p=produtos.find(x=>x.id===id); if(!p) return;
   if(act==="edit"){startForm(p);setTab("novo")}
@@ -211,7 +208,7 @@ $("#lista").addEventListener("click",async e=>{
   if(act==="link"){const u=location.origin+"/catalogo?p="+encodeURIComponent(p.id);try{await navigator.clipboard.writeText(u);toast("Link do produto copiado. Cole no WhatsApp do cliente.")}catch(err){toast(u)}return}
   if(act==="dup"){const c=clone(p);delete c.id;c.nome=p.nome+" (cópia)";startForm(c);setTab("novo")}
   if(act==="del"){
-    const td=b.parentElement;
+    const td=b.closest("td");
     td.innerHTML=`<span class="confirm">Excluir "${esc(p.nome)}"? <button class="btn danger" data-act="delok">Excluir</button><button class="btn ghost" data-act="delno">Manter</button></span>`;
   }
   if(act==="delno") renderLista();
@@ -592,7 +589,7 @@ function renderPedidos(){
   const lst=filtraPed();
   if(!pedCarregado){ $("#pedLista").innerHTML=`<div class="card empty"><h2>Carregando pedidos…</h2></div>`; return }
   if(!lst.length){ $("#pedLista").innerHTML=`<div class="card empty"><h2>${pedidos.length?"Nenhum pedido neste filtro":"Nenhum pedido ainda"}</h2><p>Crie um orçamento com os produtos, gere a mensagem para o WhatsApp e acompanhe até a entrega. Quando o pedido é entregue, a venda entra sozinha no Financeiro.</p><button class="btn primary edit-only" data-pa="novo">+ Novo pedido</button></div>`; return }
-  $("#pedLista").innerHTML=`<div class="tablewrap"><table style="min-width:560px"><thead><tr><th>Nº</th><th>Cliente e itens</th><th class="n">Total</th><th>Etapa e próximo passo</th><th></th></tr></thead><tbody>
+  $("#pedLista").innerHTML=`<div class="tablewrap"><table class="ajusta"><thead><tr><th>Nº</th><th>Cliente e itens</th><th class="n">Total</th><th>Etapa e próximo passo</th><th></th></tr></thead><tbody>
   ${lst.map(p=>{const t=totPed(p), e=etapaPed(p), et=ETAPA[e]||["",""], px=proximoPasso(p), a=(p.artes||[]).at(-1);
     const det=e==="pagamento"?(p.pagInformado?"cliente avisou que pagou":`falta ${brl(Math.max(0,entradaPed(p)-num(p.sinal)))}`)
       :e==="arte"?(!a?"enviar a arte":a.status==="ajuste"?"cliente pediu ajuste":`${VV(a.v)} com o cliente`)
@@ -2394,11 +2391,8 @@ async function boot(){
   }catch(err){ $("#authScreen").hidden=false; $("#authLoading").textContent=err.message }
 }
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden&&me&&!draft) carregaDados() });
-boot();
-})();
-
 /* menu ⋯ da lista: fica por cima da tabela (que tem rolagem) e fecha ao clicar fora */
-$("#pedLista").addEventListener("toggle",e=>{
+document.addEventListener("toggle",e=>{
   const d=e.target; if(!d.matches||!d.matches("details.mais")||!d.open) return;
   document.querySelectorAll("details.mais[open]").forEach(x=>{ if(x!==d) x.removeAttribute("open") });
   const r=d.querySelector("summary").getBoundingClientRect(), m=d.querySelector(".menu");
@@ -2406,3 +2400,6 @@ $("#pedLista").addEventListener("toggle",e=>{
 },true);
 document.addEventListener("click",e=>{ if(!e.target.closest("details.mais")) document.querySelectorAll("details.mais[open]").forEach(x=>x.removeAttribute("open")) });
 window.addEventListener("scroll",()=>document.querySelectorAll("details.mais[open]").forEach(x=>x.removeAttribute("open")),true);
+
+boot();
+})();

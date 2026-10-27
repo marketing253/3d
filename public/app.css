@@ -535,3 +535,8 @@ h1,.brand,.hojehero h2{font-family:var(--titulo);font-weight:400;letter-spacing:
 .brand::before{display:none}
 .brand{flex-direction:column;align-items:flex-start;gap:6px;padding:6px 10px 14px}
 .brandlogo{display:block;max-width:150px;max-height:56px;object-fit:contain}
+
+/* listas de pedidos e produtos cabem na tela, sem rolagem lateral */
+table.ajusta{min-width:0;width:100%}
+table.ajusta td,table.ajusta th{padding-left:10px;padding-right:10px}
+@media (max-width:640px){table.prods th:nth-child(5),table.prods td:nth-child(5){display:none}}
