@@ -524,6 +524,9 @@ function totPed(p){
   const lucro=total-num(p.taxas)-num(p.freteVoce)-custo-num(p.freteCliente)*0;
   return {bruto,total,custo,horas,gramas,lucro,receber:Math.max(0,total-num(p.sinal))};
 }
+/* entrada pedida ao cliente: valor do pedido ou % padrão da loja */
+const entradaPct=()=>cfg.loja.entradaPct===""||cfg.loja.entradaPct==null?50:Math.max(0,Math.min(100,num(cfg.loja.entradaPct)));
+const entradaPed=p=>{const t=totPed(p).total; return p.entrada!=null&&p.entrada!==""?Math.min(num(p.entrada),t):+(t*entradaPct()/100).toFixed(2)};
 const resumoItens=p=>(p.itens||[]).map(i=>`${num(i.quantidade).toLocaleString("pt-BR")}× ${i.descricao}`).join(", ");
 
 /* ---------- pedidos ---------- */
@@ -560,7 +563,7 @@ function renderPedidos(){
   $("#pedLista").innerHTML=`<div class="tablewrap"><table style="min-width:860px"><thead><tr><th>Nº</th><th>Cliente</th><th>Itens</th><th>Prazo</th><th class="n">Total</th><th>Status</th><th></th></tr></thead><tbody>
   ${lst.map(p=>{const t=totPed(p);const nx=ST_NEXT[p.status];
     return `<tr data-pid="${esc(p.id)}"><td class="num">#${p.numero}</td>
-      <td><div class="pname">${esc(p.cliente)}${p.origem==="catalogo"?' <span class="pill acc">catálogo</span>':""}</div><div class="pcat">${esc(p.canal||"")}${p.whatsapp?" · "+esc(p.whatsapp):""}</div></td>
+      <td><div class="pname">${esc(p.cliente)}${p.origem==="catalogo"?' <span class="pill acc">catálogo</span>':""}${p.resposta?` <span class="pill ${p.resposta.acao==="aprovado"?"good":"bad"}" title="${esc(p.resposta.motivo||"")}">${p.resposta.acao==="aprovado"?"aprovado pelo cliente":"recusado pelo cliente"}</span>`:""}</div><div class="pcat">${esc(p.canal||"")}${p.whatsapp?" · "+esc(p.whatsapp):""}</div></td>
       <td style="max-width:260px"><div class="clip">${esc(resumoItens(p))}</div><div class="pcat">${t.horas?fmtH(t.horas)+" de máquina":"pronta entrega"}</div></td>
       <td>${prazoPill(p)}</td>
       <td class="n">${brl(t.total)}${num(p.sinal)>0&&p.status!=="entregue"?`<div class="pcat">falta ${brl(t.receber)}</div>`:""}</td>
@@ -633,6 +636,7 @@ function abrePedido(p){
       <label class="f">Frete cobrado do cliente<div class="unit pre"><span>R$</span><input id="pf-fc" type="number" min="0" step="0.01" value="${esc(d.freteCliente)}"></div></label>
       <label class="f">Frete pago por você<div class="unit pre"><span>R$</span><input id="pf-fv" type="number" min="0" step="0.01" value="${esc(d.freteVoce)}"></div></label>
       <label class="f">Taxas do canal<span class="hint">Calculada; pode ajustar</span><div class="unit pre"><span>R$</span><input id="pf-taxas" type="number" min="0" step="0.01" value="${esc(d.taxas)}"></div></label>
+      <label class="f">Entrada pedida<span class="hint">Cobrada no link depois que o cliente aprova; vazio = ${entradaPct()}% do total</span><div class="unit pre"><span>R$</span><input id="pf-entrada" type="number" min="0" step="0.01" placeholder="${entradaPct()}%" value="${esc(d.entrada??"")}"></div></label>
       <label class="f">Sinal já recebido<span class="hint">Entra no caixa (Financeiro) na data de hoje</span><div class="unit pre"><span>R$</span><input id="pf-sinal" type="number" min="0" step="0.01" value="${esc(d.sinal)}"></div></label>
       <label class="f">Observação<input id="pf-obs" maxlength="1000" value="${esc(d.obs)}"></label>
     </div>
@@ -661,7 +665,7 @@ function lePf(){
   const d=pedForm.d;
   d.cliente=$("#pf-cliente").value.trim(); d.whatsapp=$("#pf-whats").value.trim(); d.canal=$("#pf-canal").value;
   d.data=$("#pf-data").value; d.prazo=$("#pf-prazo").value; d.desconto=num($("#pf-desc").value); d.freteCliente=num($("#pf-fc").value);
-  d.freteVoce=num($("#pf-fv").value); d.taxas=num($("#pf-taxas").value); d.sinal=num($("#pf-sinal").value); d.obs=$("#pf-obs").value.trim();
+  d.freteVoce=num($("#pf-fv").value); d.taxas=num($("#pf-taxas").value); d.sinal=num($("#pf-sinal").value); d.entrada=$("#pf-entrada").value===""?"":num($("#pf-entrada").value); d.obs=$("#pf-obs").value.trim();
   if($("#pf-status")) d.status=$("#pf-status").value;
 }
 function atualizaPf(){
@@ -715,7 +719,7 @@ function textoMsg(p,tipo){
   const linhas=(p.itens||[]).map(i=>`• ${num(i.quantidade).toLocaleString("pt-BR")}× ${i.descricao} — ${brl(num(i.preco_unit))} cada = ${brl(num(i.quantidade)*num(i.preco_unit))}${i.personalizacao?`\n   Personalização: ${i.personalizacao}`:""}`).join("\n");
   const extras=[num(p.desconto)>0?`Desconto: -${brl(num(p.desconto))}`:"",num(p.freteCliente)>0?`Frete: ${brl(num(p.freteCliente))}`:""].filter(Boolean).join("\n");
   const pag=cfg.loja.pagamento?`\nPagamento: ${cfg.loja.pagamento}`:"";
-  if(tipo==="orcamento") return `Olá, ${nome}! Segue o orçamento da ${loja}:\n\n${linhas}${extras?"\n"+extras:""}\n\n*Total: ${brl(t.total)}*\n${p.prazo?`Prazo: fica pronto até ${dataBRc(p.prazo)}`:""}${pag}\n\nPosso confirmar o pedido?`;
+  if(tipo==="orcamento") return `Olá, ${nome}! Segue o orçamento da ${loja}:\n\n${linhas}${extras?"\n"+extras:""}\n\n*Total: ${brl(t.total)}*\n${p.prazo?`Prazo: fica pronto até ${dataBRc(p.prazo)}`:""}${pag}${entradaPed(p)>0?`\nEntrada para começar a produção: ${brl(entradaPed(p))}`:""}\n\nPosso confirmar o pedido?`;
   if(tipo==="confirmado") return `Olá, ${nome}! Pedido #${p.numero} confirmado na ${loja}.\n\n${linhas}\n\n*Total: ${brl(t.total)}*${num(p.sinal)>0?`\nSinal recebido: ${brl(num(p.sinal))}\nRestante na entrega: ${brl(t.receber)}`:""}\n${p.prazo?`Previsão: ${dataBRc(p.prazo)}`:""}\n\nAviso assim que estiver pronto!`;
   if(tipo==="pronto") return `Olá, ${nome}! Seu pedido #${p.numero} da ${loja} está pronto.\n\n${resumoItens(p)}\n${t.receber>0?`\nValor a pagar: *${brl(t.receber)}*${pag}`:"\nJá está todo pago."}\n\nComo prefere receber: retirada ou entrega?`;
   if(tipo==="cobranca") return `Olá, ${nome}! Passando para lembrar do pedido #${p.numero} da ${loja}.\nValor em aberto: *${brl(t.receber)}*${pag}\n\nQualquer dúvida, estou à disposição.`;
@@ -731,11 +735,11 @@ async function linkDe(p){
 async function abreMsg(p,tipo){
   msgPed=p; tipo=tipo||({orcamento:"orcamento",aprovado:"confirmado",imprimindo:"confirmado",pronto:"pronto",entregue:"obrigado"}[p.status]||"orcamento");
   const box=$("#pedMsgBox"); box.hidden=false;
-  const usaPix=["orcamento","pronto","cobranca"].includes(tipo);
+  const usaPix=["pronto","cobranca"].includes(tipo); // no orçamento, o Pix da entrada aparece no link depois da aprovação
   const [pix,link]=await Promise.all([usaPix?pixDe(p):null,linkDe(p)]); if(msgPed!==p) return;
   msgPix=pix&&pix.payload?pix:null; msgLink=link;
   let txt=textoMsg(p,tipo);
-  if(link&&tipo!=="obrigado") txt+=`\n\n${tipo==="orcamento"?"Veja o orçamento com fotos e valores":"Acompanhe seu pedido"}: ${link}`;
+  if(link&&tipo!=="obrigado") txt+=`\n\n${tipo==="orcamento"?"Veja o orçamento e *aprove ou recuse* por este link (depois de aprovar, aparece o Pix da entrada)":"Acompanhe seu pedido"}: ${link}`;
   if(msgPix) txt+=`\n\nPix copia e cola (${brl(totPed(p).receber)}):\n${msgPix.payload}`;
   box.innerHTML=`<div class="row spread"><h2>Mensagem para ${esc(p.cliente)} · pedido #${p.numero}</h2><button class="btn ghost" data-ma="fechar">Fechar</button></div>
     <div class="row">${[["orcamento","Orçamento"],["confirmado","Confirmação"],["pronto","Pedido pronto"],["cobranca","Cobrança"],["obrigado","Agradecimento"]].map(([k,n])=>`<button class="chip${k===tipo?" on":""}" data-mt="${k}">${n}</button>`).join("")}</div>
@@ -1088,9 +1092,9 @@ $("#pecasLista").addEventListener("click",async e=>{
 });
 
 /* ---------- sua loja (config) ---------- */
-const LOJA=[["nome","Nome da loja","text","Ex.: Freire 3D"],["whatsapp","WhatsApp da loja","tel","Recebe os pedidos do catálogo"],["instagram","Instagram","text","@sualoja"],["pagamento","Formas de pagamento","text","Pix, cartão ou dinheiro"],["prazoDias","Prazo padrão (dias)","number","Usado em pedidos novos"],["horasDia","Horas por dia (padrão)","number","Para impressoras novas; cada uma tem o seu em Impressoras e fila"],["sobre","Texto do catálogo","text","Uma frase sobre a loja"],["metaLucro","Meta de lucro por mês (R$)","number","Aparece na tela Hoje"],["pixChave","Chave Pix","text","CPF, CNPJ, e-mail, celular (+55…) ou aleatória"],["pixNome","Nome no Pix","text","Como aparece no banco (vazio = nome da loja)"],["pixCidade","Cidade no Pix","text","Ex.: São Paulo"],["site","Site","text","Aparece na proposta em PDF"],["cor","Cor da proposta","color","Destaques e sublinhados do PDF"]];
+const LOJA=[["nome","Nome da loja","text","Ex.: Freire 3D"],["whatsapp","WhatsApp da loja","tel","Recebe os pedidos do catálogo"],["instagram","Instagram","text","@sualoja"],["pagamento","Formas de pagamento","text","Pix, cartão ou dinheiro"],["prazoDias","Prazo padrão (dias)","number","Usado em pedidos novos"],["horasDia","Horas por dia (padrão)","number","Para impressoras novas; cada uma tem o seu em Impressoras e fila"],["sobre","Texto do catálogo","text","Uma frase sobre a loja"],["metaLucro","Meta de lucro por mês (R$)","number","Aparece na tela Hoje"],["pixChave","Chave Pix","text","CPF, CNPJ, e-mail, celular (+55…) ou aleatória"],["pixNome","Nome no Pix","text","Como aparece no banco (vazio = nome da loja)"],["pixCidade","Cidade no Pix","text","Ex.: São Paulo"],["entradaPct","Entrada ao aprovar (%)","number","Pedida pelo link do pedido; 0 = sem entrada"],["site","Site","text","Aparece na proposta em PDF"],["cor","Cor da proposta","color","Destaques e sublinhados do PDF"]];
 function renderLoja(){
-  $("#cfgLoja").innerHTML=LOJA.map(([k,l,t,h])=>`<label class="f${k==="sobre"?" wide":""}">${l}<span class="hint">${h}</span><input id="lj-${k}" data-l="${k}" type="${t==="number"?"number":t}" ${t==="number"?'min="0" step="1"':""} value="${esc(k==="cor"?(cfg.loja.cor||"#22c08a"):cfg.loja[k]??"")}"></label>`).join("")
+  $("#cfgLoja").innerHTML=LOJA.map(([k,l,t,h])=>`<label class="f${k==="sobre"?" wide":""}">${l}<span class="hint">${h}</span><input id="lj-${k}" data-l="${k}" type="${t==="number"?"number":t}" ${t==="number"?'min="0" step="1"':""} value="${esc(k==="cor"?(cfg.loja.cor||"#22c08a"):k==="entradaPct"?(cfg.loja.entradaPct??50):cfg.loja[k]??"")}"></label>`).join("")
     +`<div class="f wide"><span>Logo (proposta em PDF)</span><div class="row" style="gap:10px">${cfg.loja.logo?`<img src="/fotos/${esc(cfg.loja.logo)}" alt="Logo" style="max-height:48px;max-width:160px;background:#0e1114;padding:6px;border-radius:6px">`:'<span class="note">Sem logo: a capa mostra o nome da loja.</span>'}<label class="btn sm" for="lj-logo">${cfg.loja.logo?"Trocar logo":"Enviar logo"}</label><input id="lj-logo" type="file" accept="image/png,image/jpeg,image/webp" hidden>${cfg.loja.logo?'<button type="button" class="btn sm ghost" id="lj-logo-rm">Remover</button>':""}</div><span class="hint">PNG com fundo transparente fica melhor; a capa é escura.</span></div>`;
   const url=location.origin+"/catalogo";
   $("#catLink").innerHTML=`<span class="num clip">${esc(url)}</span><button class="btn sm" id="copCat">Copiar link</button><a class="btn sm" href="/catalogo" target="_blank" rel="noopener">Abrir catálogo ↗</a>`;
@@ -1100,7 +1104,7 @@ function renderLoja(){
 $("#cfgLoja").addEventListener("change",async e=>{ if(e.target.id!=="lj-logo") return; const f=e.target.files[0]; e.target.value=""; if(!f) return;
   try{ const fd=new FormData(); fd.append("foto",f,f.name); cfg.loja.logo=(await api("POST","/api/fotos",fd)).id; saveCfg(); renderConfig(); toast("Logo salvo") }catch(err){ toast(err.message) } });
 $("#cfgLoja").addEventListener("click",e=>{ if(e.target.id!=="lj-logo-rm") return; delete cfg.loja.logo; saveCfg(); renderConfig() });
-$("#cfgLoja").addEventListener("input",e=>{const k=e.target.dataset.l;if(!k)return;cfg.loja[k]=["prazoDias","horasDia","metaLucro"].includes(k)?num(e.target.value):e.target.value;for(const x in pixCache)delete pixCache[x];saveCfg()});
+$("#cfgLoja").addEventListener("input",e=>{const k=e.target.dataset.l;if(!k)return;cfg.loja[k]=["prazoDias","horasDia","metaLucro"].includes(k)?num(e.target.value):k==="entradaPct"?(e.target.value===""?"":Math.max(0,Math.min(100,num(e.target.value)))):e.target.value;for(const x in pixCache)delete pixCache[x];saveCfg()});
 
 
 /* ---------- compras e orçamento ---------- */
@@ -1604,6 +1608,9 @@ function renderHoje(){
   } else payHtml=`<div class="card stack"><h3>Retorno do investimento</h3><p class="note" style="margin:0">Quando marcar os itens de <b>Compras e orçamento</b> como comprados, o sistema mostra quanto já voltou do que você investiu e em quantos meses se paga.</p><div><button class="btn" data-hg="compras">Abrir compras</button></div></div>`;
 
   const avisos=[];
+  const resp=pedidos.filter(p=>p.resposta&&!p.resposta.visto).sort((a,b)=>String(b.resposta.em).localeCompare(a.resposta.em));
+  if(resp.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Respostas dos clientes <span class="pill acc">${resp.length}</span></h3><button class="btn sm" data-hg="pedidos">Ver pedidos</button></div><ul class="hlist">${resp.map(p=>{const ap=p.resposta.acao==="aprovado", fe=Math.max(0,entradaPed(p)-num(p.sinal));
+    return `<li data-hp="${esc(p.id)}"><span><b class="num">#${p.numero}</b> ${esc(p.cliente)} <span class="pill ${ap?"good":"bad"}">${ap?"aprovou":"recusou"}</span> <span class="pcat">· ${new Date(p.resposta.em).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}${!ap&&p.resposta.motivo?` · “${esc(p.resposta.motivo)}”`:""}${ap&&fe>0?` · aguardando entrada de ${brl(fe)}`:""}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn sm" data-hr="ok">Ok, vi</button></span></li>`}).join("")}</ul></div>`);
   if(imps.carregado) avisos.push(`<div class="card stack"><div class="row spread"><h3>Impressoras agora</h3><button class="btn sm" data-hg="fila">Abrir painel</button></div><ul class="hlist">${impLista().map(i=>{const a=impAtiva(i.id);
     return `<li><span><b>${esc(i.nome)}</b>${a?` · ${esc(a.descricao)}`:""}</span><span class="row" style="gap:6px;flex-wrap:nowrap">${!a?'<span class="pill good">livre</span>':a.status==="pausada"?'<span class="pill warn">pausada</span>':`<span class="num" data-cd="${esc(a.id)}">faltam ${fmtSeg(restanteS(a))}</span><span class="pcat">${restanteS(a)>0?fimTxt(restanteS(a)):""}</span>`}</span></li>`}).join("")}</ul></div>`);
   if(novosCat.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Pedidos novos do catálogo <span class="pill acc">${novosCat.length}</span></h3><button class="btn sm" data-hg="pedidos">Ver pedidos</button></div><ul class="hlist">${novosCat.map(p=>linhaPed(p,`<span class="num">${brl(totPed(p).total)}</span><button class="btn sm primary" data-hm="orcamento">Responder</button>`)).join("")}</ul></div>`);
@@ -1636,6 +1643,10 @@ function gastosHtml(tot,pago,pend,cats){
       ${lista.length?`<ul class="hlist">${lista.map(l=>{const v=vence(l.data);return `<li data-ap="${esc(l.id)}"><span>${esc(l.descricao)} <span class="pcat">· ${dataBRc(l.data)}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap"><span class="pill ${v.c}">${v.t}</span><b class="num">${brl(l.valor)}</b><button class="btn sm edit-only" data-apg="1" type="button">Paguei</button></span></li>`}).join("")}</ul>${aPagar.length>lista.length?`<p class="note" style="margin:0">E mais ${aPagar.length-lista.length} nos próximos 40 dias.</p>`:""}`
       :`<p class="note" style="margin:0">Nenhuma conta a pagar nos próximos 40 dias.</p>`}</div></div></div>`;
 }
+$("#hojeBox").addEventListener("click",async e=>{
+  const v=e.target.closest("[data-hr]"); if(!v) return; const id=v.closest("[data-hp]").dataset.hp; v.disabled=true;
+  try{ const r=await api("POST","/api/pedidos/"+encodeURIComponent(id)+"/resposta-vista"); const i=pedidos.findIndex(x=>x.id===id); if(i>=0) pedidos[i]=r; renderHoje() }catch(err){ toast(err.message); v.disabled=false }
+});
 $("#hojeBox").addEventListener("click",async e=>{
   const b=e.target.closest("[data-apg]"); if(!b) return;
   const l=aPagar.find(x=>x.id===b.closest("[data-ap]").dataset.ap); if(!l) return; b.disabled=true;
@@ -1863,7 +1874,7 @@ function propostaPadrao(p,extraFotos){
   for(const i of it){ const pr=produtos.find(x=>x.id===i.produto_id); if(pr&&pr.fotoId&&!fotos.some(f=>f.id===pr.fotoId)) fotos.push({id:pr.fotoId,legenda:it.length>1?i.descricao:""}) }
   const fils=[...new Set(it.flatMap(i=>(i.fil||[]).map(f=>nomeFil(f.filId))).filter(Boolean))];
   const gramas=(i0.fil||[]).reduce((s,f)=>s+num(f.g),0);
-  const varios=it.length>1, sinalPct=50;
+  const varios=it.length>1, sinalPct=entradaPct();
   return {
     titulo:varios?"Peças impressas em 3D":(i0.descricao||"Peça impressa em 3D"), produtoTitulo:"Sobre a peça",
     texto:(prod&&prod.descricaoCatalogo)||"",
@@ -1872,7 +1883,7 @@ function propostaPadrao(p,extraFotos){
     specs:[...(fils.length?[{k:"Material",v:fils.join(", ")}]:[]),...(gramas>0&&!varios?[{k:"Peso",v:`cerca de ${Math.round(gramas)} g por peça`}]:[])],
     faixas:it.map(i=>({rotulo:varios?i.descricao:"",q:num(i.quantidade),preco:num(i.preco_unit),prazo:num(i.horas_unit)>0?diasUteisTxt(num(i.horas_unit)*num(i.quantidade)):""})),
     destaqueFaixa:-1, somar:varios, notaPreco:"", arteValor:0, arteNota:"",
-    condicoes:[{k:"Pagamento",v:`${sinalPct}% na aprovação do pedido e ${100-sinalPct}% na entrega, por ${L.pagamento||"Pix"}.`},
+    condicoes:[{k:"Pagamento",v:sinalPct>0&&sinalPct<100?`${sinalPct}% na aprovação do pedido e ${100-sinalPct}% na entrega, por ${L.pagamento||"Pix"}.`:`${sinalPct>=100?"Total na aprovação do pedido":"Na entrega"}, por ${L.pagamento||"Pix"}.`},
       {k:"Prazo",v:"Conta a partir da aprovação e do pagamento da entrada."},
       {k:"Entrega",v:"Retirada sem custo ou envio com frete a combinar."},
       {k:"Garantia",v:"Peças com defeito de fabricação são substituídas sem custo."}],
