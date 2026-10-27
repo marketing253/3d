@@ -563,7 +563,7 @@ function renderPedidos(){
   $("#pedLista").innerHTML=`<div class="tablewrap"><table style="min-width:860px"><thead><tr><th>Nº</th><th>Cliente</th><th>Itens</th><th>Prazo</th><th class="n">Total</th><th>Status</th><th></th></tr></thead><tbody>
   ${lst.map(p=>{const t=totPed(p);const nx=ST_NEXT[p.status];
     return `<tr data-pid="${esc(p.id)}"><td class="num">#${p.numero}</td>
-      <td><div class="pname">${esc(p.cliente)}${p.origem==="catalogo"?' <span class="pill acc">catálogo</span>':""}${p.resposta?` <span class="pill ${p.resposta.acao==="aprovado"?"good":"bad"}" title="${esc(p.resposta.motivo||"")}">${p.resposta.acao==="aprovado"?"aprovado pelo cliente":"recusado pelo cliente"}</span>`:""}</div><div class="pcat">${esc(p.canal||"")}${p.whatsapp?" · "+esc(p.whatsapp):""}</div></td>
+      <td><div class="pname">${esc(p.cliente)}${p.origem==="catalogo"?' <span class="pill acc">catálogo</span>':""}${p.resposta?` <span class="pill ${p.resposta.acao==="aprovado"?"good":"bad"}" title="${esc(p.resposta.motivo||"")}">${p.resposta.acao==="aprovado"?"aprovado pelo cliente":"recusado pelo cliente"}</span>`:""}${(p.artes||[]).length?(a=>` <span class="pill ${(ARTE_ST[a.status]||[])[1]||""}" title="${esc(a.comentario||"")}">arte ${VV(a.v)}: ${(ARTE_ST[a.status]||[""])[0]}</span>`)(p.artes.at(-1)):""}</div><div class="pcat">${esc(p.canal||"")}${p.whatsapp?" · "+esc(p.whatsapp):""}</div></td>
       <td style="max-width:260px"><div class="clip">${esc(resumoItens(p))}</div><div class="pcat">${t.horas?fmtH(t.horas)+" de máquina":"pronta entrega"}</div></td>
       <td>${prazoPill(p)}</td>
       <td class="n">${brl(t.total)}${num(p.sinal)>0&&p.status!=="entregue"?`<div class="pcat">falta ${brl(t.receber)}</div>`:""}</td>
@@ -572,6 +572,7 @@ function renderPedidos(){
         ${nx?`<button class="btn sm primary edit-only" data-pa="next">${nx[1]}</button>`:""}
         <button class="btn sm" data-pa="msg">WhatsApp</button>
         <button class="btn sm ghost edit-only" data-pa="prop" title="Proposta comercial em PDF">Proposta</button>
+        <button class="btn sm ghost" data-pa="arte" title="Arte para o cliente aprovar">Arte</button>
         ${p.status!=="entregue"?'<button class="btn sm ghost edit-only" data-pa="edit">Editar</button>':""}
         <select class="sm edit-only" data-pa="st" aria-label="Mudar status">${Object.entries(ST).map(([k,n])=>`<option value="${k}"${k===p.status?" selected":""}>${n}</option>`).join("")}</select>
       </div></td></tr>`}).join("")}
@@ -601,6 +602,7 @@ $("#pedLista").addEventListener("click",e=>{
   if(a==="edit") abrePedido(p);
   if(a==="msg") abreMsg(p);
   if(a==="prop") abreProposta(p);
+  if(a==="arte") abreArte(p);
 });
 $("#pedLista").addEventListener("change",e=>{
   const s=e.target.closest('select[data-pa="st"]'); if(!s) return;
@@ -1609,6 +1611,8 @@ function renderHoje(){
 
   const avisos=[];
   const resp=pedidos.filter(p=>p.resposta&&!p.resposta.visto).sort((a,b)=>String(b.resposta.em).localeCompare(a.resposta.em));
+  const respArte=pedidos.map(p=>({p,a:(p.artes||[]).at(-1)})).filter(x=>x.a&&["aprovada","ajuste"].includes(x.a.status)&&!x.a.visto);
+  if(respArte.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Respostas das artes <span class="pill acc">${respArte.length}</span></h3></div><ul class="hlist">${respArte.map(({p,a})=>`<li data-hp="${esc(p.id)}"><span><b class="num">#${p.numero}</b> ${esc(p.cliente)} <span class="pill ${a.status==="aprovada"?"good":"bad"}">${a.status==="aprovada"?`aprovou a ${VV(a.v)}`:`pediu ajuste na ${VV(a.v)}`}</span>${a.comentario?` <span class="pcat">· “${esc(a.comentario)}”</span>`:""}</span><span class="row" style="gap:6px;flex-wrap:nowrap">${a.status==="ajuste"?'<button class="btn sm primary edit-only" data-hr="arte">Mandar nova versão</button>':""}<button class="btn sm" data-hr="okarte">Ok, vi</button></span></li>`).join("")}</ul></div>`);
   if(resp.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Respostas dos clientes <span class="pill acc">${resp.length}</span></h3><button class="btn sm" data-hg="pedidos">Ver pedidos</button></div><ul class="hlist">${resp.map(p=>{const ap=p.resposta.acao==="aprovado", fe=Math.max(0,entradaPed(p)-num(p.sinal));
     return `<li data-hp="${esc(p.id)}"><span><b class="num">#${p.numero}</b> ${esc(p.cliente)} <span class="pill ${ap?"good":"bad"}">${ap?"aprovou":"recusou"}</span> <span class="pcat">· ${new Date(p.resposta.em).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}${!ap&&p.resposta.motivo?` · “${esc(p.resposta.motivo)}”`:""}${ap&&fe>0?` · aguardando entrada de ${brl(fe)}`:""}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn sm" data-hr="ok">Ok, vi</button></span></li>`}).join("")}</ul></div>`);
   if(imps.carregado) avisos.push(`<div class="card stack"><div class="row spread"><h3>Impressoras agora</h3><button class="btn sm" data-hg="fila">Abrir painel</button></div><ul class="hlist">${impLista().map(i=>{const a=impAtiva(i.id);
@@ -1644,8 +1648,10 @@ function gastosHtml(tot,pago,pend,cats){
       :`<p class="note" style="margin:0">Nenhuma conta a pagar nos próximos 40 dias.</p>`}</div></div></div>`;
 }
 $("#hojeBox").addEventListener("click",async e=>{
-  const v=e.target.closest("[data-hr]"); if(!v) return; const id=v.closest("[data-hp]").dataset.hp; v.disabled=true;
-  try{ const r=await api("POST","/api/pedidos/"+encodeURIComponent(id)+"/resposta-vista"); const i=pedidos.findIndex(x=>x.id===id); if(i>=0) pedidos[i]=r; renderHoje() }catch(err){ toast(err.message); v.disabled=false }
+  const v=e.target.closest("[data-hr]"); if(!v) return; const id=v.closest("[data-hp]").dataset.hp;
+  if(v.dataset.hr==="arte"){ const p=pedidos.find(x=>x.id===id); setTab("pedidos"); if(p) setTimeout(()=>abreArte(p),50); return }
+  v.disabled=true;
+  try{ const r=await api("POST","/api/pedidos/"+encodeURIComponent(id)+(v.dataset.hr==="okarte"?"/arte-vista":"/resposta-vista")); const i=pedidos.findIndex(x=>x.id===id); if(i>=0) pedidos[i]=r; renderHoje() }catch(err){ toast(err.message); v.disabled=false }
 });
 $("#hojeBox").addEventListener("click",async e=>{
   const b=e.target.closest("[data-apg]"); if(!b) return;
@@ -1859,6 +1865,58 @@ $("#qoRes").addEventListener("click",async e=>{
       if(b.dataset.qa==="criarProp"){ abreProposta(ped,foto?[{id:foto,legenda:""}]:[]); return }
       setTab("pedidos"); renderPedidos(); abreMsg(ped,"orcamento");
     }catch(err){ $("#qoMsg").textContent=err.message }
+  }
+});
+
+
+/* ---------- aprovação da arte (versões V01, V02…) ---------- */
+let artePed=null;
+const VV=v=>"V"+String(v).padStart(2,"0");
+const ARTE_ST={pendente:["aguardando o cliente","warn"],aprovada:["aprovada","good"],ajuste:["ajuste pedido","bad"],substituida:["substituída",""]};
+async function abreArte(p){
+  artePed=p.id; const box=$("#pedArteBox"); box.hidden=false; renderArte();
+  box.scrollIntoView({behavior:"smooth",block:"start"});
+}
+function renderArte(){
+  const box=$("#pedArteBox"), p=pedidos.find(x=>x.id===artePed); if(!p){ box.hidden=true; return }
+  const artes=p.artes||[], ult=artes.at(-1), i0=(p.itens||[])[0]||{};
+  const link=p.token?location.origin+"/aprovacao/"+p.token:"";
+  const prodPad=(p.itens||[]).length>1?`${p.itens.length} itens`:`${i0.descricao||"Peça"} · Quantidade: ${num(i0.quantidade||1).toLocaleString("pt-BR")}`;
+  const zap=link&&ult?waLink(p.whatsapp,`Olá, ${(p.cliente||"").split(" ")[0]}! Segue a arte ${VV(ult.v)} do seu pedido #${p.numero} para aprovação. É só abrir o link, conferir e clicar em Aprovar ou Pedir ajuste:\n${link}`):"";
+  box.innerHTML=`<div class="row spread"><h2>Arte do pedido #${p.numero} · ${esc(p.cliente)}</h2><button class="btn ghost" data-aa="fechar">Fechar</button></div>
+    ${ult?`<div class="row" style="gap:8px">${link?`<span class="num clip" style="max-width:100%">${esc(link)}</span><button class="btn sm" data-aa="copiar">Copiar link</button><a class="btn sm primary" target="_blank" rel="noopener" href="${esc(zap)}">Mandar no WhatsApp ↗</a><a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(link)}">Ver como o cliente vê ↗</a>`:""}</div>`:""}
+    <div class="importbox stack edit-only" style="gap:8px;align-items:stretch;text-align:left">
+      <b>${ult?`Enviar nova versão (${VV(artes.length+1)})`:"Enviar a arte para o cliente aprovar"}</b>
+      <div class="fields"><label class="f">Imagem da arte (mockup)<input id="ar-arq" type="file" accept="image/png,image/jpeg,image/webp"></label>
+        <label class="f">Produto no topo da página<input id="ar-prod" maxlength="150" value="${esc(ult?.produto||prodPad)}"></label></div>
+      <label class="f">Recado para o cliente (opcional)<input id="ar-nota" maxlength="300" placeholder="${ult?"Ex.: aumentei o logo como pedido":"Ex.: confira o nome e as cores"}"></label>
+      <div class="row"><button class="btn primary" type="button" data-aa="enviar">Enviar ${VV(artes.length+1)}</button><span class="note" id="arMsg"></span></div>
+    </div>
+    ${artes.length?`<div class="artes">${artes.slice().reverse().map(a=>{const s=ARTE_ST[a.status]||["",""];return `<div class="arte" data-v="${a.v}">
+      <img src="/fotos/${esc(a.foto)}" alt="${VV(a.v)}" loading="lazy">
+      <div class="stack" style="gap:4px;min-width:0"><div class="row" style="gap:6px"><b>${VV(a.v)}</b><span class="pill ${s[1]}">${s[0]}</span></div>
+        <span class="pcat">Enviada ${new Date(a.em).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}${a.respondidoEm?` · respondida ${new Date(a.respondidoEm).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}`:""}</span>
+        ${a.nota?`<span class="pcat">Seu recado: ${esc(a.nota)}</span>`:""}
+        ${a.comentario?`<span><b>Cliente:</b> “${esc(a.comentario)}”</span>`:""}
+        ${a===ult&&a.status!=="aprovada"?`<div><button class="btn sm ghost edit-only" data-aa="apagar">Apagar ${VV(a.v)}</button></div>`:""}</div></div>`}).join("")}</div>`
+      :`<p class="note" style="margin:0">Envie a imagem do mockup. O cliente recebe um link para ver a arte grande e clicar em <b>Aprovar arte</b> ou <b>Pedir ajuste</b>. Cada nova imagem vira uma versão (V01, V02…).</p>`}`;
+}
+$("#pedArteBox").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-aa]"); if(!b) return; const p=pedidos.find(x=>x.id===artePed); if(!p) return; const a=b.dataset.aa;
+  const troca=r=>{const i=pedidos.findIndex(x=>x.id===r.id); if(i>=0) pedidos[i]=r; renderArte(); renderPedidos()};
+  if(a==="fechar"){ $("#pedArteBox").hidden=true; artePed=null; return }
+  if(a==="copiar"){ const l=location.origin+"/aprovacao/"+p.token; try{await navigator.clipboard.writeText(l);toast("Link copiado")}catch(err){toast(l)} return }
+  if(a==="apagar"){ const v=b.closest("[data-v]").dataset.v; if(b.dataset.ok!=="1"){ b.dataset.ok="1"; b.textContent="Confirmar"; b.classList.add("danger"); return }
+    try{ troca(await api("DELETE","/api/pedidos/"+encodeURIComponent(p.id)+"/arte/"+v)); toast("Versão apagada") }catch(err){ toast(err.message) } return }
+  if(a==="enviar"){
+    const f=$("#ar-arq").files[0]; if(!f){ $("#arMsg").textContent="Escolha a imagem da arte."; return }
+    b.disabled=true; $("#arMsg").textContent="Enviando…";
+    try{ // arte vai sem reduzir demais: até 1600 px para o cliente ver detalhe
+      const blob=await new Promise((ok,falha)=>{const img=new Image(),u=URL.createObjectURL(f);img.onload=()=>{const k=Math.min(1,1600/Math.max(img.width,img.height));const c=document.createElement("canvas");c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,c.width,c.height);g.drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(u);c.toBlob(x=>x?ok(x):falha(new Error("Não deu para ler a imagem.")),"image/jpeg",0.9)};img.onerror=()=>falha(new Error("Não deu para ler a imagem."));img.src=u});
+      const fd=new FormData(); fd.append("foto",blob,"arte.jpg"); const foto=(await api("POST","/api/fotos",fd)).id;
+      troca(await api("POST","/api/pedidos/"+encodeURIComponent(p.id)+"/arte",{foto,produto:$("#ar-prod")?.value||"",nota:$("#ar-nota")?.value||""}));
+      toast("Arte enviada. Mande o link para o cliente.");
+    }catch(err){ $("#arMsg").textContent=err.message; b.disabled=false }
   }
 });
 

@@ -5,72 +5,125 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const brl=v=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 const dataBR=s=>s?s.split("-").reverse().join("/"):"";
 const token=location.pathname.split("/").filter(Boolean)[1]||"";
-const ST={cancelado:"Orçamento recusado",orcamento:"Orçamento aguardando sua aprovação",aprovado:"Pedido aprovado, na fila de produção",imprimindo:"Sendo impresso agora",pronto:"Pronto! Combine a retirada ou entrega",entregue:"Entregue. Obrigado pela compra!"};
 const ORDEM=["orcamento","aprovado","imprimindo","pronto","entregue"];
+// título e explicação do quadro de status
+const ST={
+  orcamento:["Orçamento aguardando sua aprovação","Confira os itens e os valores abaixo e responda no fim da página.","gira"],
+  aprovado:["Pedido aprovado","Seu pedido está na fila de produção.","gira"],
+  imprimindo:["Seu pedido está sendo produzido","As peças estão sendo impressas agora.","gira"],
+  pronto:["Pedido pronto","Combine a retirada ou a entrega com a loja.","ok"],
+  entregue:["Pedido entregue","Obrigado pela compra!","ok"],
+  cancelado:["Orçamento recusado","Se mudar de ideia, é só chamar a loja.","x"],
+};
 function toast(m){const t=$("#toast");t.textContent=m;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,2600)}
-async function copia(txt,msg){try{await navigator.clipboard.writeText(txt);toast(msg)}catch(e){const a=$("#pixCod");if(a){a.focus();a.select()}toast("Selecionei o código: copie com o dedo ou Ctrl+C")}}
-/* aprovar ou recusar: dois toques, para não aprovar sem querer */
+async function copia(txt,msg){try{await navigator.clipboard.writeText(txt);toast(msg)}catch(e){toast("Selecione o texto e copie")}}
 async function responde(acao,motivo){
   const r=await fetch("/api/publico/pedido/"+encodeURIComponent(token)+"/resposta",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({acao,motivo})});
   const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.erro||"Não deu para enviar. Tente de novo.");
 }
+function abrePix(){ $("#pixModal").hidden=false; document.body.style.overflow="hidden" }
+function fechaPix(){ $("#pixModal").hidden=true; document.body.style.overflow="" }
+
 async function carrega(){
   let d;
   try{const r=await fetch("/api/publico/pedido/"+encodeURIComponent(token));if(!r.ok)throw new Error(r.status);d=await r.json()}
-  catch(e){$("#ped").innerHTML=`<div class="card empty"><h2>Pedido não encontrado</h2><p>O link pode estar incompleto. Peça um novo link para a loja.</p></div>`;return}
-  document.title=`Pedido #${d.numero} · ${d.loja.nome}`;
-  const pos=ORDEM.indexOf(d.status);
-  const wa=d.loja.whatsapp?"https://wa.me/"+(d.loja.whatsapp.length<=11?"55"+d.loja.whatsapp:d.loja.whatsapp)+"?text="+encodeURIComponent(
+  catch(e){$("#ped").innerHTML=`<div class="vazio"><h2>Pedido não encontrado</h2><p>O link pode estar incompleto. Peça um novo link para a loja.</p></div>`;return}
+  const L=d.loja;
+  if(L.cor) document.documentElement.style.setProperty("--cor",L.cor);
+  document.title=`Pedido #${d.numero} · ${L.nome}`;
+  const pos=ORDEM.indexOf(d.status), st=ST[d.status]||ST.orcamento, recusado=d.status==="cancelado";
+  const wa=L.whatsapp?"https://wa.me/"+(L.whatsapp.length<=11?"55"+L.whatsapp:L.whatsapp)+"?text="+encodeURIComponent(
     d.status==="orcamento"?`Olá! Tenho uma dúvida sobre o orçamento #${d.numero}:`:d.pix&&d.pix.tipo==="entrada"?`Olá! Paguei a entrada do pedido #${d.numero}. Segue o comprovante:`:`Olá! Sobre o meu pedido #${d.numero}:`):null;
-  const recusado=d.status==="cancelado";
+  const pago=Math.max(0,d.total-d.receber);
+  const quando=d.data?dataBR(d.data):"";
+  const ladoStatus=d.status==="orcamento"?(d.entrada>0?`<b>Entrada de ${brl(d.entrada)} ao aprovar</b>O restante fica para a entrega.`:`<b>Aprovando, entra na fila de produção</b>`)
+    :d.pix&&d.pix.tipo==="entrada"?`<b>Aguardando a entrada de ${brl(d.pix.valor)}</b>A produção começa assim que ela for paga.`
+    :d.prazo&&!["entregue","cancelado"].includes(d.status)?`<b>Previsão: pronto até ${dataBR(d.prazo)}</b>Avisamos assim que estiver pronto.`
+    :`<b>${esc(st[1])}</b>`;
   $("#ped").innerHTML=`
-    <header class="stack" style="gap:6px"><h1><small>${esc(d.loja.nome)}</small>Pedido #${d.numero}</h1>
-      <p style="margin:0">${d.cliente?`Olá, ${esc(d.cliente)}! `:""}<b>${esc(ST[d.status]||"")}</b></p>
-      ${d.prazo&&d.status!=="entregue"?`<p class="note" style="margin:0">Previsão: fica pronto até <b>${dataBR(d.prazo)}</b></p>`:""}</header>
-    ${recusado?"":`<div class="passos">${["Orçamento","Aprovado","Produção","Pronto"].map((n,i)=>`<div class="${pos>=i?"on":""}"><i></i>${n}</div>`).join("")}</div>`}
-    <section class="card"><h3 style="margin-bottom:4px">Itens</h3>
-      ${d.itens.map(i=>`<div class="it"><div class="ph">${i.foto?`<img src="${esc(i.foto)}" alt="" loading="lazy">`:"3D"}</div>
-        <div><b>${esc(i.descricao)}</b><span class="pcat">${Number(i.quantidade).toLocaleString("pt-BR")} × ${brl(i.preco)}</span>${i.personalizacao?`<div class="pcat">Personalização: ${esc(i.personalizacao)}</div>`:""}</div>
-        <span class="num">${brl(i.quantidade*i.preco)}</span></div>`).join("")}
+  <article class="doc">
+    <header class="topo">
+      <div class="logo">${L.logo?`<img src="${esc(L.logo)}" alt="${esc(L.nome)}">`:`<div class="nome">${esc(L.nome)}</div>`}</div>
+      <div class="num"><small>${d.status==="orcamento"||recusado?"Orçamento":"Pedido"}</small><b>#${d.numero}</b><span>${quando}</span></div>
+    </header>
+
+    <section class="box status">
+      <div><span class="rot">Situação do pedido</span><h1>${esc(st[0])}</h1></div>
+      <div class="lado"><i class="ico ${st[2]}" aria-hidden="true"></i><div>${ladoStatus}</div></div>
+      ${recusado?"":`<div class="passos">${["Orçamento","Aprovado","Produção","Pronto"].map((n,i)=>`<div class="${pos>=i?"on":""}"><i></i>${n}</div>`).join("")}</div>`}
     </section>
-    <section class="card">
-      ${d.desconto>0?`<div class="lin"><span>Desconto</span><span class="num">−${brl(d.desconto)}</span></div>`:""}
-      ${d.frete>0?`<div class="lin"><span>Frete</span><span class="num">${brl(d.frete)}</span></div>`:""}
-      <div class="lin tot"><span>Total</span><span class="num">${brl(d.total)}</span></div>
-      ${d.sinal>0?`<div class="lin"><span>Já pago (sinal)</span><span class="num">−${brl(d.sinal)}</span></div>`:""}
-      ${d.status==="orcamento"||d.status==="cancelado"?"":d.receber>0&&d.status!=="entregue"?`<div class="lin falta"><span>A pagar</span><span class="num">${brl(d.receber)}</span></div>`:`<p class="pos" style="margin:6px 0 0"><b>Pagamento concluído.</b></p>`}
-      ${d.loja.pagamento&&d.receber>0?`<p class="note" style="margin:8px 0 0">Formas de pagamento: ${esc(d.loja.pagamento)}</p>`:""}
+
+    <div class="dois">
+      <section class="box"><span class="rot">Cliente</span><div class="val">${esc(d.cliente||"—")}</div>${d.canal?`<div class="sub">Pedido por ${esc(d.canal)}</div>`:""}</section>
+      <section class="box"><span class="rot">Entrega</span><div class="val">${d.prazo&&!recusado?`Pronto até ${dataBR(d.prazo)}`:"A combinar"}</div><div class="sub">Retirada ou envio combinados com a loja</div></section>
+    </div>
+
+    ${d.arte?`<section class="box"><span class="rot">Arte</span><div class="val">${d.arte.status==="aprovada"?"Arte aprovada":d.arte.status==="ajuste"?"Ajuste pedido: a loja vai mandar uma nova versão":"Nova arte para você aprovar"}</div>
+      <div class="sub" style="margin:4px 0 10px">Versão V${String(d.arte.v).padStart(2,"0")}</div><a class="btn ${d.arte.status==="pendente"?"pri":""} sm" href="/aprovacao/${esc(token)}">${d.arte.status==="pendente"?"Ver e aprovar a arte":"Ver a arte"}</a></section>`:""}
+
+    <section class="box itens">
+      <div class="cab"><span class="rot">Itens</span><div class="val">Produtos e serviços</div></div>
+      <table><thead><tr><th>Produto</th><th class="n qtd">Qtd.</th><th class="n unit">Unitário</th><th class="n">Total</th></tr></thead><tbody>
+      ${d.itens.map(i=>`<tr><td><div class="prod">${i.foto?`<img src="${esc(i.foto)}" alt="" loading="lazy">`:""}<div><b>${esc(i.descricao)}</b>
+          <span class="mob">${Number(i.quantidade).toLocaleString("pt-BR")} × ${brl(i.preco)}</span>
+          ${i.personalizacao?`<span class="tag">${esc(i.personalizacao)}</span>`:""}</div></div></td>
+        <td class="n qtd">${Number(i.quantidade).toLocaleString("pt-BR")}</td><td class="n unit">${brl(i.preco)}</td><td class="n"><b>${brl(i.quantidade*i.preco)}</b></td></tr>`).join("")}
+      </tbody></table>
     </section>
-    ${d.status==="orcamento"?`<section class="card stack resp" id="resp"><h3>O que achou do orçamento?</h3>
-      <p class="note" style="margin:0">${d.entrada>0?`Ao aprovar, é só pagar a entrada de <b>${brl(d.entrada)}</b> por Pix para começarmos a produção. O restante, ${brl(Math.max(0,d.receber-d.entrada))}, fica para a entrega.`:"Aprovando, já colocamos o seu pedido na fila de produção."}</p>
-      <div class="cta" data-etapa="1"><button class="btn primary" type="button" data-r="aprovar">Aprovar orçamento</button><button class="btn ghost" type="button" data-r="recusar">Recusar</button></div>
-      <div class="cta" data-etapa="aprovar" hidden><p style="margin:0">Confirma a aprovação do pedido de <b>${brl(d.total)}</b>?</p><button class="btn primary" type="button" data-r="aprovar-ok">Sim, aprovar</button><button class="btn ghost" type="button" data-r="voltar">Voltar</button></div>
-      <div class="cta" data-etapa="recusar" hidden><label class="f">Quer contar o motivo? (opcional)<textarea id="motivo" rows="3" maxlength="300" placeholder="Ex.: ficou acima do orçamento, prazo muito longo…"></textarea></label><button class="btn danger" type="button" data-r="recusar-ok">Recusar orçamento</button><button class="btn ghost" type="button" data-r="voltar">Voltar</button></div>
-      <span class="note" id="respMsg"></span></section>`:""}
-    ${recusado?`<section class="card stack"><h3>Você recusou este orçamento</h3><p class="note" style="margin:0">Obrigado pela resposta! Se mudar de ideia ou quiser outra opção, é só chamar a loja.</p></section>`:""}
-    ${d.pix&&d.status!=="entregue"?`<section class="card stack${d.pix.tipo==="entrada"?" resp":""}"><h3>${d.pix.tipo==="entrada"?`Pague a entrada: ${brl(d.pix.valor)}`:"Pague com Pix"}</h3>
-      ${d.pix.tipo==="entrada"?`<p class="note" style="margin:0">Orçamento aprovado! A produção começa assim que a entrada for paga. O restante, ${brl(Math.max(0,d.receber-d.pix.valor))}, fica para a entrega.</p>`:""}
-      <div class="pixw"><div class="qr">${d.pix.svg}</div>
-        <div class="cod"><span class="note" style="margin:0">Abra o app do banco, escolha <b>Pix copia e cola</b> e cole o código. O valor de ${brl(d.pix.valor)} já vem preenchido.</span>
-          <textarea id="pixCod" rows="4" readonly>${esc(d.pix.payload)}</textarea>
-          <button class="btn primary" id="copPix" type="button">Copiar código Pix</button></div></div>
-      ${d.pix.chave?`<div class="chave"><span class="pcat">Ou pague pela chave Pix${d.pix.nome?` (${esc(d.pix.nome)})`:""}</span><div class="row" style="gap:8px;flex-wrap:nowrap"><b class="num clip" id="pixChave">${esc(d.pix.chave)}</b><button class="btn sm" id="copChave" type="button">Copiar chave</button></div></div>`:""}
-      <p class="note" style="margin:0">Depois de pagar, mande o comprovante pelo WhatsApp.</p></section>`:""}
-    <div class="cta">${wa?`<a class="btn ${d.pix&&d.pix.tipo==="entrada"?"primary":""}" href="${esc(wa)}" target="_blank" rel="noopener">${d.status==="orcamento"?"Tirar dúvidas no WhatsApp":d.pix&&d.pix.tipo==="entrada"?"Enviar comprovante no WhatsApp":"Falar com a loja no WhatsApp"}</a>`:""}
-      ${d.loja.instagram?`<a class="btn ghost" href="https://instagram.com/${encodeURIComponent(d.loja.instagram.replace(/^@/,""))}" target="_blank" rel="noopener">Instagram ${esc(d.loja.instagram.startsWith("@")?d.loja.instagram:"@"+d.loja.instagram)}</a>`:""}
-      <a class="btn ghost" href="/catalogo">Ver o catálogo da loja</a></div>`;
-  const b=$("#copPix"); if(b) b.addEventListener("click",()=>copia(d.pix.payload,"Código Pix copiado"));
-  const bc=$("#copChave"); if(bc) bc.addEventListener("click",()=>copia(d.pix.chave,"Chave Pix copiada"));
+
+    <section class="box resumo">
+      ${d.desconto>0?`<div><span>Desconto</span><b>−${brl(d.desconto)}</b></div>`:""}
+      ${d.frete>0?`<div><span>Frete</span><b>${brl(d.frete)}</b></div>`:""}
+      <div><span>Total do pedido</span><b>${brl(d.total)}</b></div>
+      ${d.status==="orcamento"||recusado?"":`<div><span>Valor pago</span><b>${brl(pago)}</b></div>
+      <div class="saldo"><span>Saldo a pagar</span><b>${brl(d.status==="entregue"?0:d.receber)}</b></div>`}
+    </section>
+
+    ${d.status==="orcamento"?`<section class="box resp" id="resp"><span class="rot">Sua resposta</span><div class="val">O que achou do orçamento?</div>
+      <p>${d.entrada>0?`Ao aprovar, aparece o Pix da entrada de <b>${brl(d.entrada)}</b> para começarmos a produção. O restante, ${brl(Math.max(0,d.receber-d.entrada))}, fica para a entrega.`:"Aprovando, já colocamos o seu pedido na fila de produção."}</p>
+      <div class="acoes" data-etapa="1"><button class="btn pri" type="button" data-r="aprovar">Aprovar orçamento</button><button class="btn" type="button" data-r="recusar">Recusar</button></div>
+      <div data-etapa="aprovar" hidden><p style="color:var(--tinta)">Confirma a aprovação do pedido de <b>${brl(d.total)}</b>?</p><div class="acoes"><button class="btn pri" type="button" data-r="aprovar-ok">Sim, aprovar</button><button class="btn" type="button" data-r="voltar">Voltar</button></div></div>
+      <div data-etapa="recusar" hidden><label for="motivo" style="font-weight:600;font-size:14px">Quer contar o motivo? (opcional)</label><textarea id="motivo" rows="3" maxlength="300" placeholder="Ex.: ficou acima do orçamento, prazo muito longo…"></textarea><div class="acoes"><button class="btn perigo" type="button" data-r="recusar-ok">Recusar orçamento</button><button class="btn" type="button" data-r="voltar">Voltar</button></div></div>
+      <div class="msg" id="respMsg"></div></section>`:""}
+
+    <footer class="rodape">
+      <div class="slogan">${esc(L.sobre||"")}</div>
+      <div class="loja">${esc(L.nome)}${L.pagamento?`<br>Pagamento: ${esc(L.pagamento)}`:""}${L.whatsappTxt?`<br>WhatsApp ${esc(L.whatsappTxt)}`:""}${L.site?`<br>${esc(L.site)}`:""}${L.instagram?`<br>${esc(L.instagram.startsWith("@")?L.instagram:"@"+L.instagram)}`:""}</div>
+    </footer>
+  </article>
+
+  <div class="fora">
+    ${d.pix?`<button class="btn pri" type="button" id="btnPix">▣ ${d.pix.tipo==="entrada"?`Pix da entrada · ${brl(d.pix.valor)}`:"Pix para pagamento"}</button>`:""}
+    ${wa?`<a class="btn" href="${esc(wa)}" target="_blank" rel="noopener">${d.status==="orcamento"?"Tirar dúvidas no WhatsApp":d.pix&&d.pix.tipo==="entrada"?"Enviar comprovante no WhatsApp":"Falar com a loja no WhatsApp"}</a>`:""}
+    <span class="lnk"><a href="/catalogo">Ver o catálogo da loja</a></span>
+  </div>
+
+  ${d.pix?`<div class="modal" id="pixModal" hidden role="dialog" aria-modal="true" aria-labelledby="pixTit"><div class="janela">
+    <div style="display:flex;justify-content:space-between;align-items:center"><h2 id="pixTit">${d.pix.tipo==="entrada"?"Pix da entrada":"Pix para pagamento"}</h2><button class="btn sm" type="button" data-fecha>Fechar</button></div>
+    <div class="valor">${brl(d.pix.valor)}</div>
+    <div class="qr">${d.pix.svg}</div>
+    <span style="color:var(--suave);font-size:13.5px">No app do banco, escolha <b>Pix copia e cola</b> e cole o código. O valor já vem preenchido.</span>
+    <div class="cod" id="pixCod">${esc(d.pix.payload)}</div>
+    <button class="btn pri" type="button" id="copPix">Copiar código Pix</button>
+    ${d.pix.chave?`<div class="chave"><div><span>Ou pague pela chave Pix${d.pix.nome?` · ${esc(d.pix.nome)}`:""}</span><b>${esc(d.pix.chave)}</b></div><button class="btn sm" type="button" id="copChave">Copiar chave</button></div>`:""}
+    <span style="color:var(--suave);font-size:13px">Depois de pagar, mande o comprovante pelo WhatsApp.</span>
+  </div></div>`:""}`;
+
+  const bp=$("#btnPix"); if(bp) bp.addEventListener("click",abrePix);
+  const m=$("#pixModal"); if(m) m.addEventListener("click",e=>{ if(e.target===m||e.target.closest("[data-fecha]")) fechaPix() });
+  const cp=$("#copPix"); if(cp) cp.addEventListener("click",()=>copia(d.pix.payload,"Código Pix copiado"));
+  const cc=$("#copChave"); if(cc) cc.addEventListener("click",()=>copia(d.pix.chave,"Chave Pix copiada"));
   const rs=$("#resp");
   if(rs) rs.addEventListener("click",async e=>{
     const x=e.target.closest("[data-r]"); if(!x) return; const a=x.dataset.r;
     const mostra=et=>rs.querySelectorAll("[data-etapa]").forEach(el=>el.hidden=el.dataset.etapa!==et);
     if(a==="aprovar"||a==="recusar"){ mostra(a); if(a==="recusar") $("#motivo").focus(); return }
     if(a==="voltar"){ mostra("1"); return }
-    x.disabled=true; $("#respMsg").textContent="Enviando…";
-    try{ await responde(a==="aprovar-ok"?"aprovar":"recusar",a==="recusar-ok"?$("#motivo").value:""); toast(a==="aprovar-ok"?"Orçamento aprovado!":"Resposta enviada"); await carrega(); window.scrollTo({top:0,behavior:"smooth"}) }
+    x.disabled=true; $("#respMsg").textContent="";
+    try{ await responde(a==="aprovar-ok"?"aprovar":"recusar",a==="recusar-ok"?$("#motivo").value:""); toast(a==="aprovar-ok"?"Orçamento aprovado!":"Resposta enviada"); await carrega(); window.scrollTo({top:0,behavior:"smooth"}); if(a==="aprovar-ok"&&$("#btnPix")) setTimeout(abrePix,600) }
     catch(err){ $("#respMsg").textContent=err.message; x.disabled=false }
   });
 }
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&$("#pixModal")&&!$("#pixModal").hidden) fechaPix() });
 carrega();
 })();

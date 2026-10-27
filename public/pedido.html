@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR" data-theme="light">
+<html lang="pt-BR">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -7,43 +7,117 @@
 <title>Seu pedido</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap">
-<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
 <style>
-body{padding-block:0 40px}
-.ped{max-width:620px;margin:0 auto;padding:28px 16px;display:flex;flex-direction:column;gap:16px}
-.ped h1{font-size:clamp(26px,6vw,36px)}
-.passos{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
-.passos div{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted);text-align:center}
-.passos i{height:6px;border-radius:3px;background:var(--sunken)}
-.passos .on{color:var(--accent);font-weight:600}.passos .on i{background:var(--accent)}
-.it{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
-.it:last-child{border-bottom:0}
-.it .ph{width:64px;height:64px;border-radius:8px;background:var(--sunken);display:grid;place-items:center;color:var(--muted);font:600 11px var(--mono);overflow:hidden}
-.it .ph img{width:100%;height:100%;object-fit:cover}
-.it b{display:block}
-.lin{display:flex;justify-content:space-between;gap:10px;font-size:14.5px;padding:3px 0}
-.lin.tot{font-size:18px;font-weight:700;border-top:1px solid var(--line);padding-top:10px;margin-top:4px}
-.lin.falta{font-size:20px;font-weight:800;color:var(--accent)}
-.pixw{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
-.pixw .qr{background:#fff;padding:8px;border-radius:10px;border:1px solid var(--line)}
-.pixw .qr svg{width:180px;height:180px;display:block}
-.pixw .cod{flex:1 1 220px;display:flex;flex-direction:column;gap:8px;min-width:0}
-.pixw textarea{font:12px var(--mono);word-break:break-all;resize:none}
-.cta{display:flex;flex-direction:column;gap:8px}
-.cta .btn{justify-content:center;padding:13px 16px;font-size:15px}
-.ped > header{padding:24px;border-radius:18px;color:#fff;background:radial-gradient(circle at 85% 15%,rgba(74,222,128,.4),transparent 45%),linear-gradient(135deg,#0d3a24,#14532d 60%,#166534);box-shadow:var(--shadow-lg)}
-.ped > header h1{color:#fff}.ped > header h1 small{color:#86efac}.ped > header p{color:#e3f3ea}.ped > header .note{color:#bfe3cd}.ped > header b{color:#fff}
-.it .ph{background:linear-gradient(135deg,var(--sunken),var(--accent-soft));color:var(--accent-strong);font-family:var(--body);font-weight:800}
-.lin.falta{color:var(--accent-strong)}
-.cta .btn{border-radius:999px}
-.resp{border:2px solid var(--accent)}
-.chave{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:12px}
-.chave b{font-size:15px;min-width:0}
+/* Página do pedido para o cliente, no formato de um documento: cartão branco com cabeçalho,
+   status, cliente/entrega, itens, resumo e rodapé da loja. A cor vem de Sua loja → Cor. */
+:root{--cor:#16a34a;--cor-escura:#0f3d26;--tinta:#0f1f33;--suave:#5b6b7f;--linha:#dfe6ef;--fundo-box:#f6f9fc;--ok:#15803d;--erro:#dc2626}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100vh;font:15px/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--tinta);
+  background:linear-gradient(160deg,color-mix(in srgb,var(--cor) 10%,#eef3f9) 0%,#f3f6fa 45%,color-mix(in srgb,var(--cor) 7%,#eef3f9) 100%);
+  padding:16px 16px calc(32px + env(safe-area-inset-bottom,0px))}
+.doc{max-width:680px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 18px 50px rgba(15,31,51,.10),0 2px 6px rgba(15,31,51,.05);padding:28px 22px 22px;display:flex;flex-direction:column;gap:14px}
+.topo{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:-28px -22px 6px;padding:22px 22px 20px;border-radius:14px 14px 0 0;background:radial-gradient(circle at 90% 0%,color-mix(in srgb,var(--cor) 35%,transparent),transparent 55%),#0e1114;color:#fff}
+.topo .num b,.topo .logo .nome{color:#fff}.topo .num span{color:#b7bcc4}
+.logo img{max-height:52px;max-width:200px;object-fit:contain;display:block}
+.logo .nome{font:800 26px/1.1 Inter,sans-serif;color:var(--cor-escura);letter-spacing:-.02em}
+.num{text-align:right;flex:none}
+.num small{display:block;font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--cor);text-transform:uppercase}
+.num b{display:block;font-size:30px;font-weight:800;line-height:1.1;color:var(--cor-escura)}
+.num span{font-size:12px;font-weight:600;color:var(--tinta)}
+.box{border:1px solid var(--linha);border-radius:10px;padding:14px 16px;background:#fff}
+.rot{display:block;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--cor);margin-bottom:2px}
+.box .val{font-weight:700;font-size:15px}
+.box .sub{color:var(--suave);font-size:13.5px}
+.status{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:center;padding:20px;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--cor) 9%,#fff),color-mix(in srgb,var(--cor) 4%,#fff));border-color:color-mix(in srgb,var(--cor) 30%,#fff)}
+.status .rot{color:var(--suave);font-size:10.5px;letter-spacing:.1em}
+.status h1{margin:2px 0 0;font-size:18px;font-weight:800;line-height:1.25}
+.status .lado{display:flex;gap:12px;align-items:flex-start;color:var(--suave);font-size:13px}
+.status .lado b{color:var(--tinta);font-weight:600;font-size:13.5px;display:block}
+.ico{flex:none;width:22px;height:22px;border-radius:50%;border:2.5px solid color-mix(in srgb,var(--cor) 25%,#fff);border-top-color:var(--cor);margin-top:1px}
+.ico.gira{animation:gira 1.1s linear infinite}
+.ico.ok{border-color:var(--cor);background:var(--cor);position:relative}
+.ico.ok::after{content:"";position:absolute;left:6px;top:2.5px;width:5px;height:10px;border:solid #fff;border-width:0 2.5px 2.5px 0;transform:rotate(45deg)}
+.ico.x{border-color:var(--erro);background:var(--erro);position:relative}
+.ico.x::before,.ico.x::after{content:"";position:absolute;left:8px;top:3px;width:2.5px;height:11px;background:#fff;transform:rotate(45deg)}.ico.x::after{transform:rotate(-45deg)}
+@keyframes gira{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.ico.gira{animation:none}}
+.passos{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:2px}
+.passos div{display:flex;flex-direction:column;gap:5px;font-size:11.5px;font-weight:600;color:var(--suave)}
+.passos i{height:5px;border-radius:3px;background:color-mix(in srgb,var(--cor) 14%,#fff)}
+.passos .on{color:var(--cor-escura)}.passos .on i{background:var(--cor)}
+.dois{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.itens{padding:0;overflow:hidden}
+.itens .cab{padding:12px 16px;background:var(--fundo-box);border-bottom:1px solid var(--linha)}
+.itens .cab .val{font-size:15px}
+table{width:100%;border-collapse:collapse}
+th{font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--suave);text-align:left;padding:10px 16px;border-bottom:1px solid var(--linha)}
+td{padding:12px 16px;border-bottom:1px solid var(--linha);vertical-align:top;font-size:13.5px}
+tr:last-child td{border-bottom:0}
+th.n,td.n{text-align:right;white-space:nowrap}
+.prod{display:flex;gap:10px;align-items:flex-start}
+.prod img{width:44px;height:44px;border-radius:8px;object-fit:cover;flex:none;background:var(--fundo-box)}
+.prod b{display:block;font-weight:700}
+.tag{display:inline-block;margin-top:5px;font-size:10.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--cor-escura);background:color-mix(in srgb,var(--cor) 12%,#fff);border:1px solid color-mix(in srgb,var(--cor) 28%,#fff);border-radius:5px;padding:2px 7px}
+.resumo{margin-left:auto;width:min(100%,300px);padding:8px 16px;background:var(--fundo-box)}
+.resumo div{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--linha);font-weight:600;color:var(--suave)}
+.resumo div b{color:var(--tinta)}
+.resumo div:last-child{border-bottom:0}
+.resumo .saldo{color:var(--tinta);font-weight:800;font-size:15px;align-items:baseline}
+.resumo .saldo b{font-size:22px;color:var(--cor-escura)}
+.resp{border:2px solid var(--cor);background:color-mix(in srgb,var(--cor) 5%,#fff)}
+.resp p{margin:4px 0 12px;color:var(--suave)}
+.acoes{display:flex;gap:10px;flex-wrap:wrap}
+.btn{font:700 15px Inter,sans-serif;border-radius:10px;padding:13px 20px;border:1px solid var(--linha);background:#fff;color:var(--tinta);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.pri{background:linear-gradient(135deg,var(--cor),color-mix(in srgb,var(--cor) 70%,#0a1a2e));border-color:transparent;color:#fff;box-shadow:0 8px 20px color-mix(in srgb,var(--cor) 35%,transparent)}
+.btn.perigo{color:var(--erro);border-color:color-mix(in srgb,var(--erro) 40%,#fff)}
+.btn.sm{padding:8px 12px;font-size:13px}
+.btn:disabled{opacity:.6;cursor:default}
+.acoes .btn{flex:1 1 180px}
+textarea{width:100%;font:14px Inter,sans-serif;border:1px solid var(--linha);border-radius:8px;padding:10px;resize:vertical;margin:6px 0 10px}
+.msg{font-size:13px;color:var(--erro);min-height:1em;margin-top:6px}
+.rodape{display:flex;justify-content:space-between;gap:16px;border-top:1px solid var(--linha);padding-top:14px;margin-top:4px;font-size:12px}
+.rodape .slogan{font-weight:700;color:var(--cor-escura)}
+.rodape .loja{text-align:right;color:var(--suave);line-height:1.6}
+.rodape a{color:inherit}
+.fora{max-width:680px;margin:18px auto 0;display:flex;flex-direction:column;align-items:center;gap:10px}
+.fora .btn.pri{min-width:260px;font-size:16px;padding:15px 26px}
+.fora .lnk{font-size:13.5px;color:var(--suave)}
+.fora .lnk a{color:var(--cor-escura);font-weight:600}
+/* janela do Pix */
+.modal{position:fixed;inset:0;background:rgba(10,20,35,.55);display:flex;align-items:flex-end;justify-content:center;z-index:30;padding:0}
+.modal[hidden]{display:none}
+.janela{background:#fff;width:min(100%,460px);max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:22px 20px calc(22px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px}
+@media (min-width:560px){.modal{align-items:center;padding:20px}.janela{border-radius:16px}}
+.janela h2{margin:0;font-size:19px}
+.janela .valor{font-size:28px;font-weight:800;color:var(--cor-escura)}
+.qr{align-self:center;background:#fff;padding:10px;border:1px solid var(--linha);border-radius:12px}
+.qr svg{width:210px;height:210px;display:block}
+.cod{font:12px ui-monospace,Consolas,monospace;word-break:break-all;background:var(--fundo-box);border:1px solid var(--linha);border-radius:8px;padding:10px;max-height:90px;overflow:auto;user-select:all}
+.chave{display:flex;gap:8px;align-items:center;justify-content:space-between;border:1px dashed var(--linha);border-radius:10px;padding:10px 12px}
+.chave span{font-size:12px;color:var(--suave);display:block}
+.chave b{word-break:break-all}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--tinta);color:#fff;padding:11px 18px;border-radius:10px;font-weight:600;font-size:14px;z-index:40;box-shadow:0 10px 30px rgba(0,0,0,.2)}
+.vazio{max-width:520px;margin:12vh auto;text-align:center;background:#fff;border-radius:14px;padding:30px 22px;box-shadow:0 18px 50px rgba(15,31,51,.10)}
+@media (max-width:560px){
+  body{padding:10px 10px calc(28px + env(safe-area-inset-bottom,0px))}
+  .doc{padding:20px 14px 16px;border-radius:12px}
+  .topo{margin:-20px -14px 6px;padding:18px 14px 16px;border-radius:12px 12px 0 0}
+  .num b{font-size:24px}
+  .logo .nome{font-size:21px}
+  .status,.dois{grid-template-columns:1fr}
+  th.qtd,td.qtd,th.unit,td.unit{display:none}
+  td .mob{display:block;color:var(--suave);font-size:12.5px;margin-top:2px}
+  .rodape{flex-direction:column}.rodape .loja{text-align:left}.rodape .slogan:empty{display:none}
+  .resumo{width:100%}
+}
+@media (min-width:561px){td .mob{display:none}}
 </style>
 </head>
 <body>
-<main class="ped" id="ped"><p class="note">Carregando seu pedido…</p></main>
+<main id="ped"><div class="vazio">Carregando seu pedido…</div></main>
 <div class="toast" id="toast" hidden></div>
 <script src="/pedido.js"></script>
 </body>

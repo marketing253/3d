@@ -536,6 +536,8 @@ function limpaFotosOrfas() {
   const usadas = new Set(db.prepare("SELECT foto FROM produtos WHERE foto IS NOT NULL").all().map(r => r.foto));
   for (const r of db.prepare("SELECT dados FROM pedidos WHERE dados LIKE '%\"proposta\"%'").all())
     for (const f of JSON.parse(r.dados).proposta?.fotos || []) usadas.add(f.id);
+  for (const r of db.prepare("SELECT dados FROM pedidos WHERE dados LIKE '%\"artes\"%'").all())
+    for (const a of JSON.parse(r.dados).artes || []) usadas.add(a.foto);
   const logo = lojaConfig().logo; if (logo) usadas.add(logo);
   for (const f of fs.readdirSync(FOTOS_DIR)) {
     if (!FOTO_RE.test(f) || usadas.has(f)) continue;
@@ -691,6 +693,7 @@ app.put("/api/pedidos/:id", exigeLogin, exigeEdicao, (req, res) => {
   const { v, erro } = limpaPedido(req.body); if (erro) return res.status(400).json({ erro });
   const ant = JSON.parse(atual.dados); if (ant.proposta) v.proposta = ant.proposta; // a proposta tem rota própria
   if (ant.resposta) v.resposta = ant.resposta; // aprovação/recusa feita pelo cliente no link
+  if (ant.artes) v.artes = ant.artes; // versões da arte enviadas para aprovação
   db.transaction(() => {
     db.prepare("UPDATE pedidos SET dados = ?, prazo = ?, atualizado_em = datetime('now') WHERE id = ?").run(JSON.stringify(v), v.prazo, req.params.id);
     sincronizaSinal(req.params.id, req.usuario.id);
@@ -1521,14 +1524,102 @@ app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
   const pix = pixTipo ? await pixPara(pixValor, (pixTipo === "entrada" ? "ENT" : "PED") + r.numero) : null;
   res.set("Cache-Control", "no-store");
   res.json({
-    loja: { nome: txt(L.nome, 80) || "Impressões 3D", whatsapp: txt(L.whatsapp, 30).replace(/\D/g, ""), instagram: txt(L.instagram, 60), pagamento: txt(L.pagamento, 200) },
-    numero: r.numero, status: r.status, prazo: r.prazo, data: p.data, cliente: String(p.cliente || "").split(" ")[0],
+    loja: { nome: txt(L.nome, 80) || "Impressões 3D", whatsapp: txt(L.whatsapp, 30).replace(/\D/g, ""), whatsappTxt: txt(L.whatsapp, 30), instagram: txt(L.instagram, 60), pagamento: txt(L.pagamento, 200),
+      site: txt(L.site, 80), sobre: txt(L.sobre, 160), cor: /^#[0-9a-f]{6}$/i.test(L.cor || "") ? L.cor : "", logo: L.logo && FOTO_RE.test(L.logo) ? "/loja/logo" : null },
+    canal: txt(p.canal, 80),
+    numero: r.numero, status: r.status, prazo: r.prazo, data: p.data, cliente: txt(p.cliente, 120),
     itens: p.itens.map((i, k) => ({ descricao: i.descricao, quantidade: i.quantidade, preco: i.preco_unit, personalizacao: i.personalizacao || "",
       foto: fotoDoItem(i) ? `/pedido/${r.token}/foto/${k}` : null })),
     desconto: n(p.desconto), frete: n(p.freteCliente), total, sinal: n(p.sinal), receber,
     entrada, faltaEntrada, resposta: p.resposta ? { acao: p.resposta.acao, em: p.resposta.em } : null,
+    arte: p.artes && p.artes.length ? { v: p.artes.at(-1).v, status: p.artes.at(-1).status } : null,
     pix: pix ? { payload: pix.payload, svg: pix.svg, tipo: pixTipo, valor: pixValor, chave: txt(L.pixChave, 77), nome: txt(L.pixNome || L.nome, 60) } : null,
   });
+});
+// ---------- aprovação da arte ----------
+// Cada imagem enviada vira uma versão (V01, V02…). O cliente aprova ou pede ajuste da versão mais nova
+// pela página /aprovacao/<token do pedido>.
+function salvaDados(id, p) { db.prepare("UPDATE pedidos SET dados = ?, atualizado_em = datetime('now') WHERE id = ?").run(JSON.stringify(p), id); }
+function garanteToken(r) {
+  if (r.token) return r.token;
+  const t = crypto.randomBytes(16).toString("hex");
+  db.prepare("UPDATE pedidos SET token = ? WHERE id = ?").run(t, r.id); return t;
+}
+app.post("/api/pedidos/:id/arte", exigeLogin, exigeEdicao, (req, res) => {
+  const r = db.prepare("SELECT * FROM pedidos WHERE id = ?").get(req.params.id);
+  if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  const foto = txt(req.body?.foto, 60);
+  if (!FOTO_RE.test(foto)) return res.status(400).json({ erro: "Envie a imagem da arte." });
+  const p = JSON.parse(r.dados); p.artes = Array.isArray(p.artes) ? p.artes : [];
+  if (p.artes.length >= 30) return res.status(400).json({ erro: "Limite de 30 versões por pedido." });
+  // versão anterior ainda sem resposta fica marcada como substituída
+  for (const a of p.artes) if (a.status === "pendente") a.status = "substituida";
+  p.artes.push({ v: p.artes.length + 1, foto, nota: txt(req.body.nota, 300), produto: txt(req.body.produto, 150), em: new Date().toISOString(), status: "pendente" });
+  salvaDados(r.id, p); garanteToken(r);
+  res.json(linhaPedido(db.prepare("SELECT * FROM pedidos WHERE id = ?").get(r.id)));
+});
+app.delete("/api/pedidos/:id/arte/:v", exigeLogin, exigeEdicao, (req, res) => {
+  const r = db.prepare("SELECT * FROM pedidos WHERE id = ?").get(req.params.id);
+  if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  const p = JSON.parse(r.dados), ult = (p.artes || []).at(-1);
+  if (!ult || String(ult.v) !== req.params.v) return res.status(400).json({ erro: "Só dá para apagar a versão mais nova." });
+  if (ult.status === "aprovada") return res.status(400).json({ erro: "Arte aprovada pelo cliente não pode ser apagada." });
+  p.artes.pop(); const ant = p.artes.at(-1); if (ant && ant.status === "substituida") ant.status = "pendente";
+  salvaDados(r.id, p);
+  res.json(linhaPedido(db.prepare("SELECT * FROM pedidos WHERE id = ?").get(r.id)));
+});
+app.post("/api/pedidos/:id/arte-vista", exigeLogin, (req, res) => {
+  const r = db.prepare("SELECT * FROM pedidos WHERE id = ?").get(req.params.id);
+  if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  const p = JSON.parse(r.dados); for (const a of p.artes || []) a.visto = true;
+  salvaDados(r.id, p);
+  res.json(linhaPedido(db.prepare("SELECT * FROM pedidos WHERE id = ?").get(r.id)));
+});
+app.get("/api/publico/arte/:token", limitePublico, (req, res) => {
+  const r = pedidoPorToken(req.params.token); if (!r) return res.status(404).json({ erro: "Não encontrado." });
+  const p = JSON.parse(r.dados), L = lojaConfig(), artes = p.artes || [];
+  if (!artes.length) return res.status(404).json({ erro: "Ainda não há arte para aprovar." });
+  const a = artes.at(-1), i0 = p.itens[0] || {};
+  res.set("Cache-Control", "no-store");
+  res.json({
+    loja: { nome: txt(L.nome, 80) || "Impressões 3D", whatsapp: txt(L.whatsapp, 30).replace(/\D/g, ""), cor: /^#[0-9a-f]{6}$/i.test(L.cor || "") ? L.cor : "", logo: L.logo && FOTO_RE.test(L.logo) ? "/loja/logo" : null },
+    numero: r.numero, cliente: txt(p.cliente, 120),
+    produto: a.produto || (p.itens.length > 1 ? `${p.itens.length} itens` : `${i0.descricao || "Peça"} · Quantidade: ${Number(i0.quantidade || 1).toLocaleString("pt-BR")}`),
+    atual: { v: a.v, status: a.status, nota: a.nota || "", em: a.em, respondidoEm: a.respondidoEm || null, comentario: a.comentario || "", imagem: `/aprovacao/${r.token}/arte/${a.v}` },
+    versoes: artes.map(x => ({ v: x.v, status: x.status, em: x.em })),
+  });
+});
+app.get("/aprovacao/:token/arte/:v", limitePublico, (req, res) => {
+  const r = pedidoPorToken(req.params.token); if (!r) return res.status(404).end();
+  const a = (JSON.parse(r.dados).artes || []).find(x => String(x.v) === req.params.v);
+  if (!a || !FOTO_RE.test(a.foto)) return res.status(404).end();
+  res.set("Cache-Control", "private, max-age=86400");
+  res.sendFile(path.join(FOTOS_DIR, a.foto), err => { if (err && !res.headersSent) res.status(404).end(); });
+});
+app.post("/api/publico/arte/:token/resposta", limiteResposta, (req, res) => {
+  const r = pedidoPorToken(req.params.token); if (!r) return res.status(404).json({ erro: "Não encontrado." });
+  const p = JSON.parse(r.dados), a = (p.artes || []).at(-1);
+  if (!a) return res.status(404).json({ erro: "Ainda não há arte para aprovar." });
+  if (a.status !== "pendente") return res.status(409).json({ erro: "Esta versão já foi respondida. Fale com a loja pelo WhatsApp." });
+  const acao = req.body?.acao, comentario = txt(req.body?.comentario, 600);
+  if (!["aprovar", "ajuste"].includes(acao)) return res.status(400).json({ erro: "Resposta inválida." });
+  if (acao === "ajuste" && !comentario) return res.status(400).json({ erro: "Conte o que precisa mudar na arte." });
+  a.status = acao === "aprovar" ? "aprovada" : "ajuste"; a.respondidoEm = new Date().toISOString(); a.visto = false;
+  if (comentario) a.comentario = comentario;
+  salvaDados(r.id, p);
+  res.json({ ok: true });
+});
+app.get("/aprovacao/:token", limitePublico, (req, res) => {
+  if (!pedidoPorToken(req.params.token)) return res.status(404).send("Link não encontrado. Peça um novo link para a loja.");
+  res.set("Cache-Control", "no-store");
+  res.sendFile(path.join(__dirname, "public", "aprovacao.html"));
+});
+
+// logo da loja para as páginas públicas (pedido e catálogo)
+app.get("/loja/logo", limitePublico, (req, res) => {
+  const logo = lojaConfig().logo; if (!logo || !FOTO_RE.test(logo)) return res.status(404).end();
+  res.set("Cache-Control", "public, max-age=3600");
+  res.sendFile(path.join(FOTOS_DIR, logo), err => { if (err && !res.headersSent) res.status(404).end(); });
 });
 app.get("/pedido/:token/foto/:i", limitePublico, (req, res) => {
   const r = pedidoPorToken(req.params.token); if (!r) return res.status(404).end();

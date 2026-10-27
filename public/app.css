@@ -505,3 +505,8 @@ td .pcell{min-width:230px}
 .propfoto img{width:100%;height:110px;object-fit:contain;background:#fff;border-radius:6px}
 .propfoto.add{align-items:center;justify-content:center;min-height:150px;cursor:pointer;color:var(--muted);border-style:dashed}
 @media (max-width:560px){.propl{flex-wrap:wrap}.propl input,.propl textarea{flex:1 1 100% !important}}
+
+/* versões da arte no pedido */
+.artes{display:flex;flex-direction:column;gap:10px}
+.arte{display:grid;grid-template-columns:110px minmax(0,1fr);gap:12px;align-items:start;border:1px solid var(--line);border-radius:var(--r-sm,8px);padding:10px}
+.arte img{width:110px;height:110px;object-fit:contain;background:#0b1322;border-radius:6px}

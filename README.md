@@ -17,6 +17,7 @@ Sistema para cadastrar produtos impressos em 3D (Bambu Lab A1 Combo), calcular o
 - **Pedidos e encomendas:** cliente, WhatsApp, itens com personalização, sinal, prazo e status (orçamento → aprovado → imprimindo → pronto → entregue). Ao entregar, a venda entra sozinha no financeiro.
 - **Mensagens prontas para o WhatsApp:** orçamento, confirmação, pedido pronto, cobrança e agradecimento, com **Pix copia e cola e QR Code** no valor que falta pagar.
 - **Link do pedido para o cliente** (`/pedido/...`): página com fotos, itens e valor, com botões **Aprovar orçamento** e **Recusar** (com motivo). Depois de aprovar, mostra o **Pix da entrada** (QR Code, copia e cola e a chave Pix); paga a entrada, mostra o Pix do restante. A entrada padrão fica em Sua loja (Entrada ao aprovar, %) e pode ser trocada em cada pedido. As respostas aparecem na tela Hoje. O link vai sozinho nas mensagens.
+- **Aprovação da arte** (`/aprovacao/...`): no pedido, botão **Arte** para enviar o mockup. Cada envio vira uma versão (V01, V02…); o cliente vê a arte em destaque e clica em **Aprovar arte** ou **Pedir ajuste** (com comentário). As respostas aparecem na tela Hoje e no pedido.
 - **Link de cada produto** do catálogo (`/catalogo?p=...`), com foto e preço na prévia do WhatsApp.
 - **Etiqueta 10×15** do pedido para a impressora térmica, com QR Code do Pix.
 - **Clientes:** lista montada a partir dos pedidos e vendas, com quanto cada um gastou, última compra e botão para chamar no WhatsApp.
