@@ -605,6 +605,7 @@ function renderPedidos(){
           ${p.status!=="entregue"?'<button class="edit-only" data-pa="edit">Editar pedido</button>':""}
           <button class="edit-only" data-pa="arte">Arte</button>
           <button class="edit-only" data-pa="prop">Proposta em PDF</button>
+          <button class="edit-only" data-pa="del">Excluir pedido</button>
           <label class="edit-only">Mudar status <select data-pa="st">${Object.entries(ST).map(([k,n])=>`<option value="${k}"${k===p.status?" selected":""}>${n}</option>`).join("")}</select></label>
         </div></details>
       </div></td></tr>`}).join("")}
@@ -639,7 +640,7 @@ async function mudaStatus(p,novo){
     if((novo==="pronto"||novo==="entregue")&&tab==="pedidos") abreMsg(r.pedido,novo==="pronto"?"pronto":"obrigado");
   }catch(err){ toast(err.message) }
 }
-$("#pedLista").addEventListener("click",e=>{
+$("#pedLista").addEventListener("click",async e=>{
   const b=e.target.closest("[data-pa]"); if(!b||b.tagName==="SELECT") return;
   if(b.tagName==="BUTTON") b.closest("details.mais")?.removeAttribute("open");
   if(b.dataset.pa==="novo") return abrePedido(null);
@@ -648,6 +649,10 @@ $("#pedLista").addEventListener("click",e=>{
   if(a==="next") mudaStatus(p,ST_NEXT[p.status][0]);
   if(a==="edit") abrePedido(p);
   if(a==="msg") abreMsg(p);
+  if(a==="del"){ const td=b.closest("tr").querySelector("td.pact"); const ent=p.status==="entregue"||(etapaPed(p)==="entregue");
+    td.innerHTML=`<span class="confirm" style="white-space:normal;display:inline-flex;flex-direction:column;gap:6px;align-items:flex-end">Excluir o pedido #${p.numero}?${ent?'<small class="pcat">A venda dele também sai do Financeiro.</small>':""}<span class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn sm danger" data-pa="delok">Excluir</button><button class="btn sm ghost" data-pa="delno">Manter</button></span></span>`; return }
+  if(a==="delno"){ renderPedidos(); return }
+  if(a==="delok"){ try{ await api("DELETE","/api/pedidos/"+encodeURIComponent(p.id)); pedidos=pedidos.filter(x=>x.id!==p.id); renderPedidos(); renderFila(); toast(`Pedido #${p.numero} excluído`) }catch(err){ toast(err.message) } return }
   if(a==="link") linkDe(p).then(async l=>{ if(!l) return toast("Não deu para gerar o link."); try{await navigator.clipboard.writeText(l);toast("Link do cliente copiado")}catch(e){toast(l)} });
   if(a==="passo") executaPasso(p,b);
   if(a==="prop") abreProposta(p);

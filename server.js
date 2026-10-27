@@ -785,10 +785,13 @@ app.post("/api/pedidos/:id/status", exigeLogin, exigeEdicao, (req, res) => {
 app.delete("/api/pedidos/:id", exigeLogin, exigeEdicao, (req, res) => {
   const r = db.prepare("SELECT status FROM pedidos WHERE id = ?").get(req.params.id);
   if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
-  if (r.status === "entregue") return res.status(400).json({ erro: "Pedido entregue não pode ser excluído. Volte o status antes." });
-  db.prepare("DELETE FROM pedidos WHERE id = ?").run(req.params.id);
-  db.prepare("UPDATE impressoes SET pedido_id = NULL WHERE pedido_id = ?").run(req.params.id);
-  db.prepare("DELETE FROM lancamentos WHERE pedido_id = ?").run(req.params.id); // pedido apagado: tira o sinal do caixa
+  // pedido apagado (inclusive entregue): saem junto as vendas e o sinal dele no Financeiro
+  db.transaction(() => {
+    db.prepare("DELETE FROM pedidos WHERE id = ?").run(req.params.id);
+    db.prepare("UPDATE impressoes SET pedido_id = NULL WHERE pedido_id = ?").run(req.params.id);
+    db.prepare("DELETE FROM lancamentos WHERE pedido_id = ?").run(req.params.id);
+    db.prepare("DELETE FROM vendas WHERE pedido_id = ?").run(req.params.id);
+  })();
   res.json({ ok: true });
 });
 app.post("/api/pedidos/:id/confirmar-entrada", exigeLogin, exigeEdicao, (req, res) => {
