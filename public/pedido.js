@@ -34,7 +34,7 @@ async function carrega(){
   const restante=Math.max(0,d.total-d.entrada);
 
   // os 5 passos: [chave, título, resumo quando feito]
-  const temArte=!d.semArte&&d.itens.length>0;
+  const temArte=!!d.precisaArte;
   const passos=[
     ["orcamento","Orçamento",d.resposta?.acao==="aprovado"?`Aprovado em ${quando(d.resposta.em)}`:"Aprovado"],
     ["pagamento",`Pagamento de ${d.entrada>0&&d.total>0?Math.round(d.entrada/d.total*100)+"%":"entrada"}`,`Entrada de ${brl(d.entrada)} recebida`],
@@ -46,7 +46,7 @@ async function carrega(){
 
   const corpo={};
   corpo.orcamento=`
-    <ul class="lista">${d.itens.map(i=>`<li>${i.foto&&!i.personalizacao?`<img class="foto" src="${esc(i.foto)}" alt="" loading="lazy">`:""}<span class="txt"><b>${esc(i.descricao)}</b>${i.personalizacao?`<span class="tag">${esc(i.personalizacao)}</span>`:""}<small>${Number(i.quantidade).toLocaleString("pt-BR")} × ${brl(i.preco)}</small></span><b>${brl(i.quantidade*i.preco)}</b></li>`).join("")}</ul>
+    <ul class="lista">${d.itens.map(i=>`<li>${i.foto&&!i.personalizacao?`<button type="button" class="fotobig" data-a="zoom" data-src="${esc(i.foto)}" aria-label="Ver a foto de ${esc(i.descricao)} em tela cheia"><img src="${esc(i.foto)}" alt="${esc(i.descricao)}" loading="lazy"><span>Toque para ampliar</span></button>`:""}<span class="txt"><b>${esc(i.descricao)}</b>${i.personalizacao?`<span class="tag">${esc(i.personalizacao)}</span>`:""}<small>${Number(i.quantidade).toLocaleString("pt-BR")} × ${brl(i.preco)}</small></span><b>${brl(i.quantidade*i.preco)}</b></li>`).join("")}</ul>
     <div class="tot"><span>Total</span><b>${brl(d.total)}</b></div>
     <p class="exp">${d.entrada>0?`Ao aprovar, você paga <b>${brl(d.entrada)}</b> por Pix para começarmos${restante>0?` e o restante, <b>${brl(restante)}</b>, quando ficar pronto`:""}.`:"Ao aprovar, seu pedido segue para a produção."}${d.prazo?` Prazo: pronto até <b>${dataBR(d.prazo)}</b>.`:""}</p>
     <div id="resp">
@@ -102,6 +102,7 @@ async function carrega(){
     const x=e.target.closest("[data-a]"); if(!x) return; const a=x.dataset.a;
     const grupo=x.closest("#resp,#respArte");
     const mostra=et2=>grupo.querySelectorAll("[data-etapa]").forEach(el=>el.hidden=el.dataset.etapa!==et2);
+    if(a==="zoom"){ const z=document.createElement("div"); z.className="zoom"; z.innerHTML=`<img src="${esc(x.dataset.src)}" alt="">`; z.addEventListener("click",()=>z.remove()); document.body.appendChild(z); return }
     if(a==="copPix") return copia(d.pix.payload,"Código Pix copiado");
     if(a==="copChave") return copia(d.pix.chave,"Chave Pix copiada");
     if(["aprovar","recusar","arte-ok","ajuste"].includes(a)){ mostra(a); const t=grupo.querySelector("textarea:not([hidden])"); if(a==="recusar"||a==="ajuste") setTimeout(()=>grupo.querySelector(`[data-etapa="${a}"] textarea`)?.focus(),0); return }

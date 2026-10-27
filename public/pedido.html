@@ -43,7 +43,12 @@ body{margin:0;min-height:100vh;font:15px/1.5 Inter,system-ui,-apple-system,"Sego
 .lista li span{min-width:0}
 .lista li{align-items:center}
 .lista .txt{flex:1}
-.lista .foto{width:64px;height:64px;flex:none;border-radius:10px;object-fit:cover;background:var(--claro);border:1px solid var(--linha)}
+.lista li:has(.fotobig){flex-wrap:wrap}
+.fotobig{flex:1 1 100%;display:block;position:relative;padding:0;border:1px solid var(--linha);border-radius:12px;overflow:hidden;background:#fff;cursor:zoom-in;margin-bottom:6px}
+.fotobig img{display:block;width:100%;height:min(62vw,340px);object-fit:contain}
+.fotobig span{position:absolute;right:8px;bottom:8px;background:rgba(14,17,20,.72);color:#fff;font:600 11.5px Inter,sans-serif;padding:4px 9px;border-radius:999px}
+.zoom{position:fixed;inset:0;z-index:50;background:rgba(10,14,18,.92);display:flex;align-items:center;justify-content:center;padding:16px;cursor:zoom-out}
+.zoom img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;background:#fff}
 .lista small{display:block;color:var(--suave);font-size:13px}
 .tag{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:700;text-transform:uppercase;color:color-mix(in srgb,var(--cor) 70%,#0a1a2e);background:color-mix(in srgb,var(--cor) 12%,#fff);border-radius:5px;padding:1px 6px;vertical-align:2px}
 .tot{display:flex;justify-content:space-between;align-items:baseline;font-weight:800}

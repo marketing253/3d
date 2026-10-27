@@ -649,7 +649,7 @@ function limpaPedido(b) {
     obs: txt(b.obs, 1000), ...(b.origem === "catalogo" ? { origem: "catalogo" } : {}), ...(b.cupom ? { cupom: txt(b.cupom, 30).toUpperCase() } : {}),
     ...(b.impressora ? { impressora: txt(b.impressora, 60) } : {}),
     ...(b.entrada !== "" && b.entrada != null && Number.isFinite(Number(b.entrada)) ? { entrada: Math.max(0, n(b.entrada)) } : {}),
-    ...(b.semArte ? { semArte: true } : {}),
+    ...(b.semArte ? { semArte: true } : {}), ...(b.comArte ? { comArte: true } : {}),
   } };
 }
 // ---------- etapas do pedido ----------
@@ -657,13 +657,19 @@ function limpaPedido(b) {
 // Não dá para pular: sem entrada confirmada e arte aprovada o pedido não vai para a produção.
 // Pronta entrega (só itens do estoque) e pedidos marcados "sem arte" pulam a etapa da arte.
 function totalPedido(p) { return n(p.itens.reduce((s, i) => s + i.quantidade * i.preco_unit, 0) - (p.desconto || 0) + (p.freteCliente || 0)); }
+// Arte: automática quando há item personalizado; o pedido pode ligar (comArte) ou desligar (semArte).
+function precisaArte(p) {
+  if (p.semArte) return false;
+  if (p.comArte) return true;
+  return p.itens.some(i => !i.doEstoque && String(i.personalizacao || "").trim());
+}
 function etapaDe(status, p) {
   if (status === "cancelado") return p.resposta?.acao === "recusado" ? "recusado" : "cancelado";
   if (["orcamento", "pronto", "entregue"].includes(status)) return status;
   // pronta entrega e pedidos de antes do passo a passo (sem p.fluxo) não exigem entrada nem arte
   const estoque = !p.fluxo || (p.itens.length > 0 && p.itens.every(i => i.doEstoque));
   if (!estoque && n(p.sinal) + 0.004 < entradaDe(p, totalPedido(p), lojaConfig())) return "pagamento";
-  if (!estoque && !p.semArte && (p.artes || []).at(-1)?.status !== "aprovada") return "arte";
+  if (!estoque && precisaArte(p) && (p.artes || []).at(-1)?.status !== "aprovada") return "arte";
   return "producao";
 }
 const FALTA_ETAPA = { pagamento: "Falta confirmar o pagamento da entrada.", arte: "Falta o cliente aprovar a arte.", orcamento: "O cliente ainda não aprovou o orçamento." };
@@ -688,7 +694,7 @@ function sincronizaSinal(pedidoId, uid) {
     }
   }
 }
-function linhaPedido(r) { const d = JSON.parse(r.dados); return { ...d, etapa: etapaDe(r.status, d), id: r.id, numero: r.numero, status: r.status, prazo: r.prazo, token: r.token || null, criadoEm: r.criado_em, atualizadoEm: r.atualizado_em }; }
+function linhaPedido(r) { const d = JSON.parse(r.dados); return { ...d, etapa: etapaDe(r.status, d), precisaArte: precisaArte(d), id: r.id, numero: r.numero, status: r.status, prazo: r.prazo, token: r.token || null, criadoEm: r.criado_em, atualizadoEm: r.atualizado_em }; }
 app.get("/api/pedidos", exigeLogin, (req, res) => {
   res.json(db.prepare("SELECT * FROM pedidos ORDER BY numero DESC LIMIT 1000").all().map(linhaPedido));
 });
@@ -1575,7 +1581,7 @@ app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
       foto: fotoDoItem(i) ? `/pedido/${r.token}/foto/${k}` : null })),
     desconto: n(p.desconto), frete: n(p.freteCliente), total, sinal: n(p.sinal), receber,
     entrada, faltaEntrada, resposta: p.resposta ? { acao: p.resposta.acao, em: p.resposta.em } : null,
-    etapa: etapaDe(r.status, p), pagInformado: p.pagInformado || null, semArte: !!p.semArte,
+    etapa: etapaDe(r.status, p), pagInformado: p.pagInformado || null, precisaArte: precisaArte(p),
     arte: p.artes && p.artes.length ? (a => ({ v: a.v, status: a.status, nota: a.nota || "", comentario: a.comentario || "", respondidoEm: a.respondidoEm || null, imagem: `/aprovacao/${r.token}/arte/${a.v}` }))(p.artes.at(-1)) : null,
     pix: pix ? { payload: pix.payload, svg: pix.svg, tipo: pixTipo, valor: pixValor, chave: txt(L.pixChave, 77), nome: txt(L.pixNome || L.nome, 60) } : null,
   });

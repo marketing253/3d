@@ -690,7 +690,7 @@ function abrePedido(p){
       <label class="f">Frete cobrado do cliente<div class="unit pre"><span>R$</span><input id="pf-fc" type="number" min="0" step="0.01" value="${esc(d.freteCliente)}"></div></label>
       <label class="f">Frete pago por você<div class="unit pre"><span>R$</span><input id="pf-fv" type="number" min="0" step="0.01" value="${esc(d.freteVoce)}"></div></label>
       <label class="f">Taxas do canal<span class="hint">Calculada; pode ajustar</span><div class="unit pre"><span>R$</span><input id="pf-taxas" type="number" min="0" step="0.01" value="${esc(d.taxas)}"></div></label>
-      <label class="f">Arte<span class="hint">Peças personalizadas passam pela aprovação da arte</span><span class="chk"><input type="checkbox" id="pf-arte" ${d.semArte?"":"checked"}> O cliente aprova a arte antes da produção</span></label>
+      <label class="f">Arte<span class="hint">Liga sozinho quando algum item é personalizado</span><span class="chk"><input type="checkbox" id="pf-arte" ${(d.semArte?false:d.comArte?true:(d.itens||[]).some(i=>!i.doEstoque&&String(i.personalizacao||"").trim()))?"checked":""}> O cliente aprova a arte antes da produção</span></label>
       <label class="f">Entrada pedida<span class="hint">Cobrada no link depois que o cliente aprova; vazio = ${entradaPct()}% do total</span><div class="unit pre"><span>R$</span><input id="pf-entrada" type="number" min="0" step="0.01" placeholder="${entradaPct()}%" value="${esc(d.entrada??"")}"></div></label>
       <label class="f">Sinal já recebido<span class="hint">Entra no caixa (Financeiro) na data de hoje</span><div class="unit pre"><span>R$</span><input id="pf-sinal" type="number" min="0" step="0.01" value="${esc(d.sinal)}"></div></label>
       <label class="f">Observação<input id="pf-obs" maxlength="1000" value="${esc(d.obs)}"></label>
@@ -720,7 +720,7 @@ function lePf(){
   const d=pedForm.d;
   d.cliente=$("#pf-cliente").value.trim(); d.whatsapp=$("#pf-whats").value.trim(); d.canal=$("#pf-canal").value;
   d.data=$("#pf-data").value; d.prazo=$("#pf-prazo").value; d.desconto=num($("#pf-desc").value); d.freteCliente=num($("#pf-fc").value);
-  d.freteVoce=num($("#pf-fv").value); d.taxas=num($("#pf-taxas").value); d.sinal=num($("#pf-sinal").value); d.entrada=$("#pf-entrada").value===""?"":num($("#pf-entrada").value); d.semArte=!$("#pf-arte").checked; d.obs=$("#pf-obs").value.trim();
+  d.freteVoce=num($("#pf-fv").value); d.taxas=num($("#pf-taxas").value); d.sinal=num($("#pf-sinal").value); d.entrada=$("#pf-entrada").value===""?"":num($("#pf-entrada").value); d.semArte=!$("#pf-arte").checked; d.comArte=$("#pf-arte").checked; d.obs=$("#pf-obs").value.trim();
   if($("#pf-status")) d.status=$("#pf-status").value;
 }
 function atualizaPf(){
@@ -774,7 +774,7 @@ function textoMsg(p,tipo){
   const linhas=(p.itens||[]).map(i=>`• ${num(i.quantidade).toLocaleString("pt-BR")}× ${i.descricao} — ${brl(num(i.preco_unit))} cada = ${brl(num(i.quantidade)*num(i.preco_unit))}${i.personalizacao?`\n   Personalização: ${i.personalizacao}`:""}`).join("\n");
   const extras=[num(p.desconto)>0?`Desconto: -${brl(num(p.desconto))}`:"",num(p.freteCliente)>0?`Frete: ${brl(num(p.freteCliente))}`:""].filter(Boolean).join("\n");
   const pag=cfg.loja.pagamento?`\nPagamento: ${cfg.loja.pagamento}`:"";
-  if(tipo==="orcamento") return `Olá, ${nome}! Segue o seu orçamento da ${loja}:\n\n${linhas}${extras?"\n"+extras:""}\n\n*Total: ${brl(t.total)}*${p.prazo?`\nPronto até ${dataBRc(p.prazo)}`:""}\n\nComo funciona:\n1. Você aprova o orçamento pelo link\n2. Paga ${entradaPed(p)>0?`${brl(entradaPed(p))} (entrada)`:"o pedido"} por Pix ali mesmo\n3. Aprova a arte${p.semArte?" (se houver)":""}\n4. Produzimos e avisamos quando ficar pronto`;
+  if(tipo==="orcamento") return `Olá, ${nome}! Segue o seu orçamento da ${loja}:\n\n${linhas}${extras?"\n"+extras:""}\n\n*Total: ${brl(t.total)}*${p.prazo?`\nPronto até ${dataBRc(p.prazo)}`:""}\n\nComo funciona:\n1. Você aprova o orçamento pelo link\n2. Paga ${entradaPed(p)>0?`${brl(entradaPed(p))} (entrada)`:"o pedido"} por Pix ali mesmo\n${p.precisaArte?"3. Aprova a arte\n4. Produzimos":"3. Produzimos"} e avisamos quando ficar pronto`;
   if(tipo==="confirmado") return `Olá, ${nome}! Pedido #${p.numero} confirmado na ${loja}.\n\n${linhas}\n\n*Total: ${brl(t.total)}*${num(p.sinal)>0?`\nSinal recebido: ${brl(num(p.sinal))}\nRestante na entrega: ${brl(t.receber)}`:""}\n${p.prazo?`Previsão: ${dataBRc(p.prazo)}`:""}\n\nAviso assim que estiver pronto!`;
   if(tipo==="pronto") return `Olá, ${nome}! Seu pedido #${p.numero} da ${loja} está pronto.\n\n${resumoItens(p)}\n${t.receber>0?`\nValor a pagar: *${brl(t.receber)}*${pag}`:"\nJá está todo pago."}\n\nComo prefere receber: retirada ou entrega?`;
   if(tipo==="cobranca") return `Olá, ${nome}! Passando para lembrar do pedido #${p.numero} da ${loja}.\nValor em aberto: *${brl(t.receber)}*${pag}\n\nQualquer dúvida, estou à disposição.`;
