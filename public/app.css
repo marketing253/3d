@@ -496,3 +496,12 @@ td .pcell{min-width:230px}
 .impnum .ts{font-size:13px;color:var(--muted)}
 .impcard button.pill{border:0;cursor:pointer;font:inherit}
 @media (max-width:480px){.impcards{grid-template-columns:1fr}}
+
+/* editor da proposta */
+.propl{display:flex;gap:8px;align-items:flex-start}
+.propl input,.propl textarea{min-width:0}
+.propfotos{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.propfoto{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:var(--r-sm,8px);padding:8px;background:var(--surface)}
+.propfoto img{width:100%;height:110px;object-fit:contain;background:#fff;border-radius:6px}
+.propfoto.add{align-items:center;justify-content:center;min-height:150px;cursor:pointer;color:var(--muted);border-style:dashed}
+@media (max-width:560px){.propl{flex-wrap:wrap}.propl input,.propl textarea{flex:1 1 100% !important}}

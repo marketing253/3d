@@ -127,6 +127,10 @@ CREATE TABLE IF NOT EXISTS rolos (
 // colunas adicionadas em versões novas
 const colunasVendas = db.prepare("PRAGMA table_info(vendas)").all().map(c => c.name);
 if (!colunasVendas.includes("pedido_id")) db.exec("ALTER TABLE vendas ADD COLUMN pedido_id TEXT");
+// parte da venda que já entrou no caixa antes, como sinal do pedido (não conta de novo como entrada)
+if (!colunasVendas.includes("adiantado")) db.exec("ALTER TABLE vendas ADD COLUMN adiantado REAL NOT NULL DEFAULT 0");
+const colunasLanc = db.prepare("PRAGMA table_info(lancamentos)").all().map(c => c.name);
+if (!colunasLanc.includes("pedido_id")) db.exec("ALTER TABLE lancamentos ADD COLUMN pedido_id TEXT");
 
 const colunasPedidos = db.prepare("PRAGMA table_info(pedidos)").all().map(c => c.name);
 if (!colunasPedidos.includes("token")) db.exec("ALTER TABLE pedidos ADD COLUMN token TEXT");

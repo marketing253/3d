@@ -7,7 +7,8 @@ Sistema para cadastrar produtos impressos em 3D (Bambu Lab A1 Combo), calcular o
 - **Tela Hoje:** lucro do mês, pedidos com prazo vencendo, pedidos novos do catálogo, prontos para entregar, filamento acabando, contas em aberto, meta do mês e retorno do investimento.
 - **Puxar dados do link do modelo:** cole o link do MakerWorld e a foto, o nome, o tempo e o peso de cada cor entram sozinhos (do perfil escolhido, se o link tiver `#profileId-…`). Do Thingiverse vem a foto e o nome. Printables e Cults bloqueiam a leitura automática.
 - **Importar do Bambu Studio:** envie o arquivo fatiado (.gcode.3mf ou .gcode) e o peso de cada cor e o tempo entram sozinhos no produto ou no orçamento. O arquivo é lido no navegador, não vai para o servidor.
-- **Orçamento rápido:** preço de peça sob medida sem cadastrar produto, já com mensagem, link e Pix.
+- **Orçamento rápido:** preço de peça sob medida sem cadastrar produto, já com mensagem, link e Pix. Cole o link do MakerWorld e o peso, o tempo e a foto entram sozinhos.
+- **Proposta comercial em PDF:** botão **Proposta** em cada pedido (ou "Criar orçamento e proposta em PDF" no orçamento rápido). Capa com logo e foto, página do produto com destaques, especificações, preço por quantidade com prazos pela fila, taxa de arte, condições, validade e próximos passos. Logo, site e cor ficam em Custos e taxas → Sua loja. Abra e escolha **Salvar como PDF**.
 - **Manutenção por impressora:** cada uma tem a sua lista; as horas vêm das impressões do painel (inclusive as que falharam) e dos pedidos prontos, e o sistema avisa quando limpar, lubrificar ou trocar peças.
 - **Kits e cupons:** combos com preço fechado e cupons de desconto no catálogo (link `/catalogo?cupom=CODIGO`).
 - **Fechamento do mês em PDF** e lembretes de cobrança e de clientes para chamar de volta na tela Hoje.
@@ -25,6 +26,7 @@ Sistema para cadastrar produtos impressos em 3D (Bambu Lab A1 Combo), calcular o
 - **Estoque:** rolos de filamento (o consumo sai sozinho quando o pedido fica pronto) e peças à pronta entrega.
 - **Catálogo público** em `/catalogo`: sem login, com fotos, preços e carrinho que envia o pedido pelo WhatsApp e já cria o orçamento no sistema.
 - **Gastos do mês e vencimentos:** a tela Hoje mostra o total gasto no mês (pago e a pagar), os gastos por categoria e as próximas contas a pagar (vencidas e dos próximos 40 dias), com botão **Paguei**. No Financeiro, cada conta pendente mostra quando vence ou há quantos dias está vencida.
+- **Sinal do pedido no caixa:** o sinal entra no Financeiro como receita no dia em que foi registrado; na entrega, a venda guarda o que já tinha entrado e o caixa conta só o restante (o lucro continua sobre o valor total).
 - **Compras parceladas:** em + Despesa, escolha **Parcelado**, o número de parcelas e o 1º vencimento. Cada parcela vira uma conta a pagar no seu mês (mesmo dia; em meses mais curtos, o último dia), e dá para marcar as que já foram pagas.
 - **Financeiro:** vendas (com taxa do canal, frete e lucro calculados), despesas e receitas, saldo do mês e acumulado, contas a pagar e a receber, gráfico dos últimos 12 meses, despesas por categoria, mais vendidos e exportação em CSV.
 - **Dados:** banco SQLite e fotos ficam na pasta `data/` (fora do Git).

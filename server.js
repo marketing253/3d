@@ -329,7 +329,7 @@ app.get("/api/financeiro", exigeLogin, (req, res) => {
   // série dos últimos 12 meses (somente valores pagos)
   const [a, m] = mes.split("-").map(Number);
   const ini = new Date(Date.UTC(a, m - 12, 1)).toISOString().slice(0, 10);
-  const serieV = db.prepare(`SELECT substr(data,1,7) mes, SUM(quantidade*preco_unit - taxas - frete) liquido, SUM(quantidade*preco_unit - taxas - frete - quantidade*custo_unit) lucro, SUM(quantidade) pecas
+  const serieV = db.prepare(`SELECT substr(data,1,7) mes, SUM(quantidade*preco_unit - taxas - frete - adiantado) liquido, SUM(quantidade*preco_unit - taxas - frete - quantidade*custo_unit) lucro, SUM(quantidade) pecas
     FROM vendas WHERE status='pago' AND data BETWEEN ? AND ? GROUP BY 1`).all(ini, ate);
   const serieL = db.prepare(`SELECT substr(data,1,7) mes, tipo, SUM(valor) total FROM lancamentos WHERE status='pago' AND data BETWEEN ? AND ? GROUP BY 1,2`).all(ini, ate);
   const serie = [];
@@ -341,7 +341,7 @@ app.get("/api/financeiro", exigeLogin, (req, res) => {
     serie.push({ mes: k, entradas: n(ent), saidas: n(sai), lucroVendas: n(sv.lucro || 0), pecas: sv.pecas || 0 });
   }
   const saldoAnterior = (() => {
-    const v = db.prepare("SELECT COALESCE(SUM(quantidade*preco_unit - taxas - frete),0) t FROM vendas WHERE status='pago' AND data < ?").get(de).t;
+    const v = db.prepare("SELECT COALESCE(SUM(quantidade*preco_unit - taxas - frete - adiantado),0) t FROM vendas WHERE status='pago' AND data < ?").get(de).t;
     const e = db.prepare("SELECT COALESCE(SUM(valor),0) t FROM lancamentos WHERE status='pago' AND tipo='entrada' AND data < ?").get(de).t;
     const s = db.prepare("SELECT COALESCE(SUM(valor),0) t FROM lancamentos WHERE status='pago' AND tipo='saida' AND data < ?").get(de).t;
     return n(v + e - s);
@@ -404,14 +404,14 @@ crud("lancamentos", limpaLanc, COLS_L);
 app.get("/api/financeiro/csv", exigeLogin, (req, res) => {
   const mes = MES_RE.test(req.query.mes || "") ? req.query.mes : new Date().toISOString().slice(0, 7);
   const [de, ate] = intervaloMes(mes);
-  const linhas = [["Data", "Tipo", "Descrição", "Categoria/Canal", "Qtd", "Valor bruto", "Taxas", "Frete", "Valor líquido", "Custo", "Lucro", "Situação"]];
+  const linhas = [["Data", "Tipo", "Descrição", "Categoria/Canal", "Qtd", "Valor bruto", "Taxas", "Frete", "Valor líquido", "Já recebido no sinal", "Custo", "Lucro", "Situação"]];
   for (const v of db.prepare("SELECT * FROM vendas WHERE data BETWEEN ? AND ? ORDER BY data").all(de, ate)) {
     const bruto = v.quantidade * v.preco_unit, liq = bruto - v.taxas - v.frete, custo = v.quantidade * v.custo_unit;
-    linhas.push([v.data, "Venda", v.descricao, v.canal, v.quantidade, bruto, v.taxas, v.frete, liq, custo, liq - custo, v.status]);
+    linhas.push([v.data, "Venda", v.descricao, v.canal, v.quantidade, bruto, v.taxas, v.frete, liq, v.adiantado || 0, custo, liq - custo, v.status]);
   }
   for (const l of db.prepare("SELECT * FROM lancamentos WHERE data BETWEEN ? AND ? ORDER BY data").all(de, ate)) {
     const val = l.tipo === "entrada" ? l.valor : -l.valor;
-    linhas.push([l.data, l.tipo === "entrada" ? "Receita" : "Despesa", l.descricao, l.categoria, "", "", "", "", val, "", "", l.status]);
+    linhas.push([l.data, l.tipo === "entrada" ? "Receita" : "Despesa", l.descricao, l.categoria, "", "", "", "", val, "", "", "", l.status]);
   }
   const fmt = x => typeof x === "number" ? String(Math.round(x * 100) / 100).replace(".", ",") : `"${String(x ?? "").replace(/"/g, '""')}"`;
   res.set("Content-Type", "text/csv; charset=utf-8");
@@ -534,6 +534,9 @@ app.get("/api/modelo-imagem", exigeLogin, exigeEdicao, limiteModelo, async (req,
 // Remove fotos enviadas que nunca foram salvas em um produto (mais de 1 dia)
 function limpaFotosOrfas() {
   const usadas = new Set(db.prepare("SELECT foto FROM produtos WHERE foto IS NOT NULL").all().map(r => r.foto));
+  for (const r of db.prepare("SELECT dados FROM pedidos WHERE dados LIKE '%\"proposta\"%'").all())
+    for (const f of JSON.parse(r.dados).proposta?.fotos || []) usadas.add(f.id);
+  const logo = lojaConfig().logo; if (logo) usadas.add(logo);
   for (const f of fs.readdirSync(FOTOS_DIR)) {
     if (!FOTO_RE.test(f) || usadas.has(f)) continue;
     const st = fs.statSync(path.join(FOTOS_DIR, f));
@@ -645,6 +648,26 @@ function limpaPedido(b) {
     ...(b.impressora ? { impressora: txt(b.impressora, 60) } : {}),
   } };
 }
+// ---------- sinal do pedido entra no caixa no dia em que foi recebido ----------
+// Cada aumento do sinal vira uma receita "Sinal do pedido #N" com a data de hoje; se o sinal diminuir,
+// tira das receitas mais novas. Na entrega, a venda guarda esse valor em "adiantado".
+const hojeBR = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+const sinalLancado = pedidoId => db.prepare("SELECT COALESCE(SUM(valor),0) t FROM lancamentos WHERE pedido_id = ? AND tipo = 'entrada'").get(pedidoId).t;
+function sincronizaSinal(pedidoId, uid) {
+  const r = db.prepare("SELECT numero, dados, status FROM pedidos WHERE id = ?").get(pedidoId); if (!r || r.status === "entregue") return;
+  const p = JSON.parse(r.dados), alvo = n(p.sinal), atual = n(sinalLancado(pedidoId));
+  if (alvo > atual + 0.004) {
+    db.prepare("INSERT INTO lancamentos (id, data, tipo, descricao, categoria, valor, status, obs, criado_por, pedido_id) VALUES (?, ?, 'entrada', ?, 'Sinal de pedido', ?, 'pago', ?, ?, ?)")
+      .run(crypto.randomUUID(), hojeBR(), `Sinal do pedido #${r.numero} · ${p.cliente}`.slice(0, 150), n(alvo - atual), "Lançado pelo pedido; o restante entra na entrega", uid, pedidoId);
+  } else if (alvo < atual - 0.004) {
+    let tirar = n(atual - alvo);
+    for (const l of db.prepare("SELECT id, valor FROM lancamentos WHERE pedido_id = ? AND tipo = 'entrada' ORDER BY data DESC, criado_em DESC").all(pedidoId)) {
+      if (tirar <= 0.004) break;
+      if (l.valor <= tirar + 0.004) { db.prepare("DELETE FROM lancamentos WHERE id = ?").run(l.id); tirar = n(tirar - l.valor); }
+      else { db.prepare("UPDATE lancamentos SET valor = ? WHERE id = ?").run(n(l.valor - tirar), l.id); tirar = 0; }
+    }
+  }
+}
 function linhaPedido(r) { return { ...JSON.parse(r.dados), id: r.id, numero: r.numero, status: r.status, prazo: r.prazo, token: r.token || null, criadoEm: r.criado_em, atualizadoEm: r.atualizado_em }; }
 app.get("/api/pedidos", exigeLogin, (req, res) => {
   res.json(db.prepare("SELECT * FROM pedidos ORDER BY numero DESC LIMIT 1000").all().map(linhaPedido));
@@ -654,15 +677,22 @@ app.post("/api/pedidos", exigeLogin, exigeEdicao, (req, res) => {
   const status = STATUS_PEDIDO.includes(req.body.status) && !["entregue", "pronto"].includes(req.body.status) ? req.body.status : "orcamento";
   const id = crypto.randomUUID();
   const numero = (db.prepare("SELECT COALESCE(MAX(numero),0) m FROM pedidos").get().m) + 1;
-  db.prepare("INSERT INTO pedidos (id, numero, dados, status, prazo, criado_por) VALUES (?, ?, ?, ?, ?, ?)").run(id, numero, JSON.stringify(v), status, v.prazo, req.usuario.id);
+  db.transaction(() => {
+    db.prepare("INSERT INTO pedidos (id, numero, dados, status, prazo, criado_por) VALUES (?, ?, ?, ?, ?, ?)").run(id, numero, JSON.stringify(v), status, v.prazo, req.usuario.id);
+    sincronizaSinal(id, req.usuario.id);
+  })();
   res.json(linhaPedido(db.prepare("SELECT * FROM pedidos WHERE id = ?").get(id)));
 });
 app.put("/api/pedidos/:id", exigeLogin, exigeEdicao, (req, res) => {
-  const atual = db.prepare("SELECT status FROM pedidos WHERE id = ?").get(req.params.id);
+  const atual = db.prepare("SELECT status, dados FROM pedidos WHERE id = ?").get(req.params.id);
   if (!atual) return res.status(404).json({ erro: "Pedido não encontrado." });
   if (atual.status === "entregue") return res.status(400).json({ erro: "Pedido entregue não pode ser alterado. Volte o status antes." });
   const { v, erro } = limpaPedido(req.body); if (erro) return res.status(400).json({ erro });
-  db.prepare("UPDATE pedidos SET dados = ?, prazo = ?, atualizado_em = datetime('now') WHERE id = ?").run(JSON.stringify(v), v.prazo, req.params.id);
+  const ant = JSON.parse(atual.dados); if (ant.proposta) v.proposta = ant.proposta; // a proposta tem rota própria
+  db.transaction(() => {
+    db.prepare("UPDATE pedidos SET dados = ?, prazo = ?, atualizado_em = datetime('now') WHERE id = ?").run(JSON.stringify(v), v.prazo, req.params.id);
+    sincronizaSinal(req.params.id, req.usuario.id);
+  })();
   res.json(linhaPedido(db.prepare("SELECT * FROM pedidos WHERE id = ?").get(req.params.id)));
 });
 app.post("/api/pedidos/:id/status", exigeLogin, exigeEdicao, (req, res) => {
@@ -690,14 +720,18 @@ app.post("/api/pedidos/:id/status", exigeLogin, exigeEdicao, (req, res) => {
       const hoje = new Date().toISOString().slice(0, 10);
       const bruto = p.itens.reduce((s, i) => s + i.quantidade * i.preco_unit, 0) || 1;
       const desconto = p.desconto || 0;
+      // o que já entrou no caixa como sinal fica marcado na venda para não contar duas vezes
+      const sinalPago = sinalLancado(r.id); let sinalResto = sinalPago;
       p.itens.forEach((it, idx) => {
+        const adiant = idx === p.itens.length - 1 ? n(sinalResto) : n(sinalPago * (it.quantidade * it.preco_unit) / bruto); sinalResto -= adiant;
         const parte = (it.quantidade * it.preco_unit) / bruto;
         const precoLiq = it.quantidade > 0 ? (it.quantidade * it.preco_unit - desconto * parte) / it.quantidade : 0;
         const extraFrete = idx === 0 ? (p.freteCliente || 0) : 0; // frete cobrado do cliente entra na 1ª linha
-        db.prepare(`INSERT INTO vendas (id, data, produto_id, descricao, quantidade, preco_unit, canal, taxas, frete, custo_unit, cliente, status, obs, criado_por, pedido_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pago', ?, ?, ?)`).run(
+        db.prepare(`INSERT INTO vendas (id, data, produto_id, descricao, quantidade, preco_unit, canal, taxas, frete, custo_unit, cliente, status, obs, criado_por, pedido_id, adiantado)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pago', ?, ?, ?, ?)`).run(
           crypto.randomUUID(), hoje, it.produto_id, it.descricao, it.quantidade, n(precoLiq + extraFrete / it.quantidade), p.canal,
-          n((p.taxas || 0) * parte), idx === 0 ? n(p.freteVoce || 0) : 0, it.custo_unit, p.cliente, `Pedido #${r.numero}`, req.usuario.id, r.id);
+          n((p.taxas || 0) * parte), idx === 0 ? n(p.freteVoce || 0) : 0, it.custo_unit, p.cliente,
+          `Pedido #${r.numero}${adiant > 0 ? ` · ${brlS(adiant)} recebido antes como sinal` : ""}`, req.usuario.id, r.id, adiant);
       });
       if (!r.estoque_baixado) {
         for (const it of p.itens) if (it.doEstoque && it.produto_id) ajustaEstoque(it.produto_id, -it.quantidade);
@@ -720,6 +754,7 @@ app.delete("/api/pedidos/:id", exigeLogin, exigeEdicao, (req, res) => {
   if (r.status === "entregue") return res.status(400).json({ erro: "Pedido entregue não pode ser excluído. Volte o status antes." });
   db.prepare("DELETE FROM pedidos WHERE id = ?").run(req.params.id);
   db.prepare("UPDATE impressoes SET pedido_id = NULL WHERE pedido_id = ?").run(req.params.id);
+  db.prepare("DELETE FROM lancamentos WHERE pedido_id = ?").run(req.params.id); // pedido apagado: tira o sinal do caixa
   res.json({ ok: true });
 });
 app.post("/api/pedidos/:id/impressora", exigeLogin, exigeEdicao, (req, res) => {
@@ -731,6 +766,141 @@ app.post("/api/pedidos/:id/impressora", exigeLogin, exigeEdicao, (req, res) => {
   if (imp) p.impressora = imp; else delete p.impressora;
   db.prepare("UPDATE pedidos SET dados = ?, atualizado_em = datetime('now') WHERE id = ?").run(JSON.stringify(p), r.id);
   res.json(linhaPedido(db.prepare("SELECT * FROM pedidos WHERE id = ?").get(r.id)));
+});
+
+// ---------- proposta comercial (PDF) ----------
+// Os textos da proposta ficam em pedido.proposta; a página abaixo monta as folhas A4 para salvar em PDF.
+function limpaProposta(b) {
+  b = b || {};
+  const lista = (x, max, f) => (Array.isArray(x) ? x : []).slice(0, max).map(f).filter(Boolean);
+  return {
+    titulo: txt(b.titulo, 120), produtoTitulo: txt(b.produtoTitulo, 80), texto: txt(b.texto, 1200),
+    fotos: lista(b.fotos, 4, f => FOTO_RE.test(f?.id || "") ? { id: f.id, legenda: txt(f.legenda, 80) } : null),
+    destaques: lista(b.destaques, 6, d => (txt(d?.t, 60) || txt(d?.d, 200)) ? { t: txt(d.t, 60), d: txt(d.d, 200) } : null),
+    specs: lista(b.specs, 10, d => (txt(d?.k, 60) || txt(d?.v, 160)) ? { k: txt(d.k, 60), v: txt(d.v, 160) } : null),
+    faixas: lista(b.faixas, 8, f => n(f?.preco) > 0 ? { rotulo: txt(f.rotulo, 80), q: Math.max(1, Math.round(n(f.q))), preco: n(f.preco), prazo: txt(f.prazo, 40) } : null),
+    destaqueFaixa: Math.round(Number.isFinite(Number(b.destaqueFaixa)) ? Number(b.destaqueFaixa) : -1), somar: !!b.somar,
+    notaPreco: txt(b.notaPreco, 300), arteValor: n(b.arteValor), arteNota: txt(b.arteNota, 200),
+    condicoes: lista(b.condicoes, 8, d => txt(d?.v, 300) ? { k: txt(d.k, 40), v: txt(d.v, 300) } : null),
+    validade: DATA_RE.test(b.validade || "") ? b.validade : null,
+    passos: lista(b.passos, 6, x => txt(x, 160) || null),
+  };
+}
+app.put("/api/pedidos/:id/proposta", exigeLogin, exigeEdicao, (req, res) => {
+  const r = db.prepare("SELECT dados FROM pedidos WHERE id = ?").get(req.params.id);
+  if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  const p = JSON.parse(r.dados); p.proposta = limpaProposta(req.body);
+  db.prepare("UPDATE pedidos SET dados = ?, atualizado_em = datetime('now') WHERE id = ?").run(JSON.stringify(p), req.params.id);
+  res.json(linhaPedido(db.prepare("SELECT * FROM pedidos WHERE id = ?").get(req.params.id)));
+});
+app.get("/imprimir/proposta/:id", exigeLogin, (req, res) => {
+  const r = db.prepare("SELECT * FROM pedidos WHERE id = ?").get(req.params.id);
+  if (!r) return res.status(404).send("Pedido não encontrado.");
+  const p = JSON.parse(r.dados), L = lojaConfig(), pr = p.proposta;
+  if (!pr) return res.status(404).send("Este pedido ainda não tem proposta. Abra o pedido e clique em Proposta em PDF.");
+  const e = escH, loja = L.nome || "Sua loja";
+  const dataLonga = iso => new Date(iso + "T12:00:00").toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" });
+  const zap = txt(L.whatsapp, 30), site = txt(L.site, 80).replace(/^https?:\/\//, "").replace(/\/$/, "");
+  const contato = [site, zap].filter(Boolean).map(e).join(" · ");
+  const logo = L.logo && FOTO_RE.test(L.logo) ? `<img class="logo" src="/fotos/${L.logo}" alt="${e(loja)}">` : `<div class="logotxt">${e(loja)}</div>`;
+  // título com a primeira palavra sublinhada, no estilo das propostas da loja
+  const tit = (t, cls = "") => { const [a, ...b] = String(t || "").split(" "); return `<h1 class="${cls}"><u>${e(a)}</u> ${e(b.join(" "))}</h1>`; };
+  const rodape = k => `<div class="pe"><span>${e(loja)} · Proposta comercial · ${e(p.cliente)}</span><span>${k}</span></div>`;
+  const fotoTag = f => `<figure><div class="ph"><img src="/fotos/${f.id}" alt=""></div>${f.legenda ? `<figcaption>${e(f.legenda)}</figcaption>` : ""}</figure>`;
+  let pag = 1; const pags = [];
+  // capa
+  pags.push(`<section class="pg dark capa">${logo}<div class="k">Proposta comercial</div>${tit(pr.titulo || "Proposta")}
+    <p class="para">Para ${e(p.cliente)} · ${dataLonga(p.data || hojeBR())}</p>
+    ${pr.fotos[0] ? `<div class="ph grande"><img src="/fotos/${pr.fotos[0].id}" alt=""></div>` : ""}
+    <div class="pe">${contato}</div></section>`);
+  // o produto; poucas especificações cabem na mesma página
+  const fotosProd = pr.fotos.slice(1, 3);
+  const specTab = `<table class="spec"><tr><th>Especificação</th><th>Valor</th></tr>${pr.specs.map(d => `<tr><td><b>${e(d.k)}</b></td><td>${e(d.v)}</td></tr>`).join("")}</table>`;
+  const specJunto = pr.specs.length > 0 && !pr.fotos[3] && pr.specs.length + pr.destaques.length <= (fotosProd.length ? 9 : 14) && (pr.texto || pr.destaques.length || fotosProd.length);
+  if (pr.texto || pr.destaques.length || fotosProd.length)
+    pags.push(`<section class="pg"><div class="k">O produto</div>${tit(pr.produtoTitulo || "Sobre a peça", "h2")}
+      ${pr.texto ? `<p class="lead">${e(pr.texto).replace(/\n/g, "<br>")}</p>` : ""}
+      ${fotosProd.length ? `<div class="fotos n${fotosProd.length}">${fotosProd.map(fotoTag).join("")}</div>` : ""}
+      ${pr.destaques.length ? `<table class="dest">${pr.destaques.map(d => `<tr><td><i></i><b>${e(d.t)}</b></td><td>${e(d.d)}</td></tr>`).join("")}</table>` : ""}
+      ${specJunto ? `<div class="k" style="margin-top:9mm">Especificações</div>${specTab}` : ""}
+      ${rodape(++pag)}</section>`);
+  // especificações em página própria
+  if (pr.specs.length && !specJunto)
+    pags.push(`<section class="pg"><div class="k">Especificações</div>${tit("Detalhes da peça", "h2")}
+      ${pr.fotos[3] ? `<div class="fotos n1">${fotoTag(pr.fotos[3])}</div>` : ""}
+      ${specTab}
+      ${rodape(++pag)}</section>`);
+  // investimento + condições
+  const temPrazo = pr.faixas.some(f => f.prazo), vazio = temPrazo ? "<td></td>" : "";
+  const totalItens = pr.faixas.reduce((s, f) => s + f.q * f.preco, 0);
+  const desc = n(p.desconto), frete = n(p.freteCliente);
+  const conds = [...pr.condicoes, ...(pr.validade ? [{ k: "Validade", v: `Esta proposta vale até ${dataLonga(pr.validade)}.` }] : [])];
+  pags.push(`<section class="pg"><div class="k">Investimento</div>${tit(pr.somar ? "Valores do pedido" : "Preço por quantidade", "h2")}
+    ${pr.notaPreco ? `<p class="lead sm">${e(pr.notaPreco)}</p>` : ""}
+    <table class="inv"><tr><th>${pr.somar ? "Item" : "Quantidade"}</th>${pr.somar ? "<th>Qtd</th>" : ""}<th>Por unidade</th><th>Total</th>${temPrazo ? "<th>Prazo</th>" : ""}</tr>
+    ${pr.faixas.map((f, i) => `<tr${i === pr.destaqueFaixa ? ' class="on"' : ""}><td><b>${e(f.rotulo || `${f.q} ${f.q === 1 ? "unidade" : "unidades"}`)}</b></td>${pr.somar ? `<td>${f.q}</td>` : ""}<td>${brlS(f.preco)}</td><td>${brlS(f.q * f.preco)}</td>${temPrazo ? `<td><b>${e(f.prazo)}</b></td>` : ""}</tr>`).join("")}
+    ${pr.somar ? `${desc > 0 ? `<tr><td colspan="3">Desconto</td><td>− ${brlS(desc)}</td>${vazio}</tr>` : ""}${frete > 0 ? `<tr><td colspan="3">Frete</td><td>${brlS(frete)}</td>${vazio}</tr>` : ""}<tr class="tot"><td colspan="3">Total</td><td>${brlS(totalItens - desc + frete)}</td>${vazio}</tr>` : ""}</table>
+    ${!pr.somar && pr.destaqueFaixa >= 0 && pr.destaqueFaixa < pr.faixas.length ? `<p class="mini">Linha em destaque: melhor custo por unidade.</p>` : ""}
+    ${pr.arteValor > 0 ? `<div class="box"><b>Preparação da arte: ${brlS(pr.arteValor)} (uma única vez)</b>${pr.arteNota ? `<span>${e(pr.arteNota)}</span>` : ""}</div>` : ""}
+    ${conds.length ? `<div class="k" style="margin-top:9mm">Condições</div>${tit("Como funciona", "h2")}<table class="cond">${conds.map(c => `<tr><td><b>${e(c.k)}</b></td><td>${e(c.v)}</td></tr>`).join("")}</table>` : ""}
+    ${rodape(++pag)}</section>`);
+  // próximos passos + contato
+  pags.push(`<section class="pg dark fim">${pr.passos.length ? `<div class="k">Próximos passos</div>${tit("Do sim à entrega", "h2")}
+    <ol class="passos">${pr.passos.map(x => `<li>${e(x)}</li>`).join("")}</ol>` : ""}
+    <div class="k" style="margin-top:12mm">Fale com a gente</div>
+    <table class="cont">${zap ? `<tr><td>WhatsApp</td><td><b>${e(zap)}</b></td></tr>` : ""}${site ? `<tr><td>Site</td><td><b>${e(site)}</b></td></tr>` : ""}${L.instagram ? `<tr><td>Instagram</td><td><b>${e(L.instagram)}</b></td></tr>` : ""}</table>
+    <div class="fimlogo">${logo}</div></section>`);
+  const cor = /^#[0-9a-f]{6}$/i.test(L.cor || "") ? L.cor : "#22c08a";
+  res.set("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Proposta ${e(loja)} - ${e(pr.titulo)} - ${e(p.cliente)}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;600;700&display=swap">
+<style>
+@page{size:A4;margin:0}
+*{box-sizing:border-box}
+html,body{margin:0;background:#6b7078;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{font-family:Inter,Arial,sans-serif;color:#1b1d21;font-size:11pt}
+.pg{width:210mm;height:297mm;margin:0 auto 8mm;padding:20mm 18mm 14mm;background:#f2f1ec;position:relative;overflow:hidden;break-after:page;display:flex;flex-direction:column}
+.pg:last-child{break-after:auto}
+.dark{background:#0e1114;color:#f3f4f6}
+.k{font-size:8pt;letter-spacing:.32em;text-transform:uppercase;color:${cor};margin-bottom:3mm}
+h1{font-family:"Archivo Black",Arial,sans-serif;font-weight:400;font-size:34pt;line-height:1.1;margin:0 0 6mm}
+h1.h2{font-size:24pt}
+h1 u{text-decoration:none;background:linear-gradient(${cor},${cor}) left bottom/100% 1.6mm no-repeat;padding-bottom:.6mm}
+.logo{max-height:26mm;max-width:70mm;object-fit:contain;align-self:flex-start}
+.logotxt{font-family:"Archivo Black",Arial,sans-serif;font-size:22pt}
+.capa .logo,.capa .logotxt{margin-bottom:38mm}
+.para{color:#b7bcc4;font-size:12pt;margin:0 0 14mm}
+.ph{background:#fff;border-radius:3mm;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.ph img{width:100%;height:100%;object-fit:contain}
+.ph.grande{height:118mm}
+.capa .pe{border:0;color:#8a9099}
+.lead{font-size:12pt;line-height:1.5;margin:0 0 8mm}.lead.sm{font-size:10.5pt;color:#4b5058}
+.fotos{display:grid;gap:6mm;margin-bottom:9mm}.fotos.n2{grid-template-columns:1fr 1fr}.fotos.n1{grid-template-columns:1fr}
+.fotos .ph{height:72mm}.fotos.n1 .ph{height:90mm}
+figure{margin:0}figcaption{font-size:8.5pt;color:#7a7f87;margin-top:2.5mm}
+table{width:100%;border-collapse:collapse}
+.dest td{padding:2.2mm 0;vertical-align:top;font-size:10.5pt}.dest td:first-child{width:62mm}.dest td:last-child{color:#4b5058}
+.dest i{display:inline-block;width:3mm;height:3mm;background:${cor};margin-right:3mm}
+.spec th,.inv th{text-align:left;font-weight:400;font-size:7.5pt;letter-spacing:.25em;text-transform:uppercase;color:#7a7f87;padding:0 0 3mm;border-bottom:.4mm solid #1b1d21}
+.spec td,.inv td{padding:3mm 0;border-bottom:.2mm solid #d6d4cc;font-size:10.5pt;vertical-align:top}
+.spec td:first-child{width:62mm}
+.inv tr.on td{background:color-mix(in srgb,${cor} 18%,white)}
+.inv tr.tot td{font-weight:700;border-bottom:.4mm solid #1b1d21}
+.mini{font-size:8.5pt;color:#7a7f87;margin:2.5mm 0 0}
+.box{margin-top:8mm;background:#fff;border-left:2mm solid ${cor};border-radius:0 3mm 3mm 0;padding:5mm 7mm;display:flex;flex-direction:column;gap:1.5mm;font-size:10.5pt}.box span{color:#4b5058}
+.cond td{padding:1.6mm 0;font-size:10.5pt;vertical-align:top}.cond td:first-child{width:38mm}.cond td:last-child{color:#4b5058}
+.pe{margin-top:auto;display:flex;justify-content:space-between;border-top:.2mm solid #d6d4cc;padding-top:3mm;font-size:8pt;color:#7a7f87}
+.passos{list-style:none;counter-reset:n;padding:0;margin:4mm 0 0}
+.passos li{counter-increment:n;display:flex;gap:10mm;align-items:baseline;margin-bottom:9mm;font-size:12pt}
+.passos li::before{content:counter(n);font-family:"Archivo Black",Arial,sans-serif;font-size:22pt;color:${cor};width:8mm;flex:none}
+.cont td{padding:2mm 0;font-size:13pt}.cont td:first-child{width:28mm;font-size:9pt;color:#8a9099}
+.fimlogo{margin-top:auto}.fimlogo .logo{max-height:18mm}.fimlogo .logotxt{font-size:16pt}
+.dica{max-width:210mm;margin:8mm auto;background:#fff;border-radius:2mm;padding:4mm 6mm;font:10pt Inter,Arial,sans-serif}
+@media print{html,body{background:none}.pg{margin:0}.dica{display:none}}
+</style></head><body>
+<p class="dica">Na janela de impressão, escolha <b>Salvar como PDF</b>, papel <b>A4</b>, margens <b>Nenhuma</b> e marque <b>Gráficos de plano de fundo</b>. Se ela não abrir, use Ctrl+P.</p>
+${pags.join("")}
+<script src="/imprimir.js"></script></body></html>`);
 });
 
 // ---------- impressoras: impressões em andamento e horas de máquina ----------
@@ -1149,7 +1319,8 @@ function resumoMes(mes) {
   const r = { bruto: 0, taxas: 0, frete: 0, custo: 0, lucro: 0, pecas: 0, nVendas: 0, receberVendas: 0, entradas: 0, saidas: 0, pagar: 0, receberLanc: 0, canais: {}, produtos: {}, categorias: {} };
   for (const v of vs) {
     const bruto = v.quantidade * v.preco_unit, liq = bruto - v.taxas - v.frete, custo = v.quantidade * v.custo_unit;
-    if (v.status !== "pago") { r.receberVendas += liq; continue; }
+    if (v.status !== "pago") { r.receberVendas += liq - (v.adiantado || 0); continue; }
+    r.adiantado = (r.adiantado || 0) + (v.adiantado || 0);
     r.bruto += bruto; r.taxas += v.taxas; r.frete += v.frete; r.custo += custo; r.lucro += liq - custo; r.pecas += v.quantidade; r.nVendas++;
     const c = r.canais[v.canal || "Sem canal"] ||= { bruto: 0, lucro: 0, n: 0 }; c.bruto += bruto; c.lucro += liq - custo; c.n++;
     const pr = r.produtos[v.descricao] ||= { q: 0, bruto: 0, lucro: 0 }; pr.q += v.quantidade; pr.bruto += bruto; pr.lucro += liq - custo;
@@ -1160,7 +1331,7 @@ function resumoMes(mes) {
     else { r.saidas += l.valor; r.categorias[l.categoria] = (r.categorias[l.categoria] || 0) + l.valor; }
   }
   r.liquido = r.bruto - r.taxas - r.frete;
-  r.saldo = r.liquido + r.entradas - r.saidas;
+  r.saldo = r.liquido - (r.adiantado || 0) + r.entradas - r.saidas; // sinal já entrou como receita
   r.pedidosNovos = db.prepare("SELECT dados, status FROM pedidos").all().map(x => ({ ...JSON.parse(x.dados), status: x.status }))
     .filter(p => p.data >= de && p.data <= ate && p.status !== "cancelado").length;
   r.clientesNovos = listaClientes().filter(c => c.primeira >= de && c.primeira <= ate);
@@ -1221,7 +1392,7 @@ ${linha("Vendido (bruto)", r.bruto)}${linha("Taxas dos canais", -r.taxas)}${linh
 ${linha("Custo de produção das peças", -r.custo)}
 <tr class="t"><td>Lucro das vendas</td><td class="v ${r.lucro < 0 ? "neg" : "pos"}">${brlS(r.lucro)}</td></tr></table>
 <h2>Caixa do mês</h2><table>
-${linha("Recebido das vendas", r.liquido)}${linha("Outras entradas", r.entradas)}${linha("Despesas pagas", -r.saidas)}
+${r.adiantado ? linha("Recebido das vendas (sem os sinais)", r.liquido - r.adiantado) : linha("Recebido das vendas", r.liquido)}${linha("Outras entradas (inclui sinais de pedidos)", r.entradas)}${linha("Despesas pagas", -r.saidas)}
 <tr class="t"><td>Saldo do mês</td><td class="v ${r.saldo < 0 ? "neg" : "pos"}">${brlS(r.saldo)}</td></tr>
 ${r.receberVendas + r.receberLanc > 0 ? linha('<span class="muted">Ainda a receber</span>', r.receberVendas + r.receberLanc, "muted") : ""}
 ${r.pagar > 0 ? linha('<span class="muted">Ainda a pagar</span>', r.pagar, "muted") : ""}</table></div>
@@ -1241,7 +1412,7 @@ app.get("/api/a-pagar", exigeLogin, (req, res) => {
   res.json(db.prepare("SELECT id, data, tipo, descricao, categoria, valor, status, obs FROM lancamentos WHERE tipo = 'saida' AND status = 'pendente' AND data <= ? ORDER BY data, criado_em LIMIT 60").all(limite));
 });
 app.get("/api/cobrancas", exigeLogin, (req, res) => {
-  const vs = db.prepare(`SELECT v.id, v.data, v.descricao, v.cliente, v.quantidade*v.preco_unit - v.taxas - v.frete AS valor, v.quantidade*v.preco_unit AS bruto, p.dados AS pdados, p.numero
+  const vs = db.prepare(`SELECT v.id, v.data, v.descricao, v.cliente, v.quantidade*v.preco_unit - v.taxas - v.frete AS valor, v.quantidade*v.preco_unit - v.adiantado AS bruto, p.dados AS pdados, p.numero
     FROM vendas v LEFT JOIN pedidos p ON p.id = v.pedido_id WHERE v.status = 'pendente' ORDER BY v.data`).all();
   res.json(vs.map(v => { const pd = v.pdados ? JSON.parse(v.pdados) : null;
     return { id: v.id, data: v.data, descricao: v.descricao, cliente: v.cliente || "", valor: n(v.bruto), numero: v.numero || null, whatsapp: pd ? pd.whatsapp || "" : "" }; }));
