@@ -1568,7 +1568,7 @@ app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
   res.set("Cache-Control", "no-store");
   res.json({
     loja: { nome: txt(L.nome, 80) || "Impressões 3D", whatsapp: txt(L.whatsapp, 30).replace(/\D/g, ""), whatsappTxt: txt(L.whatsapp, 30), instagram: txt(L.instagram, 60), pagamento: txt(L.pagamento, 200),
-      site: txt(L.site, 80), sobre: txt(L.sobre, 160), cor: /^#[0-9a-f]{6}$/i.test(L.cor || "") ? L.cor : "", logo: L.logo && FOTO_RE.test(L.logo) ? "/loja/logo" : null },
+      site: txt(L.site, 80), sobre: txt(L.sobre, 160), cor: /^#[0-9a-f]{6}$/i.test(L.cor || "") ? L.cor : "", logo: L.logo && FOTO_RE.test(L.logo) ? "/loja/logo" : "/logo-8on.png" },
     canal: txt(p.canal, 80),
     numero: r.numero, status: r.status, prazo: r.prazo, data: p.data, cliente: txt(p.cliente, 120),
     itens: p.itens.map((i, k) => ({ descricao: i.descricao, quantidade: i.quantidade, preco: i.preco_unit, personalizacao: i.personalizacao || "",

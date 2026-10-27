@@ -797,6 +797,7 @@ async function abreMsg(p,tipo){
   if(link&&tipo!=="obrigado") txt+=`\n\n${tipo==="orcamento"?"Aprove aqui":"Acompanhe seu pedido"}: ${link}`;
   if(msgPix) txt+=`\n\nPix copia e cola (${brl(totPed(p).receber)}):\n${msgPix.payload}`;
   box.innerHTML=`<div class="row spread"><h2>Mensagem para ${esc(p.cliente)} · pedido #${p.numero}</h2><button class="btn ghost" data-ma="fechar">Fechar</button></div>
+    ${cfg.loja.pixChave?"":`<div class="warnbox"><b>Sua chave Pix não está cadastrada.</b> Sem ela, o cliente não vê o Pix para pagar a entrada. Cadastre em <b>Ajustes → Custos e loja → Chave Pix</b> (com Nome e Cidade do Pix).</div>`}
     <div class="row">${[["orcamento","Orçamento"],["confirmado","Confirmação"],["pronto","Pedido pronto"],["cobranca","Cobrança"],["obrigado","Agradecimento"]].map(([k,n])=>`<button class="chip${k===tipo?" on":""}" data-mt="${k}">${n}</button>`).join("")}</div>
     <div class="msgwrap"><textarea id="msgTxt" rows="12">${esc(txt)}</textarea>
     ${msgPix?`<div class="pixbox"><div class="qr">${msgPix.svg}</div><span class="pcat">Pix de ${brl(totPed(p).receber)}</span><button class="btn sm" data-ma="pix">Copiar Pix</button></div>`:""}</div>

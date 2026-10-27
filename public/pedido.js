@@ -46,7 +46,7 @@ async function carrega(){
 
   const corpo={};
   corpo.orcamento=`
-    <ul class="lista">${d.itens.map(i=>`<li><span><b>${esc(i.descricao)}</b>${i.personalizacao?`<span class="tag">${esc(i.personalizacao)}</span>`:""}<small>${Number(i.quantidade).toLocaleString("pt-BR")} × ${brl(i.preco)}</small></span><b>${brl(i.quantidade*i.preco)}</b></li>`).join("")}</ul>
+    <ul class="lista">${d.itens.map(i=>`<li>${i.foto&&!i.personalizacao?`<img class="foto" src="${esc(i.foto)}" alt="" loading="lazy">`:""}<span class="txt"><b>${esc(i.descricao)}</b>${i.personalizacao?`<span class="tag">${esc(i.personalizacao)}</span>`:""}<small>${Number(i.quantidade).toLocaleString("pt-BR")} × ${brl(i.preco)}</small></span><b>${brl(i.quantidade*i.preco)}</b></li>`).join("")}</ul>
     <div class="tot"><span>Total</span><b>${brl(d.total)}</b></div>
     <p class="exp">${d.entrada>0?`Ao aprovar, você paga <b>${brl(d.entrada)}</b> por Pix para começarmos${restante>0?` e o restante, <b>${brl(restante)}</b>, quando ficar pronto`:""}.`:"Ao aprovar, seu pedido segue para a produção."}${d.prazo?` Prazo: pronto até <b>${dataBR(d.prazo)}</b>.`:""}</p>
     <div id="resp">
