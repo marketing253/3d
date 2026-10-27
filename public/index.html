@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="Precificador">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap">
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
@@ -42,27 +42,24 @@
 
 <div class="shell" id="appScreen" hidden>
   <aside class="side" id="side">
-    <div class="brand"><span class="bt"><small>Bambu Lab A1 Combo</small>Precificador 3D</span></div>
+    <div class="brand"><img class="brandlogo" id="brandLogo" src="/logo-8on.png" alt="8ON"><span class="bt"><small>Precificador 3D</small></span></div>
     <nav class="tabs" role="tablist" aria-label="Menu" aria-orientation="vertical">
-      <span class="navgrp">Operação</span>
-      <button role="tab" id="tab-hoje" aria-selected="true" data-tab="hoje"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 9l7-6 7 6v8H3V9zm5 8v-5h4v5"/></svg>Hoje</button>
-      <button role="tab" id="tab-produtos" aria-selected="false" data-tab="produtos"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6l7-3 7 3-7 3-7-3zm0 0v8l7 3 7-3V6M10 9v8"/></svg>Produtos e ranking</button>
-      <button role="tab" id="tab-pedidos" aria-selected="false" data-tab="pedidos"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h10v14l-2.5-1.5L10 17l-2.5-1.5L5 17V3zm3 4h4m-4 3h4"/></svg>Pedidos<span class="navbadge" id="badgeCat" hidden></span></button>
-      <button role="tab" id="tab-orcamento" aria-selected="false" data-tab="orcamento" class="edit-only"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="2.5" width="12" height="15" rx="1.5"/><path d="M7 6h6M7 9.5h2m2 0h2M7 13h2m2 0h2"/></svg>Orçamento rápido</button>
-      <button role="tab" id="tab-clientes" aria-selected="false" data-tab="clientes"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="7" r="3.2"/><path d="M3.5 17c0-3.4 2.9-5.5 6.5-5.5s6.5 2.1 6.5 5.5"/></svg>Clientes</button>
-      <button role="tab" id="tab-fila" aria-selected="false" data-tab="fila"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h7"/></svg>Impressoras e fila</button>
-      <button role="tab" id="tab-estoque" aria-selected="false" data-tab="estoque"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="2.5"/></svg>Estoque</button>
-      <button role="tab" id="tab-manutencao" aria-selected="false" data-tab="manutencao"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 3a4 4 0 00-3.8 5.2L3.5 13.4a1.5 1.5 0 002.1 2.1l5.2-5.2A4 4 0 0016 6.5l-2.3 2.3-2.4-.6-.6-2.4L13 3.5a4 4 0 00-.5-.5z"/></svg>Manutenção<span class="navbadge warnb" id="badgeMan" hidden></span></button>
-      <button role="tab" id="tab-compras" aria-selected="false" data-tab="compras"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 3h2.5l2 10h9l1.5-7H5.3M8 17a1 1 0 100-.01M14 17a1 1 0 100-.01"/></svg>Compras e orçamento</button>
-      <button role="tab" id="tab-financeiro" aria-selected="false" data-tab="financeiro"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 16h14M5 13V9m4 4V6m4 7v-5m4 5V4"/></svg>Financeiro</button>
-      <span class="navgrp">Catálogo</span>
-      <button role="tab" id="tab-novo" aria-selected="false" data-tab="novo" class="edit-only"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>Cadastrar produto</button>
-      <button role="tab" id="tab-tendencias" aria-selected="false" data-tab="tendencias"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 14l5-5 3 3 6-6m0 0h-4m4 0v4"/></svg>Em alta para vender</button>
-      <button role="tab" id="tab-kits" aria-selected="false" data-tab="kits"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h14v9H3zM2 5h16v3H2zM10 5v12M10 5C8 2 5 2.5 6 5m4 0c2-3 5-2.5 4 0"/></svg>Kits e cupons</button>
-      <span class="navgrp">Ajustes</span>
-      <button role="tab" id="tab-config" aria-selected="false" data-tab="config"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6h8m3 0h1M4 14h2m3 0h7M12 4v4M7 12v4"/></svg>Custos e taxas</button>
-      <button role="tab" id="tab-usuarios" aria-selected="false" data-tab="usuarios" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8" cy="7" r="3"/><path d="M2 17c0-3 3-5 6-5s6 2 6 5m1-9a2.5 2.5 0 010 5m2 4c0-2-1-3.5-2.5-4"/></svg>Usuários</button>
-      <button role="tab" id="tab-conta" aria-selected="false" data-tab="conta"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="5" y="9" width="10" height="8" rx="1.5"/><path d="M7 9V6.5a3 3 0 016 0V9"/></svg>Minha conta</button>
+      <button role="tab" id="tab-hoje" aria-selected="true" data-tab="hoje" data-grupo="hoje"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 9l7-6 7 6v8H3V9zm5 8v-5h4v5"/></svg>Hoje</button>
+      <button role="tab" id="tab-produtos" aria-selected="false" data-tab="produtos" data-grupo="produtos"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6l7-3 7 3-7 3-7-3zm0 0v8l7 3 7-3V6M10 9v8"/></svg>Produtos</button>
+      <button role="tab" id="tab-pedidos" aria-selected="false" data-tab="pedidos" data-grupo="pedidos"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h10v14l-2.5-1.5L10 17l-2.5-1.5L5 17V3zm3 4h4m-4 3h4"/></svg>Pedidos<span class="navbadge" id="badgeCat" hidden></span></button>
+      <button role="tab" id="tab-orcamento" aria-selected="false" data-tab="orcamento" data-sub class="edit-only"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="2.5" width="12" height="15" rx="1.5"/><path d="M7 6h6M7 9.5h2m2 0h2M7 13h2m2 0h2"/></svg>Orçamento rápido</button>
+      <button role="tab" id="tab-clientes" aria-selected="false" data-tab="clientes" data-sub><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="7" r="3.2"/><path d="M3.5 17c0-3.4 2.9-5.5 6.5-5.5s6.5 2.1 6.5 5.5"/></svg>Clientes</button>
+      <button role="tab" id="tab-fila" aria-selected="false" data-tab="fila" data-grupo="fila"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h7"/></svg>Impressoras<span class="navbadge warnb" id="badgeMan" hidden></span></button>
+      <button role="tab" id="tab-estoque" aria-selected="false" data-tab="estoque" data-sub><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="2.5"/></svg>Estoque</button>
+      <button role="tab" id="tab-manutencao" aria-selected="false" data-tab="manutencao" data-sub><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 3a4 4 0 00-3.8 5.2L3.5 13.4a1.5 1.5 0 002.1 2.1l5.2-5.2A4 4 0 0016 6.5l-2.3 2.3-2.4-.6-.6-2.4L13 3.5a4 4 0 00-.5-.5z"/></svg>Manutenção</button>
+      <button role="tab" id="tab-compras" aria-selected="false" data-tab="compras" data-sub><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 3h2.5l2 10h9l1.5-7H5.3M8 17a1 1 0 100-.01M14 17a1 1 0 100-.01"/></svg>Compras e orçamento</button>
+      <button role="tab" id="tab-financeiro" aria-selected="false" data-tab="financeiro" data-grupo="financeiro"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 16h14M5 13V9m4 4V6m4 7v-5m4 5V4"/></svg>Financeiro</button>
+      <button role="tab" id="tab-novo" aria-selected="false" data-tab="novo" data-sub class="edit-only"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>Cadastrar produto</button>
+      <button role="tab" id="tab-tendencias" aria-selected="false" data-tab="tendencias" data-sub><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 14l5-5 3 3 6-6m0 0h-4m4 0v4"/></svg>Em alta para vender</button>
+      <button role="tab" id="tab-kits" aria-selected="false" data-tab="kits" data-sub><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h14v9H3zM2 5h16v3H2zM10 5v12M10 5C8 2 5 2.5 6 5m4 0c2-3 5-2.5 4 0"/></svg>Kits e cupons</button>
+      <button role="tab" id="tab-config" aria-selected="false" data-tab="config" data-grupo="config"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6h8m3 0h1M4 14h2m3 0h7M12 4v4M7 12v4"/></svg>Ajustes</button>
+      <button role="tab" id="tab-usuarios" aria-selected="false" data-tab="usuarios" data-sub hidden><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8" cy="7" r="3"/><path d="M2 17c0-3 3-5 6-5s6 2 6 5m1-9a2.5 2.5 0 010 5m2 4c0-2-1-3.5-2.5-4"/></svg>Usuários</button>
+      <button role="tab" id="tab-conta" aria-selected="false" data-tab="conta" data-sub><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="5" y="9" width="10" height="8" rx="1.5"/><path d="M7 9V6.5a3 3 0 016 0V9"/></svg>Minha conta</button>
     </nav>
     <button class="temabtn" id="btnTema" type="button" role="switch" aria-checked="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 12.5A6.5 6.5 0 017.5 4a6.5 6.5 0 108.5 8.5z"/></svg><span>Modo escuro</span><i class="sw2"></i></button>
     <button class="btn installbtn" id="btnInstalar" type="button" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10m-4-4l4 4 4-4M4 16h12"/></svg>Instalar no celular/PC</button>
@@ -74,6 +71,7 @@
     <button class="btn menubtn" id="menuBtn" type="button" aria-label="Abrir menu" aria-controls="side" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg></button>
     <h1 id="pageTitle">Hoje</h1>
   </header>
+  <div class="row chips subnav" id="subnav" hidden></div>
 
   <!-- HOJE -->
   <section class="panel" id="p-hoje">

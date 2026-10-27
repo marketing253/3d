@@ -97,13 +97,28 @@ function calc(p,C){
 
 
 /* ---------- abas ---------- */
+/* Menu enxuto: 6 grupos. As outras telas viram abas no topo da página do grupo. */
+const GRUPOS={hoje:["Hoje",[["hoje","Hoje"]]],
+  pedidos:["Pedidos",[["pedidos","Pedidos"],["orcamento","Novo orçamento",1],["clientes","Clientes"],["proposta",""]]],
+  produtos:["Produtos",[["produtos","Produtos"],["novo","Cadastrar",1],["estoque","Estoque"],["kits","Kits e cupons"],["tendencias","Em alta"]]],
+  fila:["Impressoras",[["fila","Fila e painel"],["manutencao","Manutenção"]]],
+  financeiro:["Financeiro",[["financeiro","Financeiro"],["compras","Compras"]]],
+  config:["Ajustes",[["config","Custos e loja"],["usuarios","Usuários"],["conta","Minha conta"]]]};
+const grupoDe=t=>Object.keys(GRUPOS).find(g=>GRUPOS[g][1].some(x=>x[0]===t))||"hoje";
+function renderSubnav(t){
+  const g=grupoDe(t), itens=GRUPOS[g][1].filter(([k,n,ed])=>n&&(!ed||podeEditar())&&!($("#tab-"+k)?.hidden));
+  const box=$("#subnav"); box.hidden=itens.length<2;
+  box.innerHTML=itens.map(([k,n])=>`<button class="chip${k===t?" on":""}" type="button" data-sub="${k}">${n}</button>`).join("");
+}
 let tab="hoje";
 function setTab(t){
   tab=t;
-  document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===t)));
+  const g=grupoDe(t);
+  document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===g)));
+  renderSubnav(t);
   ["hoje","produtos","pedidos","orcamento","clientes","fila","estoque","manutencao","compras","financeiro","novo","tendencias","kits","config","usuarios","conta","proposta"].forEach(x=>{$("#p-"+x).hidden=x!==t});
   try{localStorage.setItem("prec3d.tab",t)}catch(e){}
-  const tb=$("#tab-"+t); if(!tb&&t==="proposta") $("#pageTitle").textContent="Proposta comercial"; if(tb) $("#pageTitle").textContent=[...tb.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent).join("").trim();
+  $("#pageTitle").textContent=t==="proposta"?"Proposta comercial":GRUPOS[g][0];
   document.body.classList.remove("navopen"); $("#menuBtn").setAttribute("aria-expanded","false");
   if(t==="config") renderConfig();
   if(t==="usuarios") carregaUsuarios();
@@ -121,6 +136,7 @@ function setTab(t){
   if(t==="kits"){ renderKits(); if(!pedCarregado) carregaPedidos() }
   window.scrollTo({top:0});
 }
+$("#subnav").addEventListener("click",e=>{const b=e.target.closest("[data-sub]"); if(b) $("#tab-"+b.dataset.sub)?.click()});
 document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("click",()=>{
   if(b.dataset.tab==="novo"&&!editingId&&!draft) startForm(null);
   setTab(b.dataset.tab);
@@ -1133,7 +1149,7 @@ $("#pecasLista").addEventListener("click",async e=>{
 /* ---------- sua loja (config) ---------- */
 const LOJA=[["nome","Nome da loja","text","Ex.: Freire 3D"],["whatsapp","WhatsApp da loja","tel","Recebe os pedidos do catálogo"],["instagram","Instagram","text","@sualoja"],["pagamento","Formas de pagamento","text","Pix, cartão ou dinheiro"],["prazoDias","Prazo padrão (dias)","number","Usado em pedidos novos"],["horasDia","Horas por dia (padrão)","number","Para impressoras novas; cada uma tem o seu em Impressoras e fila"],["sobre","Texto do catálogo","text","Uma frase sobre a loja"],["metaLucro","Meta de lucro por mês (R$)","number","Aparece na tela Hoje"],["pixChave","Chave Pix","text","CPF, CNPJ, e-mail, celular (+55…) ou aleatória"],["pixNome","Nome no Pix","text","Como aparece no banco (vazio = nome da loja)"],["pixCidade","Cidade no Pix","text","Ex.: São Paulo"],["entradaPct","Entrada ao aprovar (%)","number","Pedida pelo link do pedido; 0 = sem entrada"],["site","Site","text","Aparece na proposta em PDF"],["cor","Cor da proposta","color","Destaques e sublinhados do PDF"]];
 function renderLoja(){
-  $("#cfgLoja").innerHTML=LOJA.map(([k,l,t,h])=>`<label class="f${k==="sobre"?" wide":""}">${l}<span class="hint">${h}</span><input id="lj-${k}" data-l="${k}" type="${t==="number"?"number":t}" ${t==="number"?'min="0" step="1"':""} value="${esc(k==="cor"?(cfg.loja.cor||"#22c08a"):k==="entradaPct"?(cfg.loja.entradaPct??50):cfg.loja[k]??"")}"></label>`).join("")
+  $("#cfgLoja").innerHTML=LOJA.map(([k,l,t,h])=>`<label class="f${k==="sobre"?" wide":""}">${l}<span class="hint">${h}</span><input id="lj-${k}" data-l="${k}" type="${t==="number"?"number":t}" ${t==="number"?'min="0" step="1"':""} value="${esc(k==="cor"?(cfg.loja.cor||"#1FBE8C"):k==="entradaPct"?(cfg.loja.entradaPct??50):cfg.loja[k]??"")}"></label>`).join("")
     +`<div class="f wide"><span>Logo (proposta em PDF)</span><div class="row" style="gap:10px">${cfg.loja.logo?`<img src="/fotos/${esc(cfg.loja.logo)}" alt="Logo" style="max-height:48px;max-width:160px;background:#0e1114;padding:6px;border-radius:6px">`:'<span class="note">Sem logo: a capa mostra o nome da loja.</span>'}<label class="btn sm" for="lj-logo">${cfg.loja.logo?"Trocar logo":"Enviar logo"}</label><input id="lj-logo" type="file" accept="image/png,image/jpeg,image/webp" hidden>${cfg.loja.logo?'<button type="button" class="btn sm ghost" id="lj-logo-rm">Remover</button>':""}</div><span class="hint">PNG com fundo transparente fica melhor; a capa é escura.</span></div>`;
   const url=location.origin+"/catalogo";
   $("#catLink").innerHTML=`<span class="num clip">${esc(url)}</span><button class="btn sm" id="copCat">Copiar link</button><a class="btn sm" href="/catalogo" target="_blank" rel="noopener">Abrir catálogo ↗</a>`;
@@ -1647,13 +1663,17 @@ function renderHoje(){
   } else payHtml=`<div class="card stack"><h3>Retorno do investimento</h3><p class="note" style="margin:0">Quando marcar os itens de <b>Compras e orçamento</b> como comprados, o sistema mostra quanto já voltou do que você investiu e em quantos meses se paga.</p><div><button class="btn" data-hg="compras">Abrir compras</button></div></div>`;
 
   const avisos=[];
-  const resp=pedidos.filter(p=>p.resposta&&!p.resposta.visto).sort((a,b)=>String(b.resposta.em).localeCompare(a.resposta.em));
-  const pagos=pedidos.filter(p=>etapaPed(p)==="pagamento"&&p.pagInformado);
-  if(pagos.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Confirmar pagamentos <span class="pill warn">${pagos.length}</span></h3></div><p class="note" style="margin:0">O cliente avisou que pagou a entrada. Confira no banco e confirme: a arte é liberada em seguida.</p><ul class="hlist">${pagos.map(p=>`<li data-hp="${esc(p.id)}"><span><b class="num">#${p.numero}</b> ${esc(p.cliente)} <span class="pcat">· avisou ${new Date(p.pagInformado).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap"><b class="num">${brl(Math.max(0,entradaPed(p)-num(p.sinal)))}</b><button class="btn sm primary edit-only" data-hr="entrada">Confirmar</button></span></li>`).join("")}</ul></div>`);
-  const respArte=pedidos.map(p=>({p,a:(p.artes||[]).at(-1)})).filter(x=>x.a&&["aprovada","ajuste"].includes(x.a.status)&&!x.a.visto);
-  if(respArte.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Respostas das artes <span class="pill acc">${respArte.length}</span></h3></div><ul class="hlist">${respArte.map(({p,a})=>`<li data-hp="${esc(p.id)}"><span><b class="num">#${p.numero}</b> ${esc(p.cliente)} <span class="pill ${a.status==="aprovada"?"good":"bad"}">${a.status==="aprovada"?`aprovou a ${VV(a.v)}`:`pediu ajuste na ${VV(a.v)}`}</span>${a.comentario?` <span class="pcat">· “${esc(a.comentario)}”</span>`:""}</span><span class="row" style="gap:6px;flex-wrap:nowrap">${a.status==="ajuste"?'<button class="btn sm primary edit-only" data-hr="arte">Mandar nova versão</button>':""}<button class="btn sm" data-hr="okarte">Ok, vi</button></span></li>`).join("")}</ul></div>`);
-  if(resp.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Respostas dos clientes <span class="pill acc">${resp.length}</span></h3><button class="btn sm" data-hg="pedidos">Ver pedidos</button></div><ul class="hlist">${resp.map(p=>{const ap=p.resposta.acao==="aprovado", fe=Math.max(0,entradaPed(p)-num(p.sinal));
-    return `<li data-hp="${esc(p.id)}"><span><b class="num">#${p.numero}</b> ${esc(p.cliente)} <span class="pill ${ap?"good":"bad"}">${ap?"aprovou":"recusou"}</span> <span class="pcat">· ${new Date(p.resposta.em).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}${!ap&&p.resposta.motivo?` · “${esc(p.resposta.motivo)}”`:""}${ap&&fe>0?` · aguardando entrada de ${brl(fe)}`:""}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn sm" data-hr="ok">Ok, vi</button></span></li>`}).join("")}</ul></div>`);
+  /* um cartão só com o que depende de você, na ordem do passo a passo */
+  const quando2=iso=>new Date(iso).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+  const tarefas=[];
+  for(const p of pedidos){ const e=etapaPed(p), a=(p.artes||[]).at(-1);
+    if(e==="pagamento"&&p.pagInformado) tarefas.push([p,`avisou que pagou a entrada (${brl(Math.max(0,entradaPed(p)-num(p.sinal)))}) · ${quando2(p.pagInformado)}`,"entrada","Confirmar entrada"]);
+    else if(e==="arte"&&(!a||a.status==="ajuste")) tarefas.push([p,a?`pediu ajuste na arte${a.comentario?`: “${a.comentario}”`:""}`:"entrada paga, falta mandar a arte","arte",a?"Enviar nova versão":"Enviar arte"]);
+    else if(e==="recusado"&&p.resposta&&!p.resposta.visto) tarefas.push([p,`recusou o orçamento${p.resposta.motivo?`: “${p.resposta.motivo}”`:""}`,"ok","Ok, vi"]);
+    else if(e==="pagamento"&&p.resposta?.acao==="aprovado"&&!p.resposta.visto) tarefas.push([p,`aprovou o orçamento · aguardando o Pix da entrada`,"ok","Ok, vi"]);
+    else if(e==="producao"&&a&&a.status==="aprovada"&&!a.visto) tarefas.push([p,`aprovou a arte ${VV(a.v)} · já está na fila`,"okarte","Ok, vi"]);
+  }
+  if(tarefas.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Precisa de você <span class="pill acc">${tarefas.length}</span></h3><button class="btn sm" data-hg="pedidos">Ver pedidos</button></div><ul class="hlist">${tarefas.map(([p,txt,acao,rot])=>`<li data-hp="${esc(p.id)}"><span><b class="num">#${p.numero}</b> ${esc(p.cliente)} <span class="pcat">· ${esc(txt)}</span></span><button class="btn sm ${["ok","okarte"].includes(acao)?"":"primary"} ${["ok","okarte"].includes(acao)?"":"edit-only"}" data-hr="${acao}">${rot}</button></li>`).join("")}</ul></div>`);
   if(imps.carregado) avisos.push(`<div class="card stack"><div class="row spread"><h3>Impressoras agora</h3><button class="btn sm" data-hg="fila">Abrir painel</button></div><ul class="hlist">${impLista().map(i=>{const a=impAtiva(i.id);
     return `<li><span><b>${esc(i.nome)}</b>${a?` · ${esc(a.descricao)}`:""}</span><span class="row" style="gap:6px;flex-wrap:nowrap">${!a?'<span class="pill good">livre</span>':a.status==="pausada"?'<span class="pill warn">pausada</span>':`<span class="num" data-cd="${esc(a.id)}">faltam ${fmtSeg(restanteS(a))}</span><span class="pcat">${restanteS(a)>0?fimTxt(restanteS(a)):""}</span>`}</span></li>`}).join("")}</ul></div>`);
   if(novosCat.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Pedidos novos do catálogo <span class="pill acc">${novosCat.length}</span></h3><button class="btn sm" data-hg="pedidos">Ver pedidos</button></div><ul class="hlist">${novosCat.map(p=>linhaPed(p,`<span class="num">${brl(totPed(p).total)}</span><button class="btn sm primary" data-hm="orcamento">Responder</button>`)).join("")}</ul></div>`);
@@ -2290,6 +2310,7 @@ async function carregaDados(){
   try{
     const [c,ps]=await Promise.all([api("GET","/api/config"),api("GET","/api/produtos")]);
     cfg=mergeCfg(c); produtos=ps.filter(p=>p&&p.nome); carregado=true; refreshAll();
+    if(cfg.loja.logo) $("#brandLogo").src="/fotos/"+encodeURIComponent(cfg.loja.logo);
     if(tab==="hoje") renderHoje();
     if(pedCarregado) recalcCatalogo(); else api("GET","/api/pedidos").then(ps=>{pedidos=ps;pedCarregado=true;atualizaBadge();recalcCatalogo()}).catch(()=>{});
   }catch(e){ if(e.status!==401) toast(e.message) }

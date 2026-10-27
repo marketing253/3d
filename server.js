@@ -888,7 +888,7 @@ app.get("/imprimir/proposta/:id", exigeLogin, (req, res) => {
     <div class="k" style="margin-top:12mm">Fale com a gente</div>
     <table class="cont">${zap ? `<tr><td>WhatsApp</td><td><b>${e(zap)}</b></td></tr>` : ""}${site ? `<tr><td>Site</td><td><b>${e(site)}</b></td></tr>` : ""}${L.instagram ? `<tr><td>Instagram</td><td><b>${e(L.instagram)}</b></td></tr>` : ""}</table>
     <div class="fimlogo">${logo}</div></section>`);
-  const cor = /^#[0-9a-f]{6}$/i.test(L.cor || "") ? L.cor : "#22c08a";
+  const cor = /^#[0-9a-f]{6}$/i.test(L.cor || "") ? L.cor : "#1FBE8C";
   res.set("Content-Type", "text/html; charset=utf-8");
   res.send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Proposta ${e(loja)} - ${e(pr.titulo)} - ${e(p.cliente)}</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;600;700&display=swap">
