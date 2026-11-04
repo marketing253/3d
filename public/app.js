@@ -597,11 +597,11 @@ function renderPedidos(){
     return `<tr data-pid="${esc(p.id)}"><td class="num">#${p.numero}</td>
       <td style="max-width:320px"><div class="pname">${esc(p.cliente)}${p.origem==="catalogo"?' <span class="pill acc">catálogo</span>':""}</div><div class="pcat clip">${esc(resumoItens(p))}${p.prazo&&!["entregue","recusado","cancelado"].includes(e)?` · até ${ddmm(p.prazo)}`:""}</div></td>
       <td class="n">${brl(t.total)}</td>
-      <td><span class="pill ${et[1]}">${et[0]}</span>${det?`<div class="pcat">${esc(det)}</div>`:""}${px?`<div style="margin-top:6px"><button class="btn sm ${px[2]?"primary":""} edit-only" data-pa="passo">${px[0]}</button></div>`:""}</td>
+      <td><span class="pill ${et[1]}">${et[0]}</span>${num(p.sinal)>0&&!["cancelado","recusado"].includes(e)?`<div class="pago">✓ ${t.receber<=0.004?"Pagamento confirmado":`Entrada de ${brl(num(p.sinal))} confirmada`}${p.mpPagos?.length?" · Mercado Pago":""}</div>`:""}${det?`<div class="pcat">${esc(det)}</div>`:""}${px?`<div style="margin-top:6px"><button class="btn sm ${px[2]?"primary":""} edit-only" data-pa="passo">${px[0]}</button></div>`:""}</td>
       <td class="pact"><div class="row" style="gap:4px;justify-content:flex-end;flex-wrap:nowrap">
+        ${["cancelado","recusado"].includes(e)?"":`<span class="plink"><button class="btn sm" data-pa="link" title="Copiar o link do pedido para mandar ao cliente">🔗 Link do cliente</button>${p.token?`<a class="btn sm" href="/pedido/${esc(p.token)}" target="_blank" rel="noopener" title="Ver como o cliente vê" aria-label="Ver como o cliente vê">↗</a>`:`<button class="btn sm" data-pa="ver" title="Ver como o cliente vê" aria-label="Ver como o cliente vê">↗</button>`}</span>`}
         <details class="mais"><summary class="btn sm ghost" aria-label="Mais opções">⋯</summary><div class="menu">
           <button data-pa="msg">Mensagem no WhatsApp</button>
-          <button data-pa="link">Copiar link do cliente</button>
           ${p.status!=="entregue"?'<button class="edit-only" data-pa="edit">Editar pedido</button>':""}
           <button class="edit-only" data-pa="arte">Arte</button>
           <button class="edit-only" data-pa="prop">Proposta em PDF</button>
@@ -654,6 +654,7 @@ $("#pedLista").addEventListener("click",async e=>{
   if(a==="delno"){ renderPedidos(); return }
   if(a==="delok"){ try{ await api("DELETE","/api/pedidos/"+encodeURIComponent(p.id)); pedidos=pedidos.filter(x=>x.id!==p.id); renderPedidos(); renderFila(); toast(`Pedido #${p.numero} excluído`) }catch(err){ toast(err.message) } return }
   if(a==="link") linkDe(p).then(async l=>{ if(!l) return toast("Não deu para gerar o link."); try{await navigator.clipboard.writeText(l);toast("Link do cliente copiado")}catch(e){toast(l)} });
+  if(a==="ver"){ const w=window.open("","_blank"); linkDe(p).then(l=>{ if(l&&w){ w.location=l; renderPedidos() } else { w?.close(); toast("Não deu para gerar o link.") } }); return } // abre a aba antes do await para o navegador não bloquear
   if(a==="passo") executaPasso(p,b);
   if(a==="prop") abreProposta(p);
   if(a==="arte") abreArte(p);

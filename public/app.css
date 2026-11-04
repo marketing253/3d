@@ -207,6 +207,8 @@ a.btn.sm{padding:5px 10px;font-size:13px}
 .clip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 td .clip{max-width:260px}
 .pact{white-space:nowrap;text-align:right}
+.plink{display:inline-flex;gap:4px;align-items:center}
+.pago{margin-top:4px;font-size:12.5px;font-weight:600;color:var(--good)}
 .pfi{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.4fr) 90px 90px 130px;gap:8px 10px;align-items:end;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
 .pfi .wide{grid-column:1/4}
 .pfi-x{grid-column:4/6;display:flex;justify-content:flex-end;align-items:center;gap:10px}
