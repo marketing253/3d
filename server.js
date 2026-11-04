@@ -1541,6 +1541,88 @@ function fotoDoItem(i) {
   const pr = db.prepare("SELECT foto FROM produtos WHERE id = ?").get(i.produto_id);
   return pr && pr.foto && FOTO_RE.test(pr.foto) ? pr.foto : null;
 }
+// ---------- Mercado Pago (Pix com confirmação automática) ----------
+// Com MP_ACCESS_TOKEN no .env, o Pix do link do cliente vira uma cobrança do Mercado Pago. Quando ela é paga
+// (aviso do webhook ou consulta enquanto o cliente está na página), o valor entra no sinal do pedido sozinho.
+// Sem o token, continua o Pix pela chave com o "Já paguei" e a confirmação manual.
+const MP_TOKEN = process.env.MP_ACCESS_TOKEN || "";
+const MP_API = (process.env.MP_API_URL || "https://api.mercadopago.com").replace(/\/$/, "");
+async function mpApi(metodo, caminho, corpo) {
+  const r = await fetch(MP_API + caminho, {
+    method: metodo, signal: AbortSignal.timeout(15000),
+    headers: { Authorization: "Bearer " + MP_TOKEN, "Content-Type": "application/json", ...(metodo === "POST" ? { "X-Idempotency-Key": crypto.randomUUID() } : {}) },
+    body: corpo ? JSON.stringify(corpo) : undefined,
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`Mercado Pago ${r.status}: ${j.message || j.error || "erro"}`);
+  return j;
+}
+// Pagamento aprovado soma no sinal uma vez só (p.mpPagos guarda os ids já lançados).
+function mpAplica(pg) {
+  if (pg?.status !== "approved") return false;
+  const r = db.prepare("SELECT * FROM pedidos WHERE id = ?").get(String(pg.external_reference || ""));
+  if (!r || ["entregue", "cancelado"].includes(r.status)) return false;
+  const p = JSON.parse(r.dados), id = String(pg.id);
+  p.mpPagos = p.mpPagos || [];
+  if (p.mpPagos.includes(id)) return false;
+  p.mpPagos.push(id);
+  // a cobrança atual parte do sinal de quando foi criada; assim a confirmação manual antes do aviso não conta duas vezes
+  const base = p.mp && String(p.mp.id) === id ? n(p.mp.base) : n(p.sinal);
+  p.sinal = n(Math.max(n(p.sinal), base + n(pg.transaction_amount)));
+  if (p.mp && String(p.mp.id) === id) p.mp.status = "approved";
+  delete p.pagInformado;
+  db.transaction(() => { salvaDados(r.id, p); sincronizaSinal(r.id, null); })();
+  return true;
+}
+// Consulta a cobrança pendente no máximo a cada 8 s por pedido (a página do cliente pergunta de tempos em tempos).
+const mpConsultas = new Map();
+async function mpConfere(r) {
+  const p = JSON.parse(r.dados);
+  if (!MP_TOKEN || p.mp?.status !== "pending" || Date.now() - (mpConsultas.get(r.id) || 0) < 8000) return r;
+  mpConsultas.set(r.id, Date.now());
+  try {
+    const pg = await mpApi("GET", `/v1/payments/${encodeURIComponent(p.mp.id)}`);
+    if (pg.status === "approved") mpAplica(pg);
+    else if (pg.status !== "pending") { p.mp.status = pg.status; salvaDados(r.id, p); }
+  } catch (e) { console.error("[mp] consulta", e.message); }
+  return db.prepare("SELECT * FROM pedidos WHERE id = ?").get(r.id);
+}
+// Reaproveita a cobrança pendente do mesmo valor; se o valor mudou, cancela a antiga e cria outra (vale 24 h).
+const mpCriando = new Map();
+async function mpCobranca(r, tipo, valor, base) {
+  const p = JSON.parse(r.dados), c = p.mp;
+  if (c && c.status === "pending" && c.tipo === tipo && Math.abs(c.valor - valor) < 0.005 && Date.parse(c.expira) > Date.now() + 10 * 60000) return c;
+  if (mpCriando.has(r.id)) return mpCriando.get(r.id);
+  const tarefa = (async () => {
+    if (c && c.status === "pending") await mpApi("PUT", `/v1/payments/${encodeURIComponent(c.id)}`, { status: "cancelled" }).catch(e => console.error("[mp] cancelar", e.message));
+    const host = new URL(base).hostname;
+    const pg = await mpApi("POST", "/v1/payments", {
+      transaction_amount: n(valor), payment_method_id: "pix", external_reference: r.id,
+      description: `Pedido #${r.numero} · ${tipo === "entrada" ? "entrada" : "restante"}`,
+      date_of_expiration: new Date(Date.now() + 24 * 3600000).toISOString().replace("Z", "+00:00"),
+      ...(base.startsWith("https://") ? { notification_url: base + "/api/mp/webhook" } : {}),
+      payer: { email: `pedido${r.numero}@${/\.[a-z]{2,}$/i.test(host) ? host : "precificador3d.com.br"}`, first_name: txt(p.cliente, 60).split(" ")[0] || "Cliente" },
+    });
+    const qr = pg.point_of_interaction?.transaction_data?.qr_code;
+    if (!qr) throw new Error("Mercado Pago não devolveu o código Pix.");
+    const atual = JSON.parse(db.prepare("SELECT dados FROM pedidos WHERE id = ?").get(r.id).dados);
+    atual.mp = { id: String(pg.id), tipo, valor: n(valor), base: n(atual.sinal), status: pg.status, qr, expira: pg.date_of_expiration || new Date(Date.now() + 24 * 3600000).toISOString() };
+    salvaDados(r.id, atual);
+    return atual.mp;
+  })();
+  mpCriando.set(r.id, tarefa);
+  try { return await tarefa; } finally { mpCriando.delete(r.id); }
+}
+// O Mercado Pago avisa aqui; o pagamento é sempre lido de novo na API, então um aviso falso não marca nada como pago.
+app.post("/api/mp/webhook", limitePublico, async (req, res) => {
+  const id = String(req.body?.data?.id || req.query["data.id"] || req.query.id || "");
+  const tipo = req.body?.type || req.query.type || req.query.topic;
+  if (!MP_TOKEN || !/^\d+$/.test(id) || (tipo && tipo !== "payment")) return res.sendStatus(200);
+  try { mpAplica(await mpApi("GET", `/v1/payments/${id}`)); res.sendStatus(200); }
+  catch (e) { console.error("[mp] webhook", e.message); res.sendStatus(500); }
+});
+app.get("/api/mp/status", exigeLogin, (req, res) => res.json({ ligado: !!MP_TOKEN, teste: MP_TOKEN.startsWith("TEST-") }));
+
 // Entrada pedida ao aprovar: valor do pedido ou o % padrão da loja (Sua loja → Entrada).
 function entradaDe(p, total, L) {
   if (p.entrada != null && Number.isFinite(Number(p.entrada))) return n(Math.min(Number(p.entrada), total));
@@ -1577,7 +1659,8 @@ app.post("/api/pedidos/:id/resposta-vista", exigeLogin, (req, res) => {
   res.json(linhaPedido(db.prepare("SELECT * FROM pedidos WHERE id = ?").get(req.params.id)));
 });
 app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
-  const r = pedidoPorToken(req.params.token); if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  let r = pedidoPorToken(req.params.token); if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  r = await mpConfere(r);
   const p = JSON.parse(r.dados), L = lojaConfig();
   const bruto = p.itens.reduce((s, i) => s + i.quantidade * i.preco_unit, 0);
   const total = bruto - (p.desconto || 0) + (p.freteCliente || 0);
@@ -1587,7 +1670,14 @@ app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
   const etP = etapaDe(r.status, p);
   const pixTipo = receber <= 0 ? null : etP === "pagamento" ? "entrada" : etP === "pronto" ? "restante" : null;
   const pixValor = pixTipo === "entrada" ? faltaEntrada : receber;
-  const pix = pixTipo ? await pixPara(pixValor, (pixTipo === "entrada" ? "ENT" : "PED") + r.numero) : null;
+  let pix = null, pixAuto = false;
+  if (pixTipo && MP_TOKEN) {
+    try {
+      const c = await mpCobranca(r, pixTipo, pixValor, (process.env.PUBLIC_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, ""));
+      pix = { payload: c.qr, svg: await QRCode.toString(c.qr, { type: "svg", margin: 1, errorCorrectionLevel: "M" }) }; pixAuto = true;
+    } catch (e) { console.error("[mp] cobrança", e.message); }
+  }
+  if (pixTipo && !pix) pix = await pixPara(pixValor, (pixTipo === "entrada" ? "ENT" : "PED") + r.numero);
   res.set("Cache-Control", "no-store");
   res.json({
     loja: { nome: txt(L.nome, 80) || "Impressões 3D", whatsapp: txt(L.whatsapp, 30).replace(/\D/g, ""), whatsappTxt: txt(L.whatsapp, 30), instagram: txt(L.instagram, 60), pagamento: txt(L.pagamento, 200),
@@ -1600,7 +1690,7 @@ app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
     entrada, faltaEntrada, resposta: p.resposta ? { acao: p.resposta.acao, em: p.resposta.em } : null,
     etapa: etapaDe(r.status, p), pagInformado: p.pagInformado || null, precisaArte: precisaArte(p),
     arte: p.artes && p.artes.length ? (a => ({ v: a.v, status: a.status, nota: a.nota || "", comentario: a.comentario || "", respondidoEm: a.respondidoEm || null, imagem: `/aprovacao/${r.token}/arte/${a.v}` }))(p.artes.at(-1)) : null,
-    pix: pix ? { payload: pix.payload, svg: pix.svg, tipo: pixTipo, valor: pixValor, chave: txt(L.pixChave, 77), nome: txt(L.pixNome || L.nome, 60) } : null,
+    pix: pix ? { payload: pix.payload, svg: pix.svg, tipo: pixTipo, valor: pixValor, auto: pixAuto, chave: pixAuto ? "" : txt(L.pixChave, 77), nome: txt(L.pixNome || L.nome, 60) } : null,
   });
 });
 // ---------- aprovação da arte ----------

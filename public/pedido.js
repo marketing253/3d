@@ -54,7 +54,11 @@ async function carrega(){
       <div data-etapa="aprovar" hidden><p class="exp" style="color:var(--tinta)">Confirma a aprovação de <b>${brl(d.total)}</b>?</p><div class="acoes"><button class="btn pri" type="button" data-a="aprovar-ok">Sim, aprovar</button><button class="btn" type="button" data-a="voltar">Voltar</button></div></div>
       <div data-etapa="recusar" hidden><label for="motivo">Quer contar o motivo? (opcional)</label><textarea id="motivo" rows="3" maxlength="300"></textarea><div class="acoes"><button class="btn perigo" type="button" data-a="recusar-ok">Recusar orçamento</button><button class="btn" type="button" data-a="voltar">Voltar</button></div></div>
     </div>`;
-  corpo.pagamento=d.pagInformado
+  corpo.pagamento=d.pix?.auto
+    ?`<div class="valor">${brl(d.pix.valor)}</div>
+      <p class="exp">Pague por Pix para começarmos. No app do banco, escolha <b>Pix copia e cola</b>: o valor já vem preenchido. <b>Assim que o Pix cair, esta página avança sozinha.</b></p>
+      ${pixHtml(d)}`
+    :d.pagInformado
     ?`<div class="aviso"><b>Recebemos o seu aviso de pagamento</b><span>Assim que confirmarmos o Pix, a arte aparece aqui para você aprovar.</span></div>
       ${wa(`Olá! Paguei a entrada do pedido #${d.numero}. Segue o comprovante:`)?`<a class="btn" href="${esc(wa(`Olá! Paguei a entrada do pedido #${d.numero}. Segue o comprovante:`))}" target="_blank" rel="noopener">Enviar o comprovante no WhatsApp</a>`:""}`
     :`<div class="valor">${brl(d.pix?d.pix.valor:d.faltaEntrada)}</div>
@@ -74,7 +78,7 @@ async function carrega(){
       </div>`;
   corpo.producao=`<div class="aviso"><b>Seu pedido está em produção</b><span>${d.prazo?`Previsão: pronto até <b>${dataBR(d.prazo)}</b>. `:""}Avisamos assim que ficar pronto.</span></div>`;
   corpo.pronto=d.pix
-    ?`<p class="exp">Seu pedido está pronto! Falta pagar o restante:</p><div class="valor">${brl(d.pix.valor)}</div>${pixHtml(d)}
+    ?`<p class="exp">Seu pedido está pronto! Falta pagar o restante${d.pix.auto?" (a confirmação é automática)":""}:</p><div class="valor">${brl(d.pix.valor)}</div>${pixHtml(d)}
       ${wa(`Olá! Paguei o restante do pedido #${d.numero}. Como combinamos a retirada ou entrega?`)?`<a class="btn" href="${esc(wa(`Olá! Paguei o restante do pedido #${d.numero}. Como combinamos a retirada ou entrega?`))}" target="_blank" rel="noopener">Combinar a entrega no WhatsApp</a>`:""}`
     :`<div class="aviso"><b>Seu pedido está pronto!</b><span>Combine a retirada ou a entrega com a loja.</span></div>
       ${wa(`Olá! Sobre a entrega do pedido #${d.numero}:`)?`<a class="btn pri" href="${esc(wa(`Olá! Sobre a entrega do pedido #${d.numero}:`))}" target="_blank" rel="noopener">Combinar a entrega no WhatsApp</a>`:""}`;
@@ -118,6 +122,20 @@ async function carrega(){
       document.querySelector(".passo .agora")?.scrollIntoView({behavior:"smooth",block:"start"});
     }catch(err){ toast(err.message); x.disabled=false }
   };
+
+  // Pix do Mercado Pago: pergunta de tempos em tempos e avança a página quando o pagamento cair
+  clearTimeout(carrega._t);
+  if(d.pix?.auto){
+    const confere=async()=>{
+      if(document.hidden){carrega._t=setTimeout(confere,6000);return}
+      try{
+        const r=await fetch("/api/publico/pedido/"+encodeURIComponent(token)); const n=await r.json();
+        if(n.etapa!==d.etapa||n.sinal!==d.sinal){ toast("Pagamento confirmado!"); await carrega(); document.querySelector(".passo .agora")?.scrollIntoView({behavior:"smooth",block:"start"}); return }
+      }catch(e){}
+      carrega._t=setTimeout(confere,6000);
+    };
+    carrega._t=setTimeout(confere,6000);
+  }
 }
 carrega();
 })();
