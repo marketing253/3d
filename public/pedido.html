@@ -57,6 +57,15 @@ body{margin:0;min-height:100vh;font:15px/1.5 Inter,system-ui,-apple-system,"Sego
 .valor{font-size:30px;font-weight:800;color:color-mix(in srgb,var(--cor) 70%,#0a1a2e);line-height:1.1}
 .pixw{display:flex;flex-direction:column;gap:10px}
 .pixw .btn,.corpo>.btn{flex:none} /* na coluna, o flex-basis de 160px viraria altura */
+.ok-pag{position:fixed;inset:0;z-index:60;background:rgba(8,12,16,.6);display:flex;align-items:center;justify-content:center;padding:16px}
+.ok-box{background:#fff;border-radius:18px;padding:28px 24px 22px;max-width:380px;width:100%;text-align:center;display:flex;flex-direction:column;gap:10px;align-items:center;box-shadow:0 24px 60px rgba(0,0,0,.3);animation:okEntra .25s ease-out}
+.ok-ic{width:64px;height:64px;border-radius:50%;background:var(--cor);color:#fff;font-size:34px;font-weight:800;display:grid;place-items:center;box-shadow:0 10px 24px color-mix(in srgb,var(--cor) 40%,transparent)}
+.ok-box h2{margin:4px 0 0;font-size:22px}
+.ok-box p{margin:0;color:var(--suave);font-size:15px}
+.ok-box .ok-prox{color:var(--tinta);font-weight:600}
+.ok-box .btn{align-self:stretch;margin-top:6px;flex:none}
+@keyframes okEntra{from{transform:scale(.92);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.ok-box{animation:none}}
 .formas{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--claro);border:1px solid var(--linha);border-radius:12px;padding:4px}
 .fm{font:700 14px Inter,sans-serif;border:0;border-radius:9px;padding:10px 8px;background:transparent;color:var(--suave);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:1px}
 .fm small{font-weight:500;font-size:11.5px}

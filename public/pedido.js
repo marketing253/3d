@@ -29,7 +29,17 @@ const pagHtml=d=>!d.cartao?pixHtml(d):`<div class="formas" role="tablist">
     <button type="button" class="fm" role="tab" aria-selected="false" data-a="fCartao">Cartão de crédito<small>até ${d.cartao.parcelas}x</small></button>
   </div>
   <div data-forma="pix">${pixHtml(d)}</div>
-  <div data-forma="cartao" hidden><div id="cardBrick"></div><p class="exp">Parcele em até ${d.cartao.parcelas}x. Os juros das parcelas aparecem antes de você confirmar.</p></div>`;
+  <div data-forma="cartao" hidden><div id="cardBrick"></div><p class="exp">Parcele em até ${d.cartao.parcelas}x: depois de digitar o número do cartão, escolha as parcelas. Os juros do parcelamento aparecem antes de você confirmar. Cada parcela tem um valor mínimo, então valores pequenos ficam só à vista.</p></div>`;
+// Caixa de "Pagamento aprovado" (cartão ou Pix), com o que acontece a seguir.
+const PROXIMO={arte:"Agora preparamos a sua arte. Ela aparece aqui para você aprovar.",producao:"Seu pedido já foi para a produção.",pronto:"Pedido quitado! Combine a retirada ou a entrega com a loja.",entregue:"Pedido quitado. Obrigado!"};
+async function aprovado(detalhe){
+  await carrega();
+  const n=carrega.d, z=document.createElement("div"); z.className="ok-pag"; z.setAttribute("role","dialog"); z.setAttribute("aria-modal","true");
+  z.innerHTML=`<div class="ok-box"><div class="ok-ic" aria-hidden="true">✓</div><h2>Pagamento aprovado!</h2><p>${esc(detalhe)}</p>${n&&PROXIMO[n.etapa]?`<p class="ok-prox">${PROXIMO[n.etapa]}</p>`:""}<button class="btn pri" type="button">Ver meu pedido</button></div>`;
+  const fecha=()=>{ z.remove(); document.querySelector(".passo .agora")?.scrollIntoView({behavior:"smooth",block:"start"}) };
+  z.addEventListener("click",ev=>{ if(ev.target===z||ev.target.closest("button")) fecha() });
+  document.body.appendChild(z); z.querySelector("button").focus();
+}
 function sdkMP(){
   return sdkMP.p||=new Promise((ok,erro)=>{const s=document.createElement("script");s.src="https://sdk.mercadopago.com/js/v2";s.onload=ok;s.onerror=()=>{sdkMP.p=null;erro(new Error("Não deu para abrir o pagamento com cartão. Tente de novo ou use o Pix."))};document.head.appendChild(s)});
 }
@@ -46,8 +56,9 @@ async function montaCartao(d){
       onReady:()=>{},
       onError:e=>console.error("cartão",e),
       onSubmit:dados=>envia(`/api/publico/pedido/${encodeURIComponent(token)}/cartao`,dados).then(async j=>{
-        toast(j.analise?"Pagamento em análise. Esta página avança quando for aprovado.":"Pagamento aprovado!");
-        if(!j.analise){ await carrega(); document.querySelector(".passo .agora")?.scrollIntoView({behavior:"smooth",block:"start"}) }
+        if(j.analise) return toast("Pagamento em análise. Esta página avança quando for aprovado.");
+        const x=Number(dados.installments)||1;
+        await aprovado(`${brl(d.cartao.valor)} no cartão de crédito${x>1?` em ${x}x`:" à vista"}.`);
       }).catch(err=>{ toast(err.message); throw err }),
     },
   });
@@ -57,7 +68,7 @@ async function carrega(){
   let d;
   try{const r=await fetch("/api/publico/pedido/"+encodeURIComponent(token));if(!r.ok)throw new Error(r.status);d=await r.json()}
   catch(e){$("#ped").innerHTML=`<div class="vazio"><h2>Pedido não encontrado</h2><p>O link pode estar incompleto. Peça um novo link para a loja.</p></div>`;return}
-  const L=d.loja, et=d.etapa;
+  carrega.d=d; const L=d.loja, et=d.etapa;
   if(L.cor) document.documentElement.style.setProperty("--cor",L.cor);
   document.title=`Pedido #${d.numero} · ${L.nome}`;
   const wa=t=>L.whatsapp?"https://wa.me/"+(L.whatsapp.length<=11?"55"+L.whatsapp:L.whatsapp)+"?text="+encodeURIComponent(t):null;
@@ -173,7 +184,8 @@ async function carrega(){
       if(document.hidden){carrega._t=setTimeout(confere,6000);return}
       try{
         const r=await fetch("/api/publico/pedido/"+encodeURIComponent(token)); const n=await r.json();
-        if(n.etapa!==d.etapa||n.sinal!==d.sinal){ toast("Pagamento confirmado!"); await carrega(); document.querySelector(".passo .agora")?.scrollIntoView({behavior:"smooth",block:"start"}); return }
+        if(n.sinal>d.sinal){ await aprovado(`Recebemos o seu pagamento de ${brl(n.sinal-d.sinal)}.`); return }
+        if(n.etapa!==d.etapa){ await carrega(); document.querySelector(".passo .agora")?.scrollIntoView({behavior:"smooth",block:"start"}); return }
       }catch(e){}
       carrega._t=setTimeout(confere,6000);
     };
