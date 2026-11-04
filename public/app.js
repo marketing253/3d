@@ -714,17 +714,20 @@ const taxaMP=p=>pagosMP(p).reduce((s,x)=>s+num(x.taxa),0);
 
 // Avisos de pagamento: o painel pergunta a cada 30 s e mostra um cartão no canto (e notificação do navegador, se liberada).
 let avisosVistos=new Set();
-async function checaAvisos(){
+async function checaAvisos(forcar){
   if(!me) return;
   let lista; try{ lista=await api("GET","/api/avisos") }catch(e){ return }
   const novos=lista.filter(a=>!avisosVistos.has(a.pedido+":"+a.i+":"+a.em));
-  if(!novos.length){ renderAvisos(lista); return }
+  if(!novos.length){ renderAvisos(lista); if(forcar){ await carregaPedidos(); if(tab==="hoje") renderHoje() } return }
   for(const a of novos){ avisosVistos.add(a.pedido+":"+a.i+":"+a.em);
     try{ if("Notification" in window&&Notification.permission==="granted") new Notification(tituloAviso(a),{body:`${a.cliente} · ${brl(a.valor)} · ${a.forma}`}) }catch(e){} }
-  renderAvisos(lista); carregaPedidos();
+  if(novos.some(a=>a.tipo==="pago")) somPagamento();
+  renderAvisos(lista); await carregaPedidos(); if(tab==="hoje") renderHoje();
 }
 const tituloAviso=a=>a.tipo==="pago"?`Pedido #${a.numero} pago`:a.tipo==="contestado"?`Pedido #${a.numero}: pagamento contestado`:`Pedido #${a.numero}: pagamento estornado`;
 function renderAvisos(lista){
+  const nPag=new Set(lista.filter(a=>a.tipo==="pago").map(a=>a.pedido)).size, bp=$("#badgePag");
+  if(bp){ bp.hidden=!nPag; bp.textContent=nPag; bp.title=nPag+" pedido(s) pago(s) que você ainda não viu" }
   let box=$("#avisosPag"); if(!box){ box=document.createElement("div"); box.id="avisosPag"; document.body.appendChild(box) }
   const pode="Notification" in window&&Notification.permission==="default";
   box.innerHTML=lista.slice(0,4).map(a=>`<div class="avp ${a.tipo==="pago"?"ok":"bad"}" data-ap="${esc(a.pedido)}">
@@ -740,8 +743,23 @@ document.addEventListener("click",async e=>{
   try{ await api("POST","/api/avisos/visto",{pedido:id}) }catch(err){}
   document.querySelectorAll("#avisosPag [data-ap]").forEach(el=>{ if(el.dataset.ap===id) el.remove() }); // todos os avisos do pedido foram marcados como vistos
   if(b.dataset.av==="ver"){ setTab("pedidos"); await carregaPedidos(); const p=pedidos.find(x=>x.id===id); if(p) abreResumo(p) }
+  checaAvisos(true);
 });
 setInterval(checaAvisos,30000); setTimeout(checaAvisos,3000);
+
+document.addEventListener("click",async e=>{
+  const li=e.target.closest("[data-pg]"); if(!li) return;
+  const p=pedidos.find(x=>x.id===li.dataset.pg); if(!p) return;
+  abreResumo(p);
+  if((p.avisosPag||[]).some(a=>!a.visto)){ try{ await api("POST","/api/avisos/visto",{pedido:p.id}) }catch(err){} checaAvisos(true) }
+});
+// Som curto de "caixa" quando chega pagamento (só toca depois de algum clique na página, regra do navegador).
+function somPagamento(){
+  try{ const ac=somPagamento.ac||=new AudioContext();
+    [[880,0],[1320,.12]].forEach(([f,t])=>{ const o=ac.createOscillator(), g=ac.createGain(); o.frequency.value=f; o.type="sine";
+      g.gain.setValueAtTime(.0001,ac.currentTime+t); g.gain.exponentialRampToValueAtTime(.25,ac.currentTime+t+.02); g.gain.exponentialRampToValueAtTime(.0001,ac.currentTime+t+.35);
+      o.connect(g).connect(ac.destination); o.start(ac.currentTime+t); o.stop(ac.currentTime+t+.4) }) }catch(e){}
+}
 
 // Caixa "Pedido #N": resumo com o que importa (cliente, itens, valores, prazo) e os botões principais.
 function abreResumo(p,criado){
@@ -1793,6 +1811,14 @@ function renderHoje(){
   const L=cfg.loja, meta=num(L.metaLucro);
   const dt=new Date(hoje+"T12:00:00"), diaMes=dt.getDate(), diasNoMes=new Date(dt.getFullYear(),dt.getMonth()+1,0).getDate();
   const nomeDia=cap(dt.toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"}));
+  // pagamentos do Mercado Pago dos últimos 7 dias; os ainda não vistos ficam destacados
+  const desde=addDias(hoje,-7), pagosLista=[];
+  for(const p of pedidos) for(const x of pagosMP(p)) if(String(x.em||"").slice(0,10)>=desde) pagosLista.push({p,x});
+  pagosLista.sort((a,b)=>String(b.x.em).localeCompare(String(a.x.em)));
+  const naoVistos=new Set(pedidos.filter(p=>(p.avisosPag||[]).some(a=>!a.visto&&a.tipo==="pago")).map(p=>p.id));
+  const quandoPag=iso=>{const d=new Date(iso); return (iso.slice(0,10)===hoje?"hoje":d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"}))+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})};
+  const pagosHtml=`<div class="card stack hojepag"><div class="row spread"><h3>Pagamentos recebidos <span class="pcat">últimos 7 dias</span></h3>${"Notification" in window&&Notification.permission==="default"?'<button class="btn sm" data-av="notif">Avisar também no navegador</button>':""}</div>
+    ${pagosLista.length?`<ul class="hp-lista">${pagosLista.slice(0,8).map(({p,x})=>`<li data-pg="${esc(p.id)}" class="${naoVistos.has(p.id)?"novo":""}"><span class="hp-ok" aria-hidden="true">✓</span><span class="hp-txt"><b>#${p.numero} ${esc(p.cliente)}</b><small>${esc(x.forma)} · ${quandoPag(x.em)}${naoVistos.has(p.id)?" · novo":""}</small></span><b class="num">${brl(x.valor)}</b></li>`).join("")}</ul>`:'<p class="note" style="margin:0">Quando um cliente pagar pelo link, o pagamento aparece aqui e no canto da tela.</p>'}</div>`;
   const linhaPed=(p,extra)=>`<li data-hp="${esc(p.id)}"><span><b class="num">#${p.numero}</b> ${esc(p.cliente)} <span class="pcat">· ${esc(resumoItens(p))}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap">${extra||""}</span></li>`;
 
   // meta
@@ -1846,7 +1872,7 @@ function renderHoje(){
 
   const hora=new Date().getHours(), saud=hora<12?"Bom dia":hora<18?"Boa tarde":"Boa noite";
   const resumoDia=[urgentes.length?`${urgentes.length} ${urgentes.length===1?"pedido com prazo vencendo":"pedidos com prazo vencendo"}`:"",novosCat.length?`${novosCat.length} ${novosCat.length===1?"pedido novo":"pedidos novos"} do catálogo`:"",prontos.length?`${prontos.length} para entregar`:""].filter(Boolean).join(" · ")||"Tudo tranquilo por aqui";
-  box.innerHTML=`<div class="hojehero"><div><h2>${saud}, ${esc((me?.nome||"").split(" ")[0])}!</h2><p>${esc(nomeDia)} · ${esc(resumoDia)}</p></div><div class="row" style="gap:8px"><button class="btn primary edit-only" data-hg="novoPed">+ Novo pedido</button><button class="btn edit-only" data-hg="venda">Registrar venda</button></div></div>
+  box.innerHTML=`<div class="hojehero"><div><h2>${saud}, ${esc((me?.nome||"").split(" ")[0])}!</h2><p>${esc(nomeDia)} · ${esc(resumoDia)}</p></div><div class="row" style="gap:8px"><button class="btn primary edit-only" data-hg="novoPed">+ Novo pedido</button><button class="btn edit-only" data-hg="venda">Registrar venda</button></div></div>${pagosHtml}
     <div class="tiles">
       <div class="tile main"><span class="tl">Lucro no mês</span><span class="tv num ${lucro<0?"neg":""}">${brl(lucro)}</span><span class="ts">${brl(bruto)} vendidos · ${pecas.toLocaleString("pt-BR")} ${pecas===1?"peça":"peças"}</span></div>
       <div class="tile"><span class="tl">Na fila</span><span class="tv num">${f.length}</span><span class="ts">${!f.length?"nenhum pedido esperando":horasFila>0?fmtH(horasFila)+" de impressão":"sem tempo informado"}</span></div>

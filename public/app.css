@@ -614,3 +614,15 @@ dialog.pform{width:min(640px,calc(100vw - 24px))}
 .avp.bad .avp-ic{background:var(--bad-soft);color:var(--bad)}
 .avp-x{background:none;border:0;color:var(--muted);cursor:pointer;font-size:13px;padding:4px}
 .avp-notif{background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font:600 12.5px inherit;color:var(--muted);cursor:pointer}
+/* tela Hoje: pagamentos recebidos */
+.hojepag{border-left:4px solid var(--good)}
+.hp-lista{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.hp-lista li{display:flex;align-items:center;gap:10px;padding:9px 6px;border-top:1px solid var(--line);cursor:pointer;border-radius:8px}
+.hp-lista li:first-child{border-top:0}
+.hp-lista li:hover{background:var(--sunken)}
+.hp-lista li.novo{background:var(--good-soft)}
+.hp-ok{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--good-soft);color:var(--good);font-weight:800;flex:none}
+.hp-lista li.novo .hp-ok{background:var(--good);color:#fff}
+.hp-txt{flex:1;min-width:0;display:flex;flex-direction:column}
+.hp-txt small{color:var(--muted);font-size:12.5px}
+.navbadge.pago{background:var(--good);color:#fff}
