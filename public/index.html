@@ -17,14 +17,28 @@
 </head>
 <body>
 <div class="wrap auth" id="authScreen" hidden>
+  <div class="auth-box">
+  <aside class="auth-marca">
+    <img src="/logo-8on.png" alt="8ON · Sua empresa ON." width="190" height="112">
+    <div>
+      <h2>Seu ateliê 3D em um só lugar.</h2>
+      <ul>
+        <li>Orçamentos e pedidos com passo a passo</li>
+        <li>Pix e cartão com confirmação automática</li>
+        <li>Catálogo, fila de impressão e financeiro</li>
+      </ul>
+    </div>
+    <small>8ON · Sua empresa ON.</small>
+  </aside>
   <div class="card stack">
     <div class="auth-topo"><img src="/logo-8on.png" alt="8ON · Sua empresa ON." width="153" height="91"></div>
-    <h1><small>Painel 8ON · impressões 3D</small>Precificador de Impressões 3D</h1>
-    <form id="formLogin" hidden>
-      <label class="f">Usuário<input id="lg-usuario" required autocomplete="username" autocapitalize="none"></label>
-      <label class="f">Senha<input id="lg-senha" type="password" required autocomplete="current-password"></label>
+    <h1><small>Painel 8ON · impressões 3D</small>Entrar no painel</h1>
+    <form id="formLogin" method="post" action="/api/login" hidden>
+      <label class="f">Usuário<span class="campo"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="7" r="3.2"/><path d="M3.5 17c.8-3.3 3.4-5 6.5-5s5.7 1.7 6.5 5"/></svg><input id="lg-usuario" name="username" required autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Seu usuário"></span></label>
+      <label class="f">Senha<span class="campo"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="9" width="12" height="8" rx="2"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/></svg><input id="lg-senha" name="password" type="password" required autocomplete="current-password" placeholder="Sua senha"><button type="button" class="ver-senha" id="lgVer" aria-label="Mostrar senha" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 10s3-5.5 8-5.5S18 10 18 10s-3 5.5-8 5.5S2 10 2 10z"/><circle cx="10" cy="10" r="2.4"/></svg></button></span></label>
+      <label class="chk lembrar"><input type="checkbox" id="lg-lembrar" checked> Lembrar de mim por 30 dias</label>
       <p class="err" id="lgErr" role="alert"></p>
-      <button class="btn primary" type="submit">Entrar</button>
+      <button class="btn primary" type="submit" id="lgBtn">Entrar</button>
       <p class="note" style="margin:0">Esqueceu a senha? Peça ao administrador para criar uma nova.</p>
     </form>
     <form id="formSetup" hidden>
@@ -37,6 +51,7 @@
       <button class="btn primary" type="submit">Criar administrador e entrar</button>
     </form>
     <p class="note" id="authLoading">Carregando…</p>
+  </div>
   </div>
 </div>
 

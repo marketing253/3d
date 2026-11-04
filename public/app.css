@@ -631,3 +631,31 @@ dialog.pform{width:min(640px,calc(100vw - 24px))}
 .auth .card{overflow:hidden}
 .auth-topo{margin:-32px -32px 6px;padding:28px 32px 24px;background:linear-gradient(120deg,#0E1114 55%,#12443a);display:flex;justify-content:center}
 .auth-topo img{height:84px;width:auto;display:block}
+/* login profissional: marca à esquerda (telas largas) e formulário à direita */
+.auth-box{display:flex;width:min(920px,100%);border-radius:20px;overflow:hidden;box-shadow:0 30px 70px rgba(0,0,0,.45)}
+.auth .auth-box .card{box-shadow:none;border-radius:0;max-width:none;flex:1;padding:40px 40px 32px;justify-content:center}
+.auth-marca{flex:1;background:radial-gradient(circle at 20% 15%,rgba(31,190,140,.28),transparent 45%),linear-gradient(160deg,#0E1114 40%,#12443a);color:#fff;padding:40px;display:flex;flex-direction:column;justify-content:space-between;gap:28px}
+.auth-marca img{width:170px;height:auto}
+.auth-marca h2{font-family:"Archivo Black",var(--display,inherit);font-size:28px;line-height:1.15;margin:0 0 16px;color:#fff}
+.auth-marca ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;color:rgba(255,255,255,.82);font-size:15px}
+.auth-marca li{display:flex;gap:10px;align-items:center}
+.auth-marca li::before{content:"";width:8px;height:8px;border-radius:50%;background:#1FBE8C;box-shadow:0 0 0 4px rgba(31,190,140,.2);flex:none}
+.auth-marca small{color:rgba(255,255,255,.5);font-size:12.5px;letter-spacing:.04em}
+.auth .auth-box .auth-topo{display:none}
+.auth h1{font-size:28px}
+.campo{position:relative;display:flex;align-items:center}
+.campo > svg{position:absolute;left:12px;width:18px;height:18px;fill:none;stroke:var(--muted);stroke-width:1.6;pointer-events:none}
+.campo input{padding-left:40px;width:100%;min-height:46px}
+.campo .ver-senha{position:absolute;right:6px;background:none;border:0;padding:8px;cursor:pointer;border-radius:8px;display:grid;place-items:center}
+.campo .ver-senha svg{width:20px;height:20px;fill:none;stroke:var(--muted);stroke-width:1.6}
+.campo .ver-senha[aria-pressed="true"] svg{stroke:var(--accent)}
+.campo .ver-senha:hover{background:var(--sunken)}
+#lg-senha{padding-right:44px}
+.lembrar{font-size:14px;color:var(--ink)}
+.auth #lgBtn{min-height:48px;font-size:16px}
+@media (max-width:760px){
+  .auth-box{flex-direction:column;width:min(440px,100%)}
+  .auth-marca{display:none}
+  .auth .auth-box .auth-topo{display:flex}
+  .auth .auth-box .card{padding:32px}
+}

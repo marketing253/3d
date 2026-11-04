@@ -2505,10 +2505,16 @@ async function carregaDados(){
 $("#formLogin").addEventListener("submit",async e=>{
   e.preventDefault(); $("#lgErr").textContent="";
   const btn=e.submitter; if(btn) btn.disabled=true;
-  try{ const r=await api("POST","/api/login",{usuario:$("#lg-usuario").value.trim(),senha:$("#lg-senha").value}); me=r.usuario; $("#lg-senha").value=""; await showApp() }
+  const lembrar=$("#lg-lembrar").checked; try{ localStorage.setItem("p3d.lembrar",lembrar?"1":"0") }catch(e){}
+  if(btn) btn.textContent="Entrando…";
+  try{ const r=await api("POST","/api/login",{usuario:$("#lg-usuario").value.trim(),senha:$("#lg-senha").value,lembrar}); me=r.usuario;
+    await showApp(); setTimeout(()=>{ $("#lg-senha").value="" },3000) } // a senha fica uns segundos para o navegador oferecer "salvar senha"
   catch(err){ $("#lgErr").textContent=err.message; $("#lg-senha").select() }
-  finally{ if(btn) btn.disabled=false }
+  finally{ if(btn){ btn.disabled=false; btn.textContent="Entrar" } }
 });
+// mostrar/esconder a senha e lembrar a escolha do "Lembrar de mim" neste aparelho
+$("#lgVer").addEventListener("click",()=>{ const i=$("#lg-senha"), ver=i.type==="password"; i.type=ver?"text":"password"; $("#lgVer").setAttribute("aria-pressed",ver); $("#lgVer").setAttribute("aria-label",ver?"Esconder senha":"Mostrar senha"); i.focus() });
+try{ if(localStorage.getItem("p3d.lembrar")==="0") $("#lg-lembrar").checked=false }catch(e){}
 $("#formSetup").addEventListener("submit",async e=>{
   e.preventDefault(); $("#stErr").textContent="";
   if($("#st-senha").value!==$("#st-senha2").value){$("#stErr").textContent="As duas senhas não são iguais.";return}

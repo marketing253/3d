@@ -128,10 +128,13 @@ function validaSenha(senha) {
   return typeof senha === "string" && senha.length >= 8 && senha.length <= 200;
 }
 const PAPEIS = ["admin", "editor", "leitura"];
-function entrar(req, id, cb) {
+// lembrar = true: sessão de 30 dias; false: some ao fechar o navegador; sem valor: o padrão de 7 dias.
+function entrar(req, id, cb, lembrar) {
   req.session.regenerate(err => {
     if (err) return cb(err);
     req.session.uid = id;
+    if (lembrar === true) req.session.cookie.maxAge = 30 * 24 * 60 * 60 * 1000;
+    else if (lembrar === false) req.session.cookie.expires = false;
     db.prepare("UPDATE usuarios SET ultimo_login = datetime('now') WHERE id = ?").run(id);
     req.session.save(cb);
   });
@@ -166,7 +169,7 @@ app.post("/api/login", limiteLogin, (req, res) => {
   const u = db.prepare("SELECT id, senha_hash FROM usuarios WHERE usuario = ?").get(usuario.trim());
   const ok = bcrypt.compareSync(senha, u ? u.senha_hash : HASH_FALSO);
   if (!u || !ok) return res.status(401).json({ erro: "Usuário ou senha incorretos." });
-  entrar(req, u.id, err => err ? res.status(500).json({ erro: "Erro ao iniciar a sessão." }) : res.json({ usuario: qUsuarioPorId.get(u.id) }));
+  entrar(req, u.id, err => err ? res.status(500).json({ erro: "Erro ao iniciar a sessão." }) : res.json({ usuario: qUsuarioPorId.get(u.id) }), req.body.lembrar === true);
 });
 
 app.post("/api/logout", (req, res) => {
