@@ -207,8 +207,7 @@ a.btn.sm{padding:5px 10px;font-size:13px}
 .clip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 td .clip{max-width:260px}
 .pact{white-space:nowrap;text-align:right}
-.plink{display:inline-flex;gap:4px;align-items:center}
-.pago{margin-top:4px;font-size:12.5px;font-weight:600;color:var(--good)}
+.pagotx{margin-top:4px;font-size:12.5px;font-weight:600;color:var(--good)}
 .pfi{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.4fr) 90px 90px 130px;gap:8px 10px;align-items:end;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
 .pfi .wide{grid-column:1/4}
 .pfi-x{grid-column:4/6;display:flex;justify-content:flex-end;align-items:center;gap:10px}
@@ -465,6 +464,13 @@ button.btn.menubtn{display:none}
 .chan .det,.chart .ax,.trend .faixa{font-family:var(--body)}
 td .pcell{min-width:230px}
 .pact > .row{flex-wrap:wrap!important;max-width:260px;margin-left:auto}
+.pact > .row.atl{flex-wrap:nowrap!important;max-width:none;gap:6px;justify-content:flex-end}
+.etl{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+tr.pago td{background:var(--good-soft)}
+tr.pago:hover td{background:color-mix(in srgb,var(--good-soft) 80%,var(--good) 8%)}
+.card.atalhos{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;margin-bottom:12px;padding:14px 16px}
+.card.atalhos > div:first-child{display:flex;flex-direction:column;gap:2px}
+@media (max-width:900px){.pact > .row.atl{flex-wrap:wrap!important;justify-content:flex-start}}
 @media (max-width:900px){
   .shell{grid-template-columns:minmax(0,1fr)}
   button.btn.menubtn{display:inline-flex;padding:8px 10px}

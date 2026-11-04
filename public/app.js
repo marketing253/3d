@@ -581,6 +581,20 @@ function prazoPill(p){
   const t=d<0?`atrasado ${-d}d`:d===0?"hoje":d===1?"amanhã":`em ${d} dias`;
   return `<span class="num">${ddmm(p.prazo)}</span> <span class="pill ${cls}">${t}</span>`;
 }
+// Atalhos que aparecem na linha de cada pedido; a lista escolhida fica na configuração (vale em todos os aparelhos).
+const ATALHOS=[["link","🔗 Link do cliente"],["ver","↗ Ver como o cliente"],["msg","WhatsApp"],["arte","Arte"],["prop","Proposta"],["etiq","Etiqueta"],["edit","Editar"]];
+const ATALHO_PADRAO=["link","ver","msg","arte"];
+let atalhosAberto=false;
+const atalhosPed=()=>Array.isArray(cfg.atalhosPedido)?cfg.atalhosPedido.filter(k=>ATALHOS.some(a=>a[0]===k)):ATALHO_PADRAO;
+function atalhoBtn(k,p,e){
+  const fim=["cancelado","recusado"].includes(e);
+  if(fim&&["link","ver","arte","prop"].includes(k)) return "";
+  if(k==="edit"&&p.status==="entregue") return "";
+  if(k==="ver") return p.token?`<a class="btn sm" href="/pedido/${esc(p.token)}" target="_blank" rel="noopener" title="Ver como o cliente vê">↗ Ver</a>`:`<button class="btn sm" data-pa="ver" title="Ver como o cliente vê">↗ Ver</button>`;
+  if(k==="etiq") return `<a class="btn sm" href="/imprimir/pedido/${encodeURIComponent(p.id)}" target="_blank" rel="noopener">Etiqueta</a>`;
+  const nome={link:"🔗 Link",msg:"WhatsApp",arte:"Arte",prop:"Proposta",edit:"Editar"}[k];
+  return `<button class="btn sm${["arte","prop","edit"].includes(k)?" edit-only":""}" data-pa="${k}"${k==="link"?' title="Copiar o link do pedido para mandar ao cliente"':""}>${nome}</button>`;
+}
 function renderPedidos(){
   const cont={ativos:0,todos:pedidos.length,fim:0};
   for(const p of pedidos){const e=etapaPed(p); cont[e]=(cont[e]||0)+1; if(["cancelado","recusado"].includes(e)) cont.fim++; else if(e!=="entregue") cont.ativos++}
@@ -589,28 +603,41 @@ function renderPedidos(){
   const lst=filtraPed();
   if(!pedCarregado){ $("#pedLista").innerHTML=`<div class="card empty"><h2>Carregando pedidos…</h2></div>`; return }
   if(!lst.length){ $("#pedLista").innerHTML=`<div class="card empty"><h2>${pedidos.length?"Nenhum pedido neste filtro":"Nenhum pedido ainda"}</h2><p>Crie um orçamento com os produtos, gere a mensagem para o WhatsApp e acompanhe até a entrega. Quando o pedido é entregue, a venda entra sozinha no Financeiro.</p><button class="btn primary edit-only" data-pa="novo">+ Novo pedido</button></div>`; return }
-  $("#pedLista").innerHTML=`<div class="tablewrap"><table class="ajusta"><thead><tr><th>Nº</th><th>Cliente e itens</th><th class="n">Total</th><th>Etapa e próximo passo</th><th></th></tr></thead><tbody>
+  const at=atalhosPed();
+  $("#pedLista").innerHTML=`${atalhosAberto?`<div class="card atalhos"><div><b>Atalhos na linha do pedido</b><span class="pcat">Marque o que você mais usa. O resto continua no menu ⋯.</span></div>
+    <div class="row" style="gap:8px">${ATALHOS.map(([k,n])=>`<label class="chk"><input type="checkbox" data-at="${k}"${at.includes(k)?" checked":""}${podeEditar()?"":" disabled"}> ${n}</label>`).join("")}</div>
+    <button class="btn sm" data-pa="atalhosOk">Pronto</button></div>`:""}<div class="tablewrap"><table class="ajusta"><thead><tr><th>Nº</th><th>Cliente e itens</th><th class="n">Total</th><th>Etapa e próximo passo</th><th></th></tr></thead><tbody>
   ${lst.map(p=>{const t=totPed(p), e=etapaPed(p), et=ETAPA[e]||["",""], px=proximoPasso(p), a=(p.artes||[]).at(-1);
     const det=e==="pagamento"?(p.pagInformado?"cliente avisou que pagou":`falta ${brl(Math.max(0,entradaPed(p)-num(p.sinal)))}`)
       :e==="arte"?(!a?"enviar a arte":a.status==="ajuste"?"cliente pediu ajuste":`${VV(a.v)} com o cliente`)
       :e==="producao"?(p.status==="imprimindo"?"imprimindo":"na fila"):e==="pronto"&&t.receber>0?`falta ${brl(t.receber)}`:e==="recusado"&&p.resposta?.motivo?`“${p.resposta.motivo}”`:"";
-    return `<tr data-pid="${esc(p.id)}"><td class="num">#${p.numero}</td>
+    const pago=num(p.sinal)>0&&!["pagamento","cancelado","recusado"].includes(e);
+    return `<tr data-pid="${esc(p.id)}"${pago?' class="pago"':""}><td class="num">#${p.numero}</td>
       <td style="max-width:320px"><div class="pname">${esc(p.cliente)}${p.origem==="catalogo"?' <span class="pill acc">catálogo</span>':""}</div><div class="pcat clip">${esc(resumoItens(p))}${p.prazo&&!["entregue","recusado","cancelado"].includes(e)?` · até ${ddmm(p.prazo)}`:""}</div></td>
       <td class="n">${brl(t.total)}</td>
-      <td><span class="pill ${et[1]}">${et[0]}</span>${num(p.sinal)>0&&!["cancelado","recusado"].includes(e)?`<div class="pago">✓ ${t.receber<=0.004?"Pagamento confirmado":`Entrada de ${brl(num(p.sinal))} confirmada`}${p.mpPagos?.length?" · Mercado Pago":""}</div>`:""}${det?`<div class="pcat">${esc(det)}</div>`:""}${px?`<div style="margin-top:6px"><button class="btn sm ${px[2]?"primary":""} edit-only" data-pa="passo">${px[0]}</button></div>`:""}</td>
-      <td class="pact"><div class="row" style="gap:4px;justify-content:flex-end;flex-wrap:nowrap">
-        ${["cancelado","recusado"].includes(e)?"":`<span class="plink"><button class="btn sm" data-pa="link" title="Copiar o link do pedido para mandar ao cliente">🔗 Link do cliente</button>${p.token?`<a class="btn sm" href="/pedido/${esc(p.token)}" target="_blank" rel="noopener" title="Ver como o cliente vê" aria-label="Ver como o cliente vê">↗</a>`:`<button class="btn sm" data-pa="ver" title="Ver como o cliente vê" aria-label="Ver como o cliente vê">↗</button>`}</span>`}
+      <td><div class="etl"><span class="pill ${et[1]}">${et[0]}</span>${det?`<span class="pcat">${esc(det)}</span>`:""}</div>${num(p.sinal)>0&&!["cancelado","recusado"].includes(e)?`<div class="pagotx">✓ ${t.receber<=0.004?"Pagamento confirmado":`Entrada de ${brl(num(p.sinal))} confirmada`}${p.mpPagos?.length?" · Mercado Pago":""}</div>`:""}</td>
+      <td class="pact"><div class="row atl">
+        ${px?`<button class="btn sm ${px[2]?"primary":""} edit-only" data-pa="passo">${px[0]}</button>`:""}
+        ${at.map(k=>atalhoBtn(k,p,e)).join("")}
         <details class="mais"><summary class="btn sm ghost" aria-label="Mais opções">⋯</summary><div class="menu">
+          ${["cancelado","recusado"].includes(e)?"":'<button data-pa="link">Copiar link do cliente</button>'}
           <button data-pa="msg">Mensagem no WhatsApp</button>
           ${p.status!=="entregue"?'<button class="edit-only" data-pa="edit">Editar pedido</button>':""}
           <button class="edit-only" data-pa="arte">Arte</button>
           <button class="edit-only" data-pa="prop">Proposta em PDF</button>
+          <button data-pa="etiq">Etiqueta 10×15</button>
+          <button data-pa="atalhos">Personalizar atalhos…</button>
           <button class="edit-only" data-pa="del">Excluir pedido</button>
           <label class="edit-only">Mudar status <select data-pa="st">${Object.entries(ST).map(([k,n])=>`<option value="${k}"${k===p.status?" selected":""}>${n}</option>`).join("")}</select></label>
         </div></details>
       </div></td></tr>`}).join("")}
   </tbody></table></div>`;
 }
+$("#pedLista").addEventListener("change",e=>{
+  const c=e.target.closest("[data-at]"); if(!c) return;
+  const marcados=[...$("#pedLista").querySelectorAll("[data-at]:checked")].map(x=>x.dataset.at);
+  cfg.atalhosPedido=ATALHOS.map(a=>a[0]).filter(k=>marcados.includes(k)); saveCfg(); renderPedidos();
+});
 $("#pedChips").addEventListener("click",e=>{const b=e.target.closest("[data-pf]");if(!b)return;pedFiltro=b.dataset.pf;renderPedidos()});
 $("#pedBusca").addEventListener("input",e=>{pedBusca=e.target.value;renderPedidos()});
 $("#btnNovoPed").addEventListener("click",()=>abrePedido(null));
@@ -644,6 +671,8 @@ $("#pedLista").addEventListener("click",async e=>{
   const b=e.target.closest("[data-pa]"); if(!b||b.tagName==="SELECT") return;
   if(b.tagName==="BUTTON") b.closest("details.mais")?.removeAttribute("open");
   if(b.dataset.pa==="novo") return abrePedido(null);
+  if(b.dataset.pa==="atalhos"){ atalhosAberto=true; renderPedidos(); $("#pedLista .atalhos")?.scrollIntoView({behavior:"smooth",block:"nearest"}); return }
+  if(b.dataset.pa==="atalhosOk"){ atalhosAberto=false; renderPedidos(); return }
   const p=pedidos.find(x=>x.id===b.closest("[data-pid]")?.dataset.pid); if(!p) return;
   const a=b.dataset.pa;
   if(a==="next") mudaStatus(p,ST_NEXT[p.status][0]);
@@ -654,6 +683,7 @@ $("#pedLista").addEventListener("click",async e=>{
   if(a==="delno"){ renderPedidos(); return }
   if(a==="delok"){ try{ await api("DELETE","/api/pedidos/"+encodeURIComponent(p.id)); pedidos=pedidos.filter(x=>x.id!==p.id); renderPedidos(); renderFila(); toast(`Pedido #${p.numero} excluído`) }catch(err){ toast(err.message) } return }
   if(a==="link") linkDe(p).then(async l=>{ if(!l) return toast("Não deu para gerar o link."); try{await navigator.clipboard.writeText(l);toast("Link do cliente copiado")}catch(e){toast(l)} });
+  if(a==="etiq") return window.open("/imprimir/pedido/"+encodeURIComponent(p.id),"_blank","noopener");
   if(a==="ver"){ const w=window.open("","_blank"); linkDe(p).then(l=>{ if(l&&w){ w.location=l; renderPedidos() } else { w?.close(); toast("Não deu para gerar o link.") } }); return } // abre a aba antes do await para o navegador não bloquear
   if(a==="passo") executaPasso(p,b);
   if(a==="prop") abreProposta(p);
