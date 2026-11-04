@@ -57,6 +57,11 @@ body{margin:0;min-height:100vh;font:15px/1.5 Inter,system-ui,-apple-system,"Sego
 .valor{font-size:30px;font-weight:800;color:color-mix(in srgb,var(--cor) 70%,#0a1a2e);line-height:1.1}
 .pixw{display:flex;flex-direction:column;gap:10px}
 .pixw .btn,.corpo>.btn{flex:none} /* na coluna, o flex-basis de 160px viraria altura */
+.formas{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--claro);border:1px solid var(--linha);border-radius:12px;padding:4px}
+.fm{font:700 14px Inter,sans-serif;border:0;border-radius:9px;padding:10px 8px;background:transparent;color:var(--suave);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:1px}
+.fm small{font-weight:500;font-size:11.5px}
+.fm.on{background:#fff;color:var(--tinta);box-shadow:0 1px 4px rgba(10,20,30,.12)}
+#cardBrick{min-height:60px}
 .opcoes{display:flex;flex-direction:column;gap:8px}
 .opc{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--linha);border-radius:10px;padding:12px;cursor:pointer;background:#fff}
 .opc:has(input:checked){border:2px solid var(--cor);padding:11px;background:color-mix(in srgb,var(--cor) 6%,#fff)}

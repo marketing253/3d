@@ -59,15 +59,18 @@ const app = express();
 app.disable("x-powered-by");
 app.set("trust proxy", 1); // atrás do nginx
 
+// Cartão pelo Mercado Pago: o formulário (Card Payment Brick) vem dos domínios deles, só quando MP_PUBLIC_KEY existe.
+const MP_DOMINIOS = process.env.MP_PUBLIC_KEY ? ["https://*.mercadopago.com", "https://*.mercadolibre.com", "https://*.mercadolivre.com", "https://*.mlstatic.com"] : [];
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:", "blob:"],
-      connectSrc: ["'self'"],
+      scriptSrc: ["'self'", ...MP_DOMINIOS],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", ...MP_DOMINIOS],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", ...MP_DOMINIOS],
+      imgSrc: ["'self'", "data:", "blob:", ...MP_DOMINIOS],
+      connectSrc: ["'self'", ...MP_DOMINIOS],
+      frameSrc: ["'self'", ...MP_DOMINIOS],
       formAction: ["'self'"],
       frameAncestors: ["'none'"],
       upgradeInsecureRequests: COOKIE_SECURE ? [] : null,
@@ -1569,7 +1572,7 @@ function mpAplica(o) {
   p.mpPagos = p.mpPagos || [];
   if (p.mpPagos.includes(id)) return false;
   p.mpPagos.push(id);
-  const pago = n(o.total_paid_amount ?? o.transactions?.payments?.[0]?.paid_amount ?? o.total_amount);
+  const pago = n(o.total_amount ?? o.transactions?.payments?.[0]?.amount); // sem os juros do parcelamento, que são do cliente
   // a cobrança atual parte do sinal de quando foi criada; assim a confirmação manual antes do aviso não conta duas vezes
   const base = p.mp && String(p.mp.id) === id ? n(p.mp.base) : n(p.sinal);
   p.sinal = n(Math.max(n(p.sinal), base + pago));
@@ -1625,6 +1628,47 @@ app.post("/api/mp/webhook", limitePublico, async (req, res) => {
   if (!MP_TOKEN || !MP_ID_RE.test(id) || (tipo && tipo !== "order")) return res.sendStatus(200);
   try { mpAplica(await mpApi("GET", `/v1/orders/${id}`)); res.sendStatus(200); }
   catch (e) { console.error("[mp] webhook", e.message); res.sendStatus(500); }
+});
+// Valor que o cliente pode pagar agora pelo link: a entrada (etapa pagamento) ou o restante (pronto).
+function cobrancaAtual(r) {
+  const p = JSON.parse(r.dados), total = totalPedido(p), et = etapaDe(r.status, p);
+  const receber = n(Math.max(0, total - (p.sinal || 0)));
+  if (receber <= 0) return null;
+  if (et === "pagamento") return { tipo: "entrada", valor: n(Math.max(0, entradaDe(p, total, lojaConfig()) - (p.sinal || 0))) };
+  if (et === "pronto") return { tipo: "restante", valor: receber };
+  return null;
+}
+// Cartão: o formulário do Mercado Pago (Card Payment Brick) na página do cliente gera o token do cartão;
+// aqui vira uma order com até 12 parcelas. Os juros do parcelamento ficam com o cliente (padrão do Mercado Pago),
+// e o sinal do pedido recebe só o valor da cobrança.
+const MP_PUBLIC = process.env.MP_PUBLIC_KEY || "";
+const limiteCartao = rateLimit({ windowMs: 10 * 60 * 1000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false,
+  message: { erro: "Muitas tentativas com cartão. Espere alguns minutos ou pague com Pix." } });
+app.post("/api/publico/pedido/:token/cartao", limiteCartao, async (req, res) => {
+  const r = pedidoPorToken(req.params.token); if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  if (!MP_TOKEN || !MP_PUBLIC) return res.status(400).json({ erro: "Pagamento com cartão indisponível. Use o Pix." });
+  const c = cobrancaAtual(r);
+  if (!c || c.valor <= 0) return res.status(409).json({ erro: "Este pedido não está aguardando pagamento." });
+  const f = req.body || {}, parcelas = Math.round(Number(f.installments) || 1);
+  if (!/^[\w-]{8,200}$/.test(f.token || "") || !/^[a-z_]{2,30}$/.test(f.payment_method_id || "") || parcelas < 1 || parcelas > 12)
+    return res.status(400).json({ erro: "Dados do cartão incompletos. Confira e tente de novo." });
+  const email = txt(f.payer?.email, 120);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ erro: "Informe um e-mail válido." });
+  const doc = f.payer?.identification, v = c.valor.toFixed(2);
+  try {
+    const o = await mpApi("POST", "/v1/orders", {
+      type: "online", processing_mode: "automatic", external_reference: r.id, total_amount: v,
+      description: `Pedido #${r.numero} · ${c.tipo === "entrada" ? "entrada" : "restante"} (cartão)`,
+      payer: { email, ...(doc?.number ? { identification: { type: txt(doc.type, 10), number: String(doc.number).replace(/\D/g, "").slice(0, 20) } } : {}) },
+      transactions: { payments: [{ amount: v, payment_method: { id: f.payment_method_id, type: f.payment_type_id === "debit_card" ? "debit_card" : "credit_card", token: f.token, installments: parcelas } }] },
+    });
+    if (o.status === "processed") { mpAplica(o); return res.json({ ok: true }); }
+    if (MP_FIM.includes(o.status)) return res.status(402).json({ erro: "O cartão não aprovou o pagamento. Confira os dados, tente outro cartão ou pague com Pix." });
+    res.json({ ok: true, analise: true }); // em análise: o webhook avisa quando terminar
+  } catch (e) {
+    console.error("[mp] cartão", e.message);
+    res.status(402).json({ erro: "O cartão não aprovou o pagamento. Confira os dados, tente outro cartão ou pague com Pix." });
+  }
 });
 app.get("/api/mp/status", exigeLogin, (req, res) => res.json({ ligado: !!MP_TOKEN, teste: MP_TOKEN.startsWith("TEST-") }));
 
@@ -1697,6 +1741,7 @@ app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
     entrada, faltaEntrada, resposta: p.resposta ? { acao: p.resposta.acao, em: p.resposta.em } : null,
     etapa: etapaDe(r.status, p), pagInformado: p.pagInformado || null, precisaArte: precisaArte(p),
     arte: p.artes && p.artes.length ? (a => ({ v: a.v, status: a.status, nota: a.nota || "", comentario: a.comentario || "", respondidoEm: a.respondidoEm || null, imagem: `/aprovacao/${r.token}/arte/${a.v}` }))(p.artes.at(-1)) : null,
+    cartao: pixTipo && MP_TOKEN && MP_PUBLIC ? { publicKey: MP_PUBLIC, valor: pixValor, parcelas: 12 } : null,
     pix: pix ? { payload: pix.payload, svg: pix.svg, tipo: pixTipo, valor: pixValor, auto: pixAuto, chave: pixAuto ? "" : txt(L.pixChave, 77), nome: txt(L.pixNome || L.nome, 60) } : null,
   });
 });

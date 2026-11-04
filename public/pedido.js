@@ -23,6 +23,36 @@ const pixHtml=d=>`<div class="pixw">
   ${d.pix.chave?`<div class="chave"><div><span>Ou pague pela chave Pix${d.pix.nome?` · ${esc(d.pix.nome)}`:""}</span><b>${esc(d.pix.chave)}</b></div><button class="btn sm" type="button" data-a="copChave">Copiar</button></div>`:""}
 </div>`;
 
+// Pix ou cartão: com a Public Key do Mercado Pago, o cliente escolhe a forma; o cartão usa o formulário deles (Card Payment Brick).
+const pagHtml=d=>!d.cartao?pixHtml(d):`<div class="formas" role="tablist">
+    <button type="button" class="fm on" role="tab" aria-selected="true" data-a="fPix">Pix</button>
+    <button type="button" class="fm" role="tab" aria-selected="false" data-a="fCartao">Cartão de crédito<small>até ${d.cartao.parcelas}x</small></button>
+  </div>
+  <div data-forma="pix">${pixHtml(d)}</div>
+  <div data-forma="cartao" hidden><div id="cardBrick"></div><p class="exp">Parcele em até ${d.cartao.parcelas}x. Os juros das parcelas aparecem antes de você confirmar.</p></div>`;
+function sdkMP(){
+  return sdkMP.p||=new Promise((ok,erro)=>{const s=document.createElement("script");s.src="https://sdk.mercadopago.com/js/v2";s.onload=ok;s.onerror=()=>{sdkMP.p=null;erro(new Error("Não deu para abrir o pagamento com cartão. Tente de novo ou use o Pix."))};document.head.appendChild(s)});
+}
+async function montaCartao(d){
+  const el=document.getElementById("cardBrick"); if(!el||el.childElementCount) return;
+  el.innerHTML=`<p class="exp">Carregando o formulário do cartão…</p>`;
+  await sdkMP(); el.innerHTML="";
+  const mp=new MercadoPago(d.cartao.publicKey,{locale:"pt-BR"});
+  try{await montaCartao.brick?.unmount()}catch(e){}
+  montaCartao.brick=await mp.bricks().create("cardPayment","cardBrick",{
+    initialization:{amount:d.cartao.valor},
+    customization:{paymentMethods:{maxInstallments:d.cartao.parcelas,types:{excluded:["debit_card"]}}},
+    callbacks:{
+      onReady:()=>{},
+      onError:e=>console.error("cartão",e),
+      onSubmit:dados=>envia(`/api/publico/pedido/${encodeURIComponent(token)}/cartao`,dados).then(async j=>{
+        toast(j.analise?"Pagamento em análise. Esta página avança quando for aprovado.":"Pagamento aprovado!");
+        if(!j.analise){ await carrega(); document.querySelector(".passo .agora")?.scrollIntoView({behavior:"smooth",block:"start"}) }
+      }).catch(err=>{ toast(err.message); throw err }),
+    },
+  });
+}
+
 async function carrega(){
   let d;
   try{const r=await fetch("/api/publico/pedido/"+encodeURIComponent(token));if(!r.ok)throw new Error(r.status);d=await r.json()}
@@ -62,8 +92,8 @@ async function carrega(){
     </div>`;
   corpo.pagamento=d.pix?.auto
     ?`<div class="valor">${brl(d.pix.valor)}</div>
-      <p class="exp">Pague por Pix para começarmos. No app do banco, escolha <b>Pix copia e cola</b>: o valor já vem preenchido. <b>Assim que o Pix cair, esta página avança sozinha.</b></p>
-      ${pixHtml(d)}`
+      <p class="exp">${d.cartao?"Pague por Pix ou cartão de crédito para começarmos.":"Pague por Pix para começarmos. No app do banco, escolha <b>Pix copia e cola</b>: o valor já vem preenchido."} <b>Assim que o pagamento cair, esta página avança sozinha.</b></p>
+      ${pagHtml(d)}`
     :d.pagInformado
     ?`<div class="aviso"><b>Recebemos o seu aviso de pagamento</b><span>Assim que confirmarmos o Pix, a arte aparece aqui para você aprovar.</span></div>
       ${wa(`Olá! Paguei a entrada do pedido #${d.numero}. Segue o comprovante:`)?`<a class="btn" href="${esc(wa(`Olá! Paguei a entrada do pedido #${d.numero}. Segue o comprovante:`))}" target="_blank" rel="noopener">Enviar o comprovante no WhatsApp</a>`:""}`
@@ -84,7 +114,7 @@ async function carrega(){
       </div>`;
   corpo.producao=`<div class="aviso"><b>Seu pedido está em produção</b><span>${d.prazo?`Previsão: pronto até <b>${dataBR(d.prazo)}</b>. `:""}Avisamos assim que ficar pronto.</span></div>`;
   corpo.pronto=d.pix
-    ?`<p class="exp">Seu pedido está pronto! Falta pagar o restante${d.pix.auto?" (a confirmação é automática)":""}:</p><div class="valor">${brl(d.pix.valor)}</div>${pixHtml(d)}
+    ?`<p class="exp">Seu pedido está pronto! Falta pagar o restante${d.pix.auto?" (a confirmação é automática)":""}:</p><div class="valor">${brl(d.pix.valor)}</div>${pagHtml(d)}
       ${wa(`Olá! Paguei o restante do pedido #${d.numero}. Como combinamos a retirada ou entrega?`)?`<a class="btn" href="${esc(wa(`Olá! Paguei o restante do pedido #${d.numero}. Como combinamos a retirada ou entrega?`))}" target="_blank" rel="noopener">Combinar a entrega no WhatsApp</a>`:""}`
     :`<div class="aviso"><b>Seu pedido está pronto!</b><span>Combine a retirada ou a entrega com a loja.</span></div>
       ${wa(`Olá! Sobre a entrega do pedido #${d.numero}:`)?`<a class="btn pri" href="${esc(wa(`Olá! Sobre a entrega do pedido #${d.numero}:`))}" target="_blank" rel="noopener">Combinar a entrega no WhatsApp</a>`:""}`;
@@ -113,6 +143,13 @@ async function carrega(){
     const grupo=x.closest("#resp,#respArte");
     const mostra=et2=>grupo.querySelectorAll("[data-etapa]").forEach(el=>el.hidden=el.dataset.etapa!==et2);
     if(a==="zoom"){ const z=document.createElement("div"); z.className="zoom"; z.innerHTML=`<img src="${esc(x.dataset.src)}" alt="">`; z.addEventListener("click",()=>z.remove()); document.body.appendChild(z); return }
+    if(a==="fPix"||a==="fCartao"){
+      const c=a==="fCartao";
+      $("#ped").querySelectorAll(".fm").forEach(b=>{const on=(b.dataset.a==="fCartao")===c;b.classList.toggle("on",on);b.setAttribute("aria-selected",on)});
+      $("#ped").querySelector("[data-forma=pix]").hidden=c; $("#ped").querySelector("[data-forma=cartao]").hidden=!c;
+      if(c) montaCartao(d).catch(err=>{ toast(err.message); const el=document.getElementById("cardBrick"); if(el) el.innerHTML="" });
+      return;
+    }
     if(a==="copPix") return copia(d.pix.payload,"Código Pix copiado");
     if(a==="copChave") return copia(d.pix.chave,"Chave Pix copiada");
     if(["aprovar","recusar","arte-ok","ajuste"].includes(a)){ mostra(a); const t=grupo.querySelector("textarea:not([hidden])"); if(a==="recusar"||a==="ajuste") setTimeout(()=>grupo.querySelector(`[data-etapa="${a}"] textarea`)?.focus(),0); return }
