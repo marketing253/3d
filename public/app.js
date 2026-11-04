@@ -553,7 +553,7 @@ function proximoPasso(p){
 }
 /* entrada pedida ao cliente: valor do pedido ou % padrão da loja */
 const entradaPct=()=>cfg.loja.entradaPct===""||cfg.loja.entradaPct==null?50:Math.max(0,Math.min(100,num(cfg.loja.entradaPct)));
-const entradaPed=p=>{const t=totPed(p).total; return p.entrada!=null&&p.entrada!==""?Math.min(num(p.entrada),t):+(t*entradaPct()/100).toFixed(2)};
+const entradaPed=p=>{const t=totPed(p).total; if(p.pagarTudo) return t; return p.entrada!=null&&p.entrada!==""?Math.min(num(p.entrada),t):+(t*entradaPct()/100).toFixed(2)};
 const resumoItens=p=>(p.itens||[]).map(i=>`${num(i.quantidade).toLocaleString("pt-BR")}× ${i.descricao}`).join(", ");
 
 /* ---------- pedidos ---------- */

@@ -37,7 +37,7 @@ async function carrega(){
   const temArte=!!d.precisaArte;
   const passos=[
     ["orcamento","Orçamento",d.resposta?.acao==="aprovado"?`Aprovado em ${quando(d.resposta.em)}`:"Aprovado"],
-    ["pagamento",`Pagamento de ${d.entrada>0&&d.total>0?Math.round(d.entrada/d.total*100)+"%":"entrada"}`,`Entrada de ${brl(d.entrada)} recebida`],
+    ["pagamento",et==="orcamento"&&restante>0?"Pagamento":`Pagamento de ${d.entrada>0&&d.total>0?Math.round(d.entrada/d.total*100)+"%":"entrada"}`,`Entrada de ${brl(d.entrada)} recebida`],
     ...(temArte?[["arte","Aprovação da arte",d.arte?`Arte ${V(d.arte.v)} aprovada`:"Arte aprovada"]]:[]),
     ["producao","Produção","Produzido"],
     ["pronto","Pronto e entrega","Entregue"],
@@ -48,7 +48,13 @@ async function carrega(){
   corpo.orcamento=`
     <ul class="lista">${d.itens.map(i=>`<li>${i.foto&&!i.personalizacao?`<button type="button" class="fotobig" data-a="zoom" data-src="${esc(i.foto)}" aria-label="Ver a foto de ${esc(i.descricao)} em tela cheia"><img src="${esc(i.foto)}" alt="${esc(i.descricao)}" loading="lazy"><span>Toque para ampliar</span></button>`:""}<span class="txt"><b>${esc(i.descricao)}</b>${i.personalizacao?`<span class="tag">${esc(i.personalizacao)}</span>`:""}<small>${Number(i.quantidade).toLocaleString("pt-BR")} × ${brl(i.preco)}</small></span><b>${brl(i.quantidade*i.preco)}</b></li>`).join("")}</ul>
     <div class="tot"><span>Total</span><b>${brl(d.total)}</b></div>
-    <p class="exp">${d.entrada>0?`Ao aprovar, você paga <b>${brl(d.entrada)}</b> por Pix para começarmos${restante>0?` e o restante, <b>${brl(restante)}</b>, quando ficar pronto`:""}.`:"Ao aprovar, seu pedido segue para a produção."}${d.prazo?` Prazo: pronto até <b>${dataBR(d.prazo)}</b>.`:""}</p>
+    ${d.entrada>0&&restante>0
+    ?`<p class="exp">Como você prefere pagar? O pagamento é por Pix, logo depois de aprovar.${d.prazo?` Prazo: pronto até <b>${dataBR(d.prazo)}</b>.`:""}</p>
+      <div class="opcoes" role="radiogroup" aria-label="Forma de pagamento">
+        <label class="opc"><input type="radio" name="pagar" value="entrada" checked><span><b>Entrada de ${Math.round(d.entrada/d.total*100)}%: ${brl(d.entrada)}</b><small>E o restante, ${brl(restante)}, quando ficar pronto</small></span></label>
+        <label class="opc"><input type="radio" name="pagar" value="total"><span><b>Pagar 100% agora: ${brl(d.total)}</b><small>Quita o pedido e não precisa pagar mais nada na entrega</small></span></label>
+      </div>`
+    :`<p class="exp">${d.entrada>0?`Ao aprovar, você paga <b>${brl(d.entrada)}</b> por Pix para começarmos.`:"Ao aprovar, seu pedido segue para a produção."}${d.prazo?` Prazo: pronto até <b>${dataBR(d.prazo)}</b>.`:""}</p>`}
     <div id="resp">
       <div class="acoes" data-etapa="1"><button class="btn pri" type="button" data-a="aprovar">Aprovar orçamento</button><button class="btn" type="button" data-a="recusar">Recusar</button></div>
       <div data-etapa="aprovar" hidden><p class="exp" style="color:var(--tinta)">Confirma a aprovação de <b>${brl(d.total)}</b>?</p><div class="acoes"><button class="btn pri" type="button" data-a="aprovar-ok">Sim, aprovar</button><button class="btn" type="button" data-a="voltar">Voltar</button></div></div>
@@ -113,7 +119,7 @@ async function carrega(){
     if(a==="voltar") return mostra("1");
     x.disabled=true;
     try{
-      if(a==="aprovar-ok"){ await envia(`/api/publico/pedido/${encodeURIComponent(token)}/resposta`,{acao:"aprovar"}); toast("Orçamento aprovado!") }
+      if(a==="aprovar-ok"){ await envia(`/api/publico/pedido/${encodeURIComponent(token)}/resposta`,{acao:"aprovar",pagar:document.querySelector('input[name="pagar"]:checked')?.value||"entrada"}); toast("Orçamento aprovado!") }
       if(a==="recusar-ok"){ await envia(`/api/publico/pedido/${encodeURIComponent(token)}/resposta`,{acao:"recusar",motivo:$("#motivo").value}); toast("Resposta enviada") }
       if(a==="paguei"){ await envia(`/api/publico/pedido/${encodeURIComponent(token)}/paguei`); toast("Aviso enviado. Obrigado!") }
       if(a==="arte-sim"){ await envia(`/api/publico/arte/${encodeURIComponent(token)}/resposta`,{acao:"aprovar"}); toast("Arte aprovada!") }

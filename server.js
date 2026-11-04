@@ -724,6 +724,8 @@ app.put("/api/pedidos/:id", exigeLogin, exigeEdicao, (req, res) => {
   if (ant.resposta) v.resposta = ant.resposta; // aprovação/recusa feita pelo cliente no link
   if (ant.artes) v.artes = ant.artes; // versões da arte enviadas para aprovação
   if (ant.pagInformado) v.pagInformado = ant.pagInformado; // cliente avisou que pagou a entrada
+  if (ant.pagarTudo) v.pagarTudo = true; // cliente escolheu pagar 100% ao aprovar
+  if (ant.mp) v.mp = ant.mp; if (ant.mpPagos) v.mpPagos = ant.mpPagos; // cobrança e pagamentos do Mercado Pago
   if (ant.fluxo) v.fluxo = ant.fluxo;
   db.transaction(() => {
     db.prepare("UPDATE pedidos SET dados = ?, prazo = ?, atualizado_em = datetime('now') WHERE id = ?").run(JSON.stringify(v), v.prazo, req.params.id);
@@ -1625,6 +1627,7 @@ app.get("/api/mp/status", exigeLogin, (req, res) => res.json({ ligado: !!MP_TOKE
 
 // Entrada pedida ao aprovar: valor do pedido ou o % padrão da loja (Sua loja → Entrada).
 function entradaDe(p, total, L) {
+  if (p.pagarTudo) return n(total); // o cliente escolheu pagar 100% ao aprovar
   if (p.entrada != null && Number.isFinite(Number(p.entrada))) return n(Math.min(Number(p.entrada), total));
   const pct = L.entradaPct === "" || L.entradaPct == null ? 50 : Math.max(0, Math.min(100, Number(L.entradaPct) || 0));
   return n(total * pct / 100);
@@ -1639,6 +1642,7 @@ app.post("/api/publico/pedido/:token/resposta", limiteResposta, (req, res) => {
   if (!["aprovar", "recusar"].includes(acao)) return res.status(400).json({ erro: "Resposta inválida." });
   const p = JSON.parse(r.dados);
   p.resposta = { acao: acao === "aprovar" ? "aprovado" : "recusado", em: new Date().toISOString(), visto: false, ...(acao === "recusar" && txt(req.body.motivo, 300) ? { motivo: txt(req.body.motivo, 300) } : {}) };
+  if (acao === "aprovar" && req.body.pagar === "total") p.pagarTudo = true; else delete p.pagarTudo;
   db.prepare("UPDATE pedidos SET dados = ?, status = ?, atualizado_em = datetime('now') WHERE id = ?")
     .run(JSON.stringify(p), acao === "aprovar" ? "aprovado" : "cancelado", r.id);
   res.json({ ok: true });

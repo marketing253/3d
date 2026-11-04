@@ -56,7 +56,13 @@ body{margin:0;min-height:100vh;font:15px/1.5 Inter,system-ui,-apple-system,"Sego
 .exp{margin:0;color:var(--suave);font-size:14px}
 .valor{font-size:30px;font-weight:800;color:color-mix(in srgb,var(--cor) 70%,#0a1a2e);line-height:1.1}
 .pixw{display:flex;flex-direction:column;gap:10px}
-.pixw .btn{flex:none} /* na coluna, o flex-basis de 160px viraria altura */
+.pixw .btn,.corpo>.btn{flex:none} /* na coluna, o flex-basis de 160px viraria altura */
+.opcoes{display:flex;flex-direction:column;gap:8px}
+.opc{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--linha);border-radius:10px;padding:12px;cursor:pointer;background:#fff}
+.opc:has(input:checked){border:2px solid var(--cor);padding:11px;background:color-mix(in srgb,var(--cor) 6%,#fff)}
+.opc input{accent-color:var(--cor);width:18px;height:18px;margin:1px 0 0;flex:none}
+.opc b{display:block;font-size:15px}
+.opc small{display:block;color:var(--suave);font-size:13px}
 .qr{align-self:center;background:#fff;padding:10px;border:1px solid var(--linha);border-radius:12px}
 .qr svg{width:200px;height:200px;display:block}
 .cod{font:12px ui-monospace,Consolas,monospace;word-break:break-all;background:var(--claro);border:1px solid var(--linha);border-radius:8px;padding:10px;max-height:80px;overflow:auto;user-select:all}
