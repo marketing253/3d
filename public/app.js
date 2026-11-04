@@ -615,7 +615,7 @@ function renderPedidos(){
     return `<tr data-pid="${esc(p.id)}"${pago?' class="pago"':""}><td class="num">#${p.numero}</td>
       <td style="max-width:320px"><div class="pname">${esc(p.cliente)}${p.origem==="catalogo"?' <span class="pill acc">catálogo</span>':""}</div><div class="pcat clip">${esc(resumoItens(p))}${p.prazo&&!["entregue","recusado","cancelado"].includes(e)?` · até ${ddmm(p.prazo)}`:""}</div></td>
       <td class="n">${brl(t.total)}</td>
-      <td><div class="etl"><span class="pill ${et[1]}">${et[0]}</span>${det?`<span class="pcat">${esc(det)}</span>`:""}</div>${num(p.sinal)>0&&!["cancelado","recusado"].includes(e)?`<div class="pagotx">✓ ${t.receber<=0.004?"Pagamento confirmado":`Entrada de ${brl(num(p.sinal))} confirmada`}${p.mpPagos?.length?" · Mercado Pago":""}</div>`:""}</td>
+      <td><div class="etl"><span class="pill ${et[1]}">${et[0]}</span>${det?`<span class="pcat">${esc(det)}</span>`:""}</div>${num(p.sinal)>0&&!["cancelado","recusado"].includes(e)?`<div class="pagotx">✓ ${t.receber<=0.004?"Pagamento confirmado":`Entrada de ${brl(num(p.sinal))} confirmada`}${formaPag(p)?` · ${formaPag(p)}`:""}</div>`:""}</td>
       <td class="pact"><div class="row atl">
         ${px?`<button class="btn sm ${px[2]?"primary":""} edit-only" data-pa="passo">${px[0]}</button>`:""}
         ${at.map(k=>atalhoBtn(k,p,e)).join("")}
@@ -707,6 +707,42 @@ function itemDeProduto(p,canalNome,qtd){
   return {produto_id:p.id,descricao:p.nome,quantidade:qtd||1,preco_unit:+preco.toFixed(2),custo_unit:+r.custo.toFixed(2),horas_unit:+r.horasUnid.toFixed(4),
     personalizacao:"",doEstoque:false,fil:(p.filamentos||[]).filter(l=>num(l.gramas)>0).map(l=>({filId:l.filId,g:+(num(l.gramas)/uni).toFixed(2)}))};
 }
+// Pagamentos do Mercado Pago no pedido: forma do último e taxas somadas (estornados ficam de fora).
+const pagosMP=p=>(p.mpPagamentos||[]).filter(x=>!x.estornado);
+const formaPag=p=>pagosMP(p).at(-1)?.forma||((p.mpPagos||[]).length?"Mercado Pago":"");
+const taxaMP=p=>pagosMP(p).reduce((s,x)=>s+num(x.taxa),0);
+
+// Avisos de pagamento: o painel pergunta a cada 30 s e mostra um cartão no canto (e notificação do navegador, se liberada).
+let avisosVistos=new Set();
+async function checaAvisos(){
+  if(!me) return;
+  let lista; try{ lista=await api("GET","/api/avisos") }catch(e){ return }
+  const novos=lista.filter(a=>!avisosVistos.has(a.pedido+":"+a.i+":"+a.em));
+  if(!novos.length){ renderAvisos(lista); return }
+  for(const a of novos){ avisosVistos.add(a.pedido+":"+a.i+":"+a.em);
+    try{ if("Notification" in window&&Notification.permission==="granted") new Notification(tituloAviso(a),{body:`${a.cliente} · ${brl(a.valor)} · ${a.forma}`}) }catch(e){} }
+  renderAvisos(lista); carregaPedidos();
+}
+const tituloAviso=a=>a.tipo==="pago"?`Pedido #${a.numero} pago`:a.tipo==="contestado"?`Pedido #${a.numero}: pagamento contestado`:`Pedido #${a.numero}: pagamento estornado`;
+function renderAvisos(lista){
+  let box=$("#avisosPag"); if(!box){ box=document.createElement("div"); box.id="avisosPag"; document.body.appendChild(box) }
+  const pode="Notification" in window&&Notification.permission==="default";
+  box.innerHTML=lista.slice(0,4).map(a=>`<div class="avp ${a.tipo==="pago"?"ok":"bad"}" data-ap="${esc(a.pedido)}">
+      <span class="avp-ic" aria-hidden="true">${a.tipo==="pago"?"✓":"↩"}</span>
+      <div><b>${esc(tituloAviso(a))}</b><small>${esc(a.cliente)} · ${brl(a.valor)} · ${esc(a.forma||"")}</small>${a.tipo!=="pago"?`<small>O pedido voltou a esperar o pagamento.</small>`:""}</div>
+      <button class="btn sm" data-av="ver">Ver</button><button class="avp-x" data-av="ok" aria-label="Dispensar">✕</button>
+    </div>`).join("")+(lista.length&&pode?`<button class="avp-notif" data-av="notif">Avisar também no navegador</button>`:"");
+}
+document.addEventListener("click",async e=>{
+  const b=e.target.closest("[data-av]"); if(!b) return;
+  if(b.dataset.av==="notif"){ try{ await Notification.requestPermission() }catch(err){} return checaAvisos() }
+  const id=b.closest("[data-ap]")?.dataset.ap; if(!id) return;
+  try{ await api("POST","/api/avisos/visto",{pedido:id}) }catch(err){}
+  document.querySelectorAll("#avisosPag [data-ap]").forEach(el=>{ if(el.dataset.ap===id) el.remove() }); // todos os avisos do pedido foram marcados como vistos
+  if(b.dataset.av==="ver"){ setTab("pedidos"); await carregaPedidos(); const p=pedidos.find(x=>x.id===id); if(p) abreResumo(p) }
+});
+setInterval(checaAvisos,30000); setTimeout(checaAvisos,3000);
+
 // Caixa "Pedido #N": resumo com o que importa (cliente, itens, valores, prazo) e os botões principais.
 function abreResumo(p,criado){
   let dlg=$("#pedResumo");
@@ -745,7 +781,8 @@ function abreResumo(p,criado){
         <div class="${pago>0?"ok":""}"><span>Pago</span><b class="num">${brl(Math.min(pago,t.total))}</b></div>
         <div class="${t.receber>0.004&&!fim?"falta":""}"><span>Falta</span><b class="num">${brl(e==="entregue"?0:t.receber)}</b></div>
       </div>
-      ${pago>0&&!fim?`<div class="pagotx">✓ ${t.receber<=0.004?"Pagamento confirmado":`Entrada de ${brl(pago)} confirmada`}${p.mpPagos?.length?" · Mercado Pago":""}</div>`:""}
+      ${pago>0&&!fim?`<div class="pagotx">✓ ${t.receber<=0.004?"Pagamento confirmado":`Entrada de ${brl(pago)} confirmada`}${formaPag(p)?` · ${formaPag(p)}`:""}</div>`:""}
+      ${taxaMP(p)>0?`<div class="pcat">Taxa do Mercado Pago: ${brl(taxaMP(p))} (já descontada no lucro)</div>`:""}
       ${a&&!fim?`<div class="pcat">Arte ${VV(a.v)}: ${a.status==="aprovada"?"aprovada pelo cliente":a.status==="ajuste"?"cliente pediu ajuste":"com o cliente"}</div>`:""}
       ${p.obs?`<div class="pres-obs">${esc(p.obs)}</div>`:""}
     </div>

@@ -728,7 +728,7 @@ app.put("/api/pedidos/:id", exigeLogin, exigeEdicao, (req, res) => {
   if (ant.artes) v.artes = ant.artes; // versões da arte enviadas para aprovação
   if (ant.pagInformado) v.pagInformado = ant.pagInformado; // cliente avisou que pagou a entrada
   if (ant.pagarTudo) v.pagarTudo = true; // cliente escolheu pagar 100% ao aprovar
-  if (ant.mp) v.mp = ant.mp; if (ant.mpPagos) v.mpPagos = ant.mpPagos; // cobrança e pagamentos do Mercado Pago
+  for (const k of ["mp", "mpPagos", "mpPagamentos", "avisosPag"]) if (ant[k]) v[k] = ant[k]; // cobrança, pagamentos e avisos do Mercado Pago
   if (ant.fluxo) v.fluxo = ant.fluxo;
   db.transaction(() => {
     db.prepare("UPDATE pedidos SET dados = ?, prazo = ?, atualizado_em = datetime('now') WHERE id = ?").run(JSON.stringify(v), v.prazo, req.params.id);
@@ -1563,7 +1563,17 @@ async function mpApi(metodo, caminho, corpo) {
   if (!r.ok) throw new Error(`Mercado Pago ${r.status}: ${j.message || j.errors?.[0]?.message || j.error || "erro"}`);
   return j;
 }
+// Forma de pagamento da order, para mostrar no pedido ("Pix", "Cartão 3x").
+function mpForma(o) {
+  const pm = o?.transactions?.payments?.[0]?.payment_method || {};
+  if (pm.type === "bank_transfer" || pm.id === "pix") return "Pix";
+  if (/card/.test(pm.type || "")) { const x = Math.max(1, Number(pm.installments) || 1); return x > 1 ? `Cartão ${x}x` : "Cartão à vista"; }
+  return "Mercado Pago";
+}
+// Aviso para o painel (pagamento recebido ou estornado); guarda só os últimos 5 por pedido.
+function avisoPag(p, a) { p.avisosPag = [...(p.avisosPag || []), { ...a, em: new Date().toISOString(), visto: false }].slice(-5); }
 // Order paga ("processed") soma no sinal uma vez só (p.mpPagos guarda os ids já lançados).
+// A taxa do Mercado Pago entra depois, em mpTaxa, porque vem de outra consulta.
 function mpAplica(o) {
   if (o?.status !== "processed") return false;
   const r = db.prepare("SELECT * FROM pedidos WHERE id = ?").get(String(o.external_reference || ""));
@@ -1575,12 +1585,53 @@ function mpAplica(o) {
   const pago = n(o.total_amount ?? o.transactions?.payments?.[0]?.amount); // sem os juros do parcelamento, que são do cliente
   // a cobrança atual parte do sinal de quando foi criada; assim a confirmação manual antes do aviso não conta duas vezes
   const base = p.mp && String(p.mp.id) === id ? n(p.mp.base) : n(p.sinal);
+  const antes = n(p.sinal);
   p.sinal = n(Math.max(n(p.sinal), base + pago));
   if (p.mp && String(p.mp.id) === id) p.mp.status = "processed";
+  const forma = mpForma(o);
+  p.mpPagamentos = [...(p.mpPagamentos || []), { id, valor: pago, somado: n(p.sinal - antes), forma, taxa: 0, em: new Date().toISOString() }];
+  avisoPag(p, { tipo: "pago", valor: pago, forma });
   delete p.pagInformado;
+  db.transaction(() => { salvaDados(r.id, p); sincronizaSinal(r.id, null); })();
+  mpTaxa(r.id, id, pago).catch(e => console.error("[mp] taxa", e.message));
+  return true;
+}
+// Taxa descontada pelo Mercado Pago (valor cobrado − valor líquido): entra nas taxas do pedido, para o lucro sair certo.
+// A order não traz a taxa; ela está no pagamento, achado pela referência do pedido e pelo valor.
+async function mpTaxa(pedidoId, orderId, valor) {
+  const j = await mpApi("GET", `/v1/payments/search?external_reference=${encodeURIComponent(pedidoId)}&sort=date_created&criteria=desc&limit=20`);
+  const r = db.prepare("SELECT dados FROM pedidos WHERE id = ?").get(pedidoId); if (!r) return;
+  const p = JSON.parse(r.dados), reg = (p.mpPagamentos || []).find(x => x.id === orderId);
+  if (!reg || reg.pagId) return;
+  const usados = new Set((p.mpPagamentos || []).map(x => x.pagId).filter(Boolean));
+  const pg = (j.results || []).find(x => x.status === "approved" && Math.abs(n(x.transaction_amount) - valor) < 0.005 && !usados.has(String(x.id)));
+  if (!pg) return;
+  const taxa = n(Math.max(0, n(pg.transaction_amount) - n(pg.transaction_details?.net_received_amount ?? pg.transaction_amount)));
+  reg.pagId = String(pg.id); reg.taxa = taxa;
+  p.taxas = n(n(p.taxas) + taxa);
+  salvaDados(pedidoId, p);
+}
+// Estorno ou contestação de uma order já lançada: tira do sinal e das taxas e o pedido volta a pedir pagamento.
+function mpEstorno(o) {
+  if (!["refunded", "charged_back"].includes(o?.status)) return false;
+  const r = db.prepare("SELECT * FROM pedidos WHERE id = ?").get(String(o.external_reference || ""));
+  if (!r) return false;
+  const p = JSON.parse(r.dados), id = String(o.id);
+  const reg = (p.mpPagamentos || []).find(x => x.id === id);
+  if (!(p.mpPagos || []).includes(id) || reg?.estornado) return false;
+  const valor = reg ? n(reg.valor) : n(o.total_amount);
+  if (reg) reg.estornado = o.status;
+  avisoPag(p, { tipo: o.status === "charged_back" ? "contestado" : "estornado", valor, forma: reg?.forma || mpForma(o) });
+  if (r.status === "entregue") { salvaDados(r.id, p); return true; } // venda já fechada: só avisa; o ajuste no Financeiro é manual
+  p.sinal = n(Math.max(0, n(p.sinal) - (reg ? n(reg.somado ?? reg.valor) : valor)));
+  if (reg) p.taxas = n(Math.max(0, n(p.taxas) - n(reg.taxa)));
+  p.mpPagos = p.mpPagos.filter(x => x !== id);
+  if (p.mp && String(p.mp.id) === id) delete p.mp; // a próxima visita ao link gera um Pix novo
   db.transaction(() => { salvaDados(r.id, p); sincronizaSinal(r.id, null); })();
   return true;
 }
+// Aplica o que a order mostra agora: pagamento novo ou estorno.
+function mpEvento(o) { return o?.status === "processed" ? mpAplica(o) : mpEstorno(o); }
 // Order que não vai mais ser paga; as outras (created, action_required, processing) seguem esperando.
 const MP_FIM = ["canceled", "cancelled", "expired", "failed", "refunded", "charged_back"];
 // Consulta a cobrança pendente no máximo a cada 8 s por pedido (a página do cliente pergunta de tempos em tempos).
@@ -1629,7 +1680,7 @@ app.post("/api/mp/webhook", limitePublico, async (req, res) => {
   const id = String(req.body?.data?.id || req.query["data.id"] || req.query.id || "");
   const tipo = req.body?.type || req.query.type || req.query.topic;
   if (!MP_TOKEN || !MP_ID_RE.test(id) || (tipo && tipo !== "order")) return res.sendStatus(200);
-  try { mpAplica(await mpApi("GET", `/v1/orders/${id}`)); res.sendStatus(200); }
+  try { mpEvento(await mpApi("GET", `/v1/orders/${id}`)); res.sendStatus(200); }
   catch (e) { console.error("[mp] webhook", e.message); res.sendStatus(500); }
 });
 // Valor que o cliente pode pagar agora pelo link: a entrada (etapa pagamento) ou o restante (pronto).
@@ -1672,6 +1723,24 @@ app.post("/api/publico/pedido/:token/cartao", limiteCartao, async (req, res) => 
     console.error("[mp] cartão", e.message);
     res.status(402).json({ erro: "O cartão não aprovou o pagamento. Confira os dados, tente outro cartão ou pague com Pix." });
   }
+});
+// Avisos de pagamento para o painel: recebidos, estornados e contestados que ainda não foram vistos.
+app.get("/api/avisos", exigeLogin, (req, res) => {
+  const lista = [];
+  for (const r of db.prepare("SELECT id, numero, dados FROM pedidos WHERE dados LIKE '%\"avisosPag\"%'").all()) {
+    const p = JSON.parse(r.dados);
+    (p.avisosPag || []).forEach((a, i) => { if (!a.visto) lista.push({ pedido: r.id, numero: r.numero, cliente: p.cliente, i, tipo: a.tipo, valor: a.valor, forma: a.forma, em: a.em }); });
+  }
+  res.set("Cache-Control", "no-store");
+  res.json(lista.sort((x, y) => String(y.em).localeCompare(String(x.em))));
+});
+app.post("/api/avisos/visto", exigeLogin, (req, res) => {
+  const r = db.prepare("SELECT dados FROM pedidos WHERE id = ?").get(String(req.body?.pedido || ""));
+  if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  const p = JSON.parse(r.dados);
+  for (const a of p.avisosPag || []) a.visto = true;
+  db.prepare("UPDATE pedidos SET dados = ? WHERE id = ?").run(JSON.stringify(p), req.body.pedido);
+  res.json({ ok: true });
 });
 app.get("/api/mp/status", exigeLogin, (req, res) => res.json({ ligado: !!MP_TOKEN, teste: MP_TOKEN.startsWith("TEST-") }));
 
