@@ -626,3 +626,8 @@ dialog.pform{width:min(640px,calc(100vw - 24px))}
 .hp-txt{flex:1;min-width:0;display:flex;flex-direction:column}
 .hp-txt small{color:var(--muted);font-size:12.5px}
 .navbadge.pago{background:var(--good);color:#fff}
+/* login: logo da 8ON numa faixa escura no topo do cartão (a logo é feita para fundo escuro) */
+.auth .card::before{display:none}
+.auth .card{overflow:hidden}
+.auth-topo{margin:-32px -32px 6px;padding:28px 32px 24px;background:linear-gradient(120deg,#0E1114 55%,#12443a);display:flex;justify-content:center}
+.auth-topo img{height:84px;width:auto;display:block}
