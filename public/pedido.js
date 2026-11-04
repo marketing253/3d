@@ -40,7 +40,7 @@ async function montaCartao(d){
   const mp=new MercadoPago(d.cartao.publicKey,{locale:"pt-BR"});
   try{await montaCartao.brick?.unmount()}catch(e){}
   montaCartao.brick=await mp.bricks().create("cardPayment","cardBrick",{
-    initialization:{amount:d.cartao.valor},
+    initialization:{amount:d.cartao.valor,payer:{email:d.cartao.email}}, // e-mail já preenchido: o campo some do formulário
     customization:{paymentMethods:{maxInstallments:d.cartao.parcelas,types:{excluded:["debit_card"]}}},
     callbacks:{
       onReady:()=>{},

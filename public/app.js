@@ -668,6 +668,10 @@ async function mudaStatus(p,novo){
   }catch(err){ toast(err.message) }
 }
 $("#pedLista").addEventListener("click",async e=>{
+  if(!e.target.closest("[data-pa],a,button,select,details,label,input")){ // clique no pedido abre o resumo
+    const tr=e.target.closest("tr[data-pid]"), p=tr&&pedidos.find(x=>x.id===tr.dataset.pid);
+    if(p) return abreResumo(p);
+  }
   const b=e.target.closest("[data-pa]"); if(!b||b.tagName==="SELECT") return;
   if(b.tagName==="BUTTON") b.closest("details.mais")?.removeAttribute("open");
   if(b.dataset.pa==="novo") return abrePedido(null);
@@ -702,6 +706,56 @@ function itemDeProduto(p,canalNome,qtd){
   return {produto_id:p.id,descricao:p.nome,quantidade:qtd||1,preco_unit:+preco.toFixed(2),custo_unit:+r.custo.toFixed(2),horas_unit:+r.horasUnid.toFixed(4),
     personalizacao:"",doEstoque:false,fil:(p.filamentos||[]).filter(l=>num(l.gramas)>0).map(l=>({filId:l.filId,g:+(num(l.gramas)/uni).toFixed(2)}))};
 }
+// Caixa "Pedido #N": resumo com o que importa (cliente, itens, valores, prazo) e os botões principais.
+function abreResumo(p){
+  let dlg=$("#pedResumo");
+  if(!dlg){
+    dlg=document.createElement("dialog"); dlg.id="pedResumo"; dlg.className="pres"; document.body.appendChild(dlg);
+    dlg.addEventListener("click",async ev=>{
+      if(ev.target===dlg) return dlg.close(); // clique fora da caixa
+      const b=ev.target.closest("[data-ra]"); if(!b) return;
+      const q=pedidos.find(x=>x.id===dlg.dataset.pid); if(!q) return dlg.close();
+      const a=b.dataset.ra;
+      if(a==="fechar") return dlg.close();
+      if(a==="passo"&&proximoPasso(q)?.[1]==="entrada"&&b.dataset.ok!=="1"){ // dinheiro: pede o segundo clique
+        b.dataset.ok="1"; b.classList.add("primary"); b.textContent=`Confirmar ${brl(Math.max(0,entradaPed(q)-num(q.sinal)))} recebidos?`; return }
+      if(a==="link") return linkDe(q).then(async l=>{ if(!l) return toast("Não deu para gerar o link."); try{await navigator.clipboard.writeText(l);toast("Link do cliente copiado")}catch(e){toast(l)} });
+      if(a==="ver"){ const w=window.open("","_blank"); linkDe(q).then(l=>{ if(l&&w) w.location=l; else w?.close() }); return }
+      dlg.close();
+      if(a==="msg") return abreMsg(q);
+      if(a==="edit") return abrePedido(q);
+      if(a==="passo") return executaPasso(q,null);
+    });
+  }
+  const t=totPed(p), e=etapaPed(p), et=ETAPA[e]||["",""], px=proximoPasso(p), pago=num(p.sinal), fim=["cancelado","recusado"].includes(e);
+  const zap=String(p.whatsapp||"").replace(/\D/g,""), a=(p.artes||[]).at(-1);
+  const prazo=p.prazo&&!["entregue","cancelado","recusado"].includes(e)?prazoPill(p):"";
+  dlg.dataset.pid=p.id;
+  dlg.innerHTML=`<div class="pres-cab">
+      <div><small>Pedido</small><b>#${p.numero}</b></div>
+      <div class="pres-cli"><b>${esc(p.cliente)}</b>${zap?`<a href="https://wa.me/${zap.length<=11?"55"+zap:zap}" target="_blank" rel="noopener">WhatsApp ${esc(p.whatsapp)}</a>`:""}</div>
+      <button class="pres-x" data-ra="fechar" aria-label="Fechar">✕</button>
+    </div>
+    <div class="pres-corpo" tabindex="-1" autofocus>
+      <div class="pres-et"><span class="pill ${et[1]}">${et[0]}</span>${prazo?`<span class="pcat">Prazo</span> ${prazo}`:""}</div>
+      <ul class="pres-itens">${(p.itens||[]).map(i=>`<li><span><b>${num(i.quantidade).toLocaleString("pt-BR")}×</b> ${esc(i.descricao)}${i.personalizacao?`<small>${esc(i.personalizacao)}</small>`:""}</span><span class="num">${brl(num(i.quantidade)*num(i.preco_unit))}</span></li>`).join("")}</ul>
+      <div class="pres-val">
+        <div><span>Total</span><b class="num">${brl(t.total)}</b></div>
+        <div class="${pago>0?"ok":""}"><span>Pago</span><b class="num">${brl(Math.min(pago,t.total))}</b></div>
+        <div class="${t.receber>0.004&&!fim?"falta":""}"><span>Falta</span><b class="num">${brl(e==="entregue"?0:t.receber)}</b></div>
+      </div>
+      ${pago>0&&!fim?`<div class="pagotx">✓ ${t.receber<=0.004?"Pagamento confirmado":`Entrada de ${brl(pago)} confirmada`}${p.mpPagos?.length?" · Mercado Pago":""}</div>`:""}
+      ${a&&!fim?`<div class="pcat">Arte ${VV(a.v)}: ${a.status==="aprovada"?"aprovada pelo cliente":a.status==="ajuste"?"cliente pediu ajuste":"com o cliente"}</div>`:""}
+      ${p.obs?`<div class="pres-obs">${esc(p.obs)}</div>`:""}
+    </div>
+    <div class="pres-acoes">
+      ${px&&!fim?`<button class="btn ${px[2]?"primary":""} edit-only" data-ra="passo">${px[0]}</button>`:""}
+      ${fim?"":`<button class="btn" data-ra="link">🔗 Link do cliente</button><button class="btn" data-ra="ver">↗ Ver</button>`}
+      <button class="btn" data-ra="msg">WhatsApp</button>
+      ${p.status!=="entregue"?`<button class="btn ghost edit-only" data-ra="edit">Editar</button>`:""}
+    </div>`;
+  if(!dlg.open) dlg.showModal();
+}
 function abrePedido(p){
   const novo=!p;
   pedForm={id:p?.id||null,taxaManual:!!p,d:p?clone(p):{cliente:"",whatsapp:"",canal:cfg.canais[0]?.nome||"",data:hojeISO(),prazo:addDias(hojeISO(),num(cfg.loja.prazoDias)||5),itens:[],desconto:0,freteCliente:0,freteVoce:0,taxas:0,sinal:0,obs:"",status:"orcamento"}};
@@ -721,13 +775,15 @@ function abrePedido(p){
     <div class="fields">
       <label class="f">Desconto<div class="unit pre"><span>R$</span><input id="pf-desc" type="number" min="0" step="0.01" value="${esc(d.desconto)}"></div></label>
       <label class="f">Frete cobrado do cliente<div class="unit pre"><span>R$</span><input id="pf-fc" type="number" min="0" step="0.01" value="${esc(d.freteCliente)}"></div></label>
+      <label class="f">Arte<span class="hint">Liga sozinho quando algum item é personalizado</span><span class="chk"><input type="checkbox" id="pf-arte" ${(d.semArte?false:d.comArte?true:(d.itens||[]).some(i=>!i.doEstoque&&String(i.personalizacao||"").trim()))?"checked":""}> O cliente aprova a arte antes da produção</span></label>
+    </div>
+    <details class="maisdet"><summary>Mais opções · frete pago por você, taxas, entrada, sinal e observação</summary><div class="fields">
       <label class="f">Frete pago por você<div class="unit pre"><span>R$</span><input id="pf-fv" type="number" min="0" step="0.01" value="${esc(d.freteVoce)}"></div></label>
       <label class="f">Taxas do canal<span class="hint">Calculada; pode ajustar</span><div class="unit pre"><span>R$</span><input id="pf-taxas" type="number" min="0" step="0.01" value="${esc(d.taxas)}"></div></label>
-      <label class="f">Arte<span class="hint">Liga sozinho quando algum item é personalizado</span><span class="chk"><input type="checkbox" id="pf-arte" ${(d.semArte?false:d.comArte?true:(d.itens||[]).some(i=>!i.doEstoque&&String(i.personalizacao||"").trim()))?"checked":""}> O cliente aprova a arte antes da produção</span></label>
       <label class="f">Entrada pedida<span class="hint">Cobrada no link depois que o cliente aprova; vazio = ${entradaPct()}% do total</span><div class="unit pre"><span>R$</span><input id="pf-entrada" type="number" min="0" step="0.01" placeholder="${entradaPct()}%" value="${esc(d.entrada??"")}"></div></label>
       <label class="f">Sinal já recebido<span class="hint">Entra no caixa (Financeiro) na data de hoje</span><div class="unit pre"><span>R$</span><input id="pf-sinal" type="number" min="0" step="0.01" value="${esc(d.sinal)}"></div></label>
       <label class="f">Observação<input id="pf-obs" maxlength="1000" value="${esc(d.obs)}"></label>
-    </div>
+    </div></details>
     <div class="vresumo" id="pfResumo"></div>
     <div class="row"><button class="btn primary" type="submit">Salvar pedido</button><button class="btn" type="submit" data-msg="1">Salvar e gerar mensagem</button><span class="note" id="pfMsg"></span>
       ${!novo&&p.status!=="entregue"?'<span style="flex:1"></span><button type="button" class="btn ghost" data-pfa="del">Excluir pedido</button>':""}</div>

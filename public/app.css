@@ -548,3 +548,36 @@ h1,.brand,.hojehero h2{font-family:var(--titulo);font-weight:400;letter-spacing:
 table.ajusta{min-width:0;width:100%}
 table.ajusta td,table.ajusta th{padding-left:10px;padding-right:10px}
 @media (max-width:640px){table.prods th:nth-child(5),table.prods td:nth-child(5){display:none}}
+/* caixa "Pedido #N" (resumo ao clicar no pedido) */
+#pedLista tbody tr[data-pid]{cursor:pointer}
+dialog.pres{border:0;padding:0;border-radius:16px;width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - 32px);background:var(--surface);color:var(--ink);box-shadow:0 24px 60px rgba(8,12,16,.35);overflow:auto}
+dialog.pres::backdrop{background:rgba(8,12,16,.55);backdrop-filter:blur(2px)}
+.pres-cab{display:flex;align-items:center;gap:16px;padding:18px 20px;background:linear-gradient(120deg,#0E1114 55%,#12443a);color:#fff}
+.pres-cab small{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#1FBE8C;font-weight:700}
+.pres-cab > div:first-child b{font-family:var(--display,inherit);font-size:28px;line-height:1}
+.pres-cli{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.pres-cli b{font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pres-cli a{color:#9fe6c9;font-size:13px;text-decoration:none}
+.pres-x{background:rgba(255,255,255,.1);border:0;color:#fff;width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:14px;flex:none}
+.pres-x:hover{background:rgba(255,255,255,.2)}
+.pres-corpo{padding:16px 20px;display:flex;flex-direction:column;gap:12px}
+.pres-et{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+.pres-itens{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:12px}
+.pres-itens li{display:flex;justify-content:space-between;gap:12px;padding:10px 12px;border-top:1px solid var(--line)}
+.pres-itens li:first-child{border-top:0}
+.pres-itens small{display:block;color:var(--muted);font-size:12.5px}
+.pres-val{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pres-val div{background:var(--bg);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.pres-val span{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700}
+.pres-val b{font-size:17px}
+.pres-val .ok{background:var(--good-soft)} .pres-val .ok b{color:var(--good)}
+.pres-val .falta b{color:var(--warn)}
+.pres-obs{background:var(--bg);border-left:3px solid var(--accent);border-radius:6px;padding:8px 12px;font-size:13.5px;color:var(--muted)}
+.pres-acoes{display:flex;flex-wrap:wrap;gap:8px;padding:14px 20px 18px;border-top:1px solid var(--line)}
+.pres-acoes [data-ra=passo]{flex:1 1 100%}
+/* formulário do pedido: campos pouco usados recolhidos */
+details.maisdet{border:1px solid var(--line);border-radius:10px;padding:0 14px}
+details.maisdet > summary{cursor:pointer;padding:12px 0;font-weight:600;color:var(--muted)}
+details.maisdet[open] > summary{border-bottom:1px solid var(--line);margin-bottom:12px}
+details.maisdet > .fields{padding-bottom:14px}
+.pres-corpo:focus{outline:none}

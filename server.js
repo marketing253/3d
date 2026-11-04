@@ -1596,6 +1596,9 @@ async function mpConfere(r) {
   } catch (e) { console.error("[mp] consulta", e.message); }
   return db.prepare("SELECT * FROM pedidos WHERE id = ?").get(r.id);
 }
+// E-mail do pagador exigido pelo Mercado Pago: gerado pelo número do pedido, para o cliente não precisar digitar.
+const mpEmail = (r, base) => { const host = new URL(base).hostname; return `pedido${r.numero}@${/\.[a-z]{2,}$/i.test(host) ? host : "precificador3d.com.br"}`; };
+const baseUrl = req => (process.env.PUBLIC_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
 // Reaproveita a cobrança pendente do mesmo valor; se o valor mudou, cancela a antiga e cria outra (vale 24 h).
 const mpCriando = new Map();
 async function mpCobranca(r, tipo, valor, base) {
@@ -1604,11 +1607,11 @@ async function mpCobranca(r, tipo, valor, base) {
   if (mpCriando.has(r.id)) return mpCriando.get(r.id);
   const tarefa = (async () => {
     if (c && c.status === "pending") await mpApi("POST", `/v1/orders/${encodeURIComponent(c.id)}/cancel`).catch(e => console.error("[mp] cancelar", e.message));
-    const host = new URL(base).hostname, v = n(valor).toFixed(2);
+    const v = n(valor).toFixed(2);
     const o = await mpApi("POST", "/v1/orders", {
       type: "online", processing_mode: "automatic", external_reference: r.id, total_amount: v,
       description: `Pedido #${r.numero} · ${tipo === "entrada" ? "entrada" : "restante"}`,
-      payer: { email: `pedido${r.numero}@${/\.[a-z]{2,}$/i.test(host) ? host : "precificador3d.com.br"}`, first_name: txt(p.cliente, 60).split(" ")[0] || "Cliente" },
+      payer: { email: mpEmail(r, base), first_name: txt(p.cliente, 60).split(" ")[0] || "Cliente" },
       transactions: { payments: [{ amount: v, payment_method: { id: "pix", type: "bank_transfer" }, expiration_time: "P1D" }] },
     });
     const pg = o.transactions?.payments?.[0] || {}, qr = pg.payment_method?.qr_code;
@@ -1652,8 +1655,8 @@ app.post("/api/publico/pedido/:token/cartao", limiteCartao, async (req, res) => 
   const f = req.body || {}, parcelas = Math.round(Number(f.installments) || 1);
   if (!/^[\w-]{8,200}$/.test(f.token || "") || !/^[a-z_]{2,30}$/.test(f.payment_method_id || "") || parcelas < 1 || parcelas > 12)
     return res.status(400).json({ erro: "Dados do cartão incompletos. Confira e tente de novo." });
-  const email = txt(f.payer?.email, 120);
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ erro: "Informe um e-mail válido." });
+  const informado = txt(f.payer?.email, 120);
+  const email = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(informado) ? informado : mpEmail(r, baseUrl(req));
   const doc = f.payer?.identification, v = c.valor.toFixed(2);
   try {
     const o = await mpApi("POST", "/v1/orders", {
@@ -1724,7 +1727,7 @@ app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
   let pix = null, pixAuto = false;
   if (pixTipo && MP_TOKEN) {
     try {
-      const c = await mpCobranca(r, pixTipo, pixValor, (process.env.PUBLIC_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, ""));
+      const c = await mpCobranca(r, pixTipo, pixValor, baseUrl(req));
       pix = { payload: c.qr, svg: await QRCode.toString(c.qr, { type: "svg", margin: 1, errorCorrectionLevel: "M" }) }; pixAuto = true;
     } catch (e) { console.error("[mp] cobrança", e.message); }
   }
@@ -1741,7 +1744,7 @@ app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
     entrada, faltaEntrada, resposta: p.resposta ? { acao: p.resposta.acao, em: p.resposta.em } : null,
     etapa: etapaDe(r.status, p), pagInformado: p.pagInformado || null, precisaArte: precisaArte(p),
     arte: p.artes && p.artes.length ? (a => ({ v: a.v, status: a.status, nota: a.nota || "", comentario: a.comentario || "", respondidoEm: a.respondidoEm || null, imagem: `/aprovacao/${r.token}/arte/${a.v}` }))(p.artes.at(-1)) : null,
-    cartao: pixTipo && MP_TOKEN && MP_PUBLIC ? { publicKey: MP_PUBLIC, valor: pixValor, parcelas: 12 } : null,
+    cartao: pixTipo && MP_TOKEN && MP_PUBLIC ? { publicKey: MP_PUBLIC, valor: pixValor, parcelas: 12, email: mpEmail(r, baseUrl(req)) } : null,
     pix: pix ? { payload: pix.payload, svg: pix.svg, tipo: pixTipo, valor: pixValor, auto: pixAuto, chave: pixAuto ? "" : txt(L.pixChave, 77), nome: txt(L.pixNome || L.nome, 60) } : null,
   });
 });
