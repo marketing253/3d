@@ -1675,10 +1675,23 @@ async function mpCobranca(r, tipo, valor, base) {
   mpCriando.set(r.id, tarefa);
   try { return await tarefa; } finally { mpCriando.delete(r.id); }
 }
+// Assinatura do aviso (x-signature "ts=…,v1=…"): HMAC-SHA256 com a "assinatura secreta" do painel de webhooks,
+// sobre "id:<data.id>;request-id:<x-request-id>;ts:<ts>;" (id alfanumérico em minúsculas, partes ausentes ficam de fora).
+const MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET || "";
+function mpAssinaturaOk(req, id) {
+  if (!MP_WEBHOOK_SECRET) return true; // sem segredo configurado: só a releitura na API protege
+  const partes = Object.fromEntries(String(req.get("x-signature") || "").split(",").map(x => x.trim().split("=")).filter(x => x.length === 2));
+  if (!partes.ts || !/^[a-f0-9]{64}$/i.test(partes.v1 || "")) return false;
+  const rid = req.get("x-request-id");
+  const manifesto = `${id ? `id:${id.toLowerCase()};` : ""}${rid ? `request-id:${rid};` : ""}ts:${partes.ts};`;
+  const esperado = crypto.createHmac("sha256", MP_WEBHOOK_SECRET).update(manifesto).digest();
+  return crypto.timingSafeEqual(esperado, Buffer.from(partes.v1, "hex"));
+}
 // O Mercado Pago avisa aqui; a order é sempre lida de novo na API, então um aviso falso não marca nada como pago.
 app.post("/api/mp/webhook", limitePublico, async (req, res) => {
-  const id = String(req.body?.data?.id || req.query["data.id"] || req.query.id || "");
+  const id = String(req.query["data.id"] || req.body?.data?.id || req.query.id || "");
   const tipo = req.body?.type || req.query.type || req.query.topic;
+  if (!mpAssinaturaOk(req, id)) { console.error("[mp] webhook com assinatura inválida"); return res.sendStatus(401); }
   if (!MP_TOKEN || !MP_ID_RE.test(id) || (tipo && tipo !== "order")) return res.sendStatus(200);
   try { mpEvento(await mpApi("GET", `/v1/orders/${id}`)); res.sendStatus(200); }
   catch (e) { console.error("[mp] webhook", e.message); res.sendStatus(500); }
