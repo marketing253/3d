@@ -721,18 +721,18 @@ async function checaAvisos(forcar){
   if(!novos.length){ renderAvisos(lista); if(forcar){ await carregaPedidos(); if(tab==="hoje") renderHoje() } return }
   for(const a of novos){ avisosVistos.add(a.pedido+":"+a.i+":"+a.em);
     try{ if("Notification" in window&&Notification.permission==="granted") new Notification(tituloAviso(a),{body:`${a.cliente} · ${brl(a.valor)} · ${a.forma}`}) }catch(e){} }
-  if(novos.some(a=>a.tipo==="pago")) somPagamento();
+  if(novos.some(a=>["pago","novo"].includes(a.tipo))) somPagamento();
   renderAvisos(lista); await carregaPedidos(); if(tab==="hoje") renderHoje();
 }
-const tituloAviso=a=>a.tipo==="pago"?`Pedido #${a.numero} pago`:a.tipo==="contestado"?`Pedido #${a.numero}: pagamento contestado`:`Pedido #${a.numero}: pagamento estornado`;
+const tituloAviso=a=>a.tipo==="novo"?`Novo pedido #${a.numero} pelo catálogo`:a.tipo==="pago"?`Pedido #${a.numero} pago`:a.tipo==="contestado"?`Pedido #${a.numero}: pagamento contestado`:`Pedido #${a.numero}: pagamento estornado`;
 function renderAvisos(lista){
   const nPag=new Set(lista.filter(a=>a.tipo==="pago").map(a=>a.pedido)).size, bp=$("#badgePag");
   if(bp){ bp.hidden=!nPag; bp.textContent=nPag; bp.title=nPag+" pedido(s) pago(s) que você ainda não viu" }
   let box=$("#avisosPag"); if(!box){ box=document.createElement("div"); box.id="avisosPag"; document.body.appendChild(box) }
   const pode="Notification" in window&&Notification.permission==="default";
-  box.innerHTML=lista.slice(0,4).map(a=>`<div class="avp ${a.tipo==="pago"?"ok":"bad"}" data-ap="${esc(a.pedido)}">
-      <span class="avp-ic" aria-hidden="true">${a.tipo==="pago"?"✓":"↩"}</span>
-      <div><b>${esc(tituloAviso(a))}</b><small>${esc(a.cliente)} · ${brl(a.valor)} · ${esc(a.forma||"")}</small>${a.tipo!=="pago"?`<small>O pedido voltou a esperar o pagamento.</small>`:""}</div>
+  box.innerHTML=lista.slice(0,4).map(a=>`<div class="avp ${["pago","novo"].includes(a.tipo)?"ok":"bad"}" data-ap="${esc(a.pedido)}">
+      <span class="avp-ic" aria-hidden="true">${a.tipo==="novo"?"★":a.tipo==="pago"?"✓":"↩"}</span>
+      <div><b>${esc(tituloAviso(a))}</b><small>${esc(a.cliente)} · ${brl(a.valor)} · ${esc(a.forma||"")}</small>${["estornado","contestado"].includes(a.tipo)?`<small>O pedido voltou a esperar o pagamento.</small>`:""}</div>
       <button class="btn sm" data-av="ver">Ver</button><button class="avp-x" data-av="ok" aria-label="Dispensar">✕</button>
     </div>`).join("")+(lista.length&&pode?`<button class="avp-notif" data-av="notif">Avisar também no navegador</button>`:"");
 }

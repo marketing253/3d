@@ -1341,10 +1341,12 @@ app.post("/api/publico/pedido", limitePedidoPublico, (req, res) => {
     itens, desconto: cup && !cup.erro ? cup.desconto : 0, freteCliente: 0, freteVoce: 0, taxas: 0, sinal: 0, fluxo: 2,
     obs: "Pedido feito pelo catálogo do site" + (cup && !cup.erro ? ` · cupom ${cup.codigo}` : ""), origem: "catalogo",
     ...(cup && !cup.erro ? { cupom: cup.codigo } : {}) };
-  const id = crypto.randomUUID();
+  if (dados.whatsapp.replace(/\D/g, "").length < 10) return res.status(400).json({ erro: "Informe seu WhatsApp com DDD." });
+  avisoPag(dados, { tipo: "novo", valor: n(bruto - dados.desconto), forma: "Catálogo" }); // aparece no painel como "Novo pedido"
+  const id = crypto.randomUUID(), token = crypto.randomBytes(16).toString("hex");
   const numero = (db.prepare("SELECT COALESCE(MAX(numero),0) m FROM pedidos").get().m) + 1;
-  db.prepare("INSERT INTO pedidos (id, numero, dados, status, prazo) VALUES (?, ?, ?, 'orcamento', ?)").run(id, numero, JSON.stringify(dados), dados.prazo);
-  res.json({ numero });
+  db.prepare("INSERT INTO pedidos (id, numero, dados, status, prazo, token) VALUES (?, ?, ?, 'orcamento', ?, ?)").run(id, numero, JSON.stringify(dados), dados.prazo, token);
+  res.json({ numero, link: "/pedido/" + token }); // o cliente segue pelo link: aprova, paga e acompanha
 });
 
 // ---------- kits e cupons ----------
@@ -1501,7 +1503,8 @@ app.get("/api/publico/catalogo", limitePublico, (req, res) => {
   const loja = (c && JSON.parse(c.dados).loja) || {};
   res.set("Cache-Control", "public, max-age=60");
   res.json({
-    loja: { nome: txt(loja.nome, 80) || "Impressões 3D", whatsapp: txt(loja.whatsapp, 30).replace(/\D/g, ""), instagram: txt(loja.instagram, 60), pagamento: txt(loja.pagamento, 200), prazoDias: Number(loja.prazoDias) || 0, sobre: txt(loja.sobre, 400) },
+    loja: { nome: txt(loja.nome, 80) || "Impressões 3D", whatsapp: txt(loja.whatsapp, 30).replace(/\D/g, ""), instagram: txt(loja.instagram, 60), pagamento: txt(loja.pagamento, 200), prazoDias: Number(loja.prazoDias) || 0, sobre: txt(loja.sobre, 400),
+      site: txt(loja.site, 80), logo: loja.logo && FOTO_RE.test(loja.logo) ? "/loja/logo" : "/logo-8on.png", cartao: !!(MP_TOKEN && MP_PUBLIC) },
     produtos: produtosPublicos().map(({ id, p, foto }) => ({
       id, nome: p.nome, categoria: p.categoria || "", descricao: txt(p.descricaoCatalogo, 400), preco: n(p.precoCatalogo),
       prontaEntrega: (Number(p.estoque) || 0) > 0, foto: foto ? "/fotos-publicas/" + foto : null, personalizavel: !!p.personalizavel,
