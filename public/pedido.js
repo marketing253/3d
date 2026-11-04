@@ -29,7 +29,7 @@ const pagHtml=d=>!d.cartao?pixHtml(d):`<div class="formas" role="tablist">
     <button type="button" class="fm" role="tab" aria-selected="false" data-a="fCartao">Cartão de crédito<small>até ${d.cartao.parcelas}x</small></button>
   </div>
   <div data-forma="pix">${pixHtml(d)}</div>
-  <div data-forma="cartao" hidden><div id="cardBrick"></div><p class="exp">Parcele em até ${d.cartao.parcelas}x: depois de digitar o número do cartão, escolha as parcelas. Os juros do parcelamento aparecem antes de você confirmar. Cada parcela tem um valor mínimo, então valores pequenos ficam só à vista.</p></div>`;
+  <div data-forma="cartao" class="fecha"><div id="cardBrick"></div><p class="exp">Parcele em até ${d.cartao.parcelas}x: depois de digitar o número do cartão, escolha as parcelas. Os juros do parcelamento aparecem antes de você confirmar. Cada parcela tem um valor mínimo, então valores pequenos ficam só à vista.</p></div>`;
 // Caixa de "Pagamento aprovado" (cartão ou Pix), com o que acontece a seguir.
 const PROXIMO={arte:"Agora preparamos a sua arte. Ela aparece aqui para você aprovar.",producao:"Seu pedido já foi para a produção.",pronto:"Pedido quitado! Combine a retirada ou a entrega com a loja.",entregue:"Pedido quitado. Obrigado!"};
 async function aprovado(detalhe){
@@ -157,7 +157,7 @@ async function carrega(){
     if(a==="fPix"||a==="fCartao"){
       const c=a==="fCartao";
       $("#ped").querySelectorAll(".fm").forEach(b=>{const on=(b.dataset.a==="fCartao")===c;b.classList.toggle("on",on);b.setAttribute("aria-selected",on)});
-      $("#ped").querySelector("[data-forma=pix]").hidden=c; $("#ped").querySelector("[data-forma=cartao]").hidden=!c;
+      $("#ped").querySelector("[data-forma=pix]").hidden=c; $("#ped").querySelector("[data-forma=cartao]").classList.toggle("fecha",!c);
       if(c) montaCartao(d).catch(err=>{ toast(err.message); const el=document.getElementById("cardBrick"); if(el) el.innerHTML="" });
       return;
     }
@@ -178,6 +178,8 @@ async function carrega(){
   };
 
   // Pix do Mercado Pago: pergunta de tempos em tempos e avança a página quando o pagamento cair
+  // cartão: monta o formulário do Mercado Pago escondido já na abertura, para o clique em "Cartão" mostrar na hora
+  if(d.cartao) montaCartao(d).catch(()=>{ const el=document.getElementById("cardBrick"); if(el) el.innerHTML="" });
   clearTimeout(carrega._t);
   if(d.pix?.auto){
     const confere=async()=>{
