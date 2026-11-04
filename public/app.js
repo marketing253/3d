@@ -621,7 +621,7 @@ function renderPedidos(){
         ${at.map(k=>atalhoBtn(k,p,e)).join("")}
         <details class="mais"><summary class="btn sm ghost" aria-label="Mais opções">⋯</summary><div class="menu">
           ${["cancelado","recusado"].includes(e)?"":'<button data-pa="link">Copiar link do cliente</button>'}
-          <button data-pa="msg">Mensagem no WhatsApp</button>
+          <button data-pa="msgEdit">Editar mensagem do WhatsApp</button>
           ${p.status!=="entregue"?'<button class="edit-only" data-pa="edit">Editar pedido</button>':""}
           <button class="edit-only" data-pa="arte">Arte</button>
           <button class="edit-only" data-pa="prop">Proposta em PDF</button>
@@ -644,7 +644,7 @@ $("#btnNovoPed").addEventListener("click",()=>abrePedido(null));
 async function executaPasso(p,b){
   const px=proximoPasso(p); if(!px) return;
   b?.closest("details")?.removeAttribute("open");
-  if(px[1]==="msg") return abreMsg(p,"orcamento");
+  if(px[1]==="msg") return zapDireto(p,"orcamento");
   if(px[1]==="arte") return abreArte(p);
   if(px[1]==="entrada"){
     const v=Math.max(0,entradaPed(p)-num(p.sinal));
@@ -681,7 +681,8 @@ $("#pedLista").addEventListener("click",async e=>{
   const a=b.dataset.pa;
   if(a==="next") mudaStatus(p,ST_NEXT[p.status][0]);
   if(a==="edit") abrePedido(p);
-  if(a==="msg") abreMsg(p);
+  if(a==="msg") zapDireto(p);
+  if(a==="msgEdit") abreMsg(p);
   if(a==="del"){ const td=b.closest("tr").querySelector("td.pact"); const ent=p.status==="entregue"||(etapaPed(p)==="entregue");
     td.innerHTML=`<span class="confirm" style="white-space:normal;display:inline-flex;flex-direction:column;gap:6px;align-items:flex-end">Excluir o pedido #${p.numero}?${ent?'<small class="pcat">A venda dele também sai do Financeiro.</small>':""}<span class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn sm danger" data-pa="delok">Excluir</button><button class="btn sm ghost" data-pa="delno">Manter</button></span></span>`; return }
   if(a==="delno"){ renderPedidos(); return }
@@ -707,7 +708,7 @@ function itemDeProduto(p,canalNome,qtd){
     personalizacao:"",doEstoque:false,fil:(p.filamentos||[]).filter(l=>num(l.gramas)>0).map(l=>({filId:l.filId,g:+(num(l.gramas)/uni).toFixed(2)}))};
 }
 // Caixa "Pedido #N": resumo com o que importa (cliente, itens, valores, prazo) e os botões principais.
-function abreResumo(p){
+function abreResumo(p,criado){
   let dlg=$("#pedResumo");
   if(!dlg){
     dlg=document.createElement("dialog"); dlg.id="pedResumo"; dlg.className="pres"; document.body.appendChild(dlg);
@@ -722,7 +723,7 @@ function abreResumo(p){
       if(a==="link") return linkDe(q).then(async l=>{ if(!l) return toast("Não deu para gerar o link."); try{await navigator.clipboard.writeText(l);toast("Link do cliente copiado")}catch(e){toast(l)} });
       if(a==="ver"){ const w=window.open("","_blank"); linkDe(q).then(l=>{ if(l&&w) w.location=l; else w?.close() }); return }
       dlg.close();
-      if(a==="msg") return abreMsg(q);
+      if(a==="msg") return zapDireto(q);
       if(a==="edit") return abrePedido(q);
       if(a==="passo") return executaPasso(q,null);
     });
@@ -731,7 +732,7 @@ function abreResumo(p){
   const zap=String(p.whatsapp||"").replace(/\D/g,""), a=(p.artes||[]).at(-1);
   const prazo=p.prazo&&!["entregue","cancelado","recusado"].includes(e)?prazoPill(p):"";
   dlg.dataset.pid=p.id;
-  dlg.innerHTML=`<div class="pres-cab">
+  dlg.innerHTML=`${criado?`<div class="pres-novo">✓ Pedido #${p.numero} criado. Agora é só mandar para o cliente.</div>`:""}<div class="pres-cab">
       <div><small>Pedido</small><b>#${p.numero}</b></div>
       <div class="pres-cli"><b>${esc(p.cliente)}</b>${zap?`<a href="https://wa.me/${zap.length<=11?"55"+zap:zap}" target="_blank" rel="noopener">WhatsApp ${esc(p.whatsapp)}</a>`:""}</div>
       <button class="pres-x" data-ra="fechar" aria-label="Fechar">✕</button>
@@ -751,7 +752,7 @@ function abreResumo(p){
     <div class="pres-acoes">
       ${px&&!fim?`<button class="btn ${px[2]?"primary":""} edit-only" data-ra="passo">${px[0]}</button>`:""}
       ${fim?"":`<button class="btn" data-ra="link">🔗 Link do cliente</button><button class="btn" data-ra="ver">↗ Ver</button>`}
-      <button class="btn" data-ra="msg">WhatsApp</button>
+      ${criado&&px?.[1]==="msg"?"":`<button class="btn" data-ra="msg">WhatsApp</button>`}
       ${p.status!=="entregue"?`<button class="btn ghost edit-only" data-ra="edit">Editar</button>`:""}
     </div>`;
   if(!dlg.open) dlg.showModal();
@@ -857,15 +858,16 @@ $("#pedForm").addEventListener("click",async e=>{
   if(a==="delok"){try{await api("DELETE","/api/pedidos/"+encodeURIComponent(pedForm.id));pedidos=pedidos.filter(x=>x.id!==pedForm.id);fechaPf();renderPedidos();renderFila();toast("Pedido excluído")}catch(err){toast(err.message)}}
 });
 $("#pedForm").addEventListener("submit",async e=>{
-  e.preventDefault(); lePf(); const comMsg=e.submitter?.dataset.msg; const m=$("#pfMsg");
+  e.preventDefault(); lePf(); const comMsg=e.submitter?.dataset.msg; const m=$("#pfMsg"), novo=!pedForm.id;
+  const aba=comMsg?window.open("","_blank"):null; // abre já, no clique, para o navegador não bloquear
   try{
     const d=pedForm.d; let r;
     if(pedForm.id){r=await api("PUT","/api/pedidos/"+encodeURIComponent(pedForm.id),d);const i=pedidos.findIndex(x=>x.id===r.id);pedidos[i]=r}
     else{r=await api("POST","/api/pedidos",d);pedidos.unshift(r)}
     toast(pedForm.id?"Pedido atualizado":`Pedido #${r.numero} criado`);
     fechaPf();renderPedidos();renderFila();
-    if(comMsg) abreMsg(r);
-  }catch(err){ m.textContent=err.message }
+    if(comMsg) zapDireto(r,null,aba); else if(novo) abreResumo(r,true);
+  }catch(err){ aba?.close(); m.textContent=err.message }
 });
 
 /* mensagem para o WhatsApp */
@@ -888,15 +890,29 @@ async function linkDe(p){
   try{ const r=await api("POST","/api/pedidos/"+encodeURIComponent(p.id)+"/link"); p.token=r.token;
     const x=pedidos.find(y=>y.id===p.id); if(x) x.token=r.token; return location.origin+"/pedido/"+r.token }catch(e){ return null }
 }
-async function abreMsg(p,tipo){
-  msgPed=p; tipo=tipo||({orcamento:"orcamento",aprovado:"confirmado",imprimindo:"confirmado",pronto:"pronto",entregue:"obrigado"}[p.status]||"orcamento");
-  const box=$("#pedMsgBox"); box.hidden=false;
+const tipoMsg=p=>({orcamento:"orcamento",aprovado:"confirmado",imprimindo:"confirmado",pronto:"pronto",entregue:"obrigado"}[p.status]||"orcamento");
+// Texto da mensagem da etapa com o link do pedido (e o Pix, no pronto e na cobrança).
+async function montaMsg(p,tipo){
   const usaPix=["pronto","cobranca"].includes(tipo); // no orçamento, o Pix da entrada aparece no link depois da aprovação
-  const [pix,link]=await Promise.all([usaPix?pixDe(p):null,linkDe(p)]); if(msgPed!==p) return;
-  msgPix=pix&&pix.payload?pix:null; msgLink=link;
+  const [pix,link]=await Promise.all([usaPix?pixDe(p):null,linkDe(p)]);
+  const ok=pix&&pix.payload?pix:null;
   let txt=textoMsg(p,tipo);
   if(link&&tipo!=="obrigado") txt+=`\n\n${tipo==="orcamento"?"Aprove aqui":"Acompanhe seu pedido"}: ${link}`;
-  if(msgPix) txt+=`\n\nPix copia e cola (${brl(totPed(p).receber)}):\n${msgPix.payload}`;
+  if(ok) txt+=`\n\nPix copia e cola (${brl(totPed(p).receber)}):\n${ok.payload}`;
+  return {txt,pix,link};
+}
+// Abre o WhatsApp do cliente já com a mensagem pronta. A aba abre antes do await para o navegador não bloquear.
+async function zapDireto(p,tipo,aba){
+  const w=aba||window.open("","_blank");
+  try{ const {txt}=await montaMsg(p,tipo||tipoMsg(p)); const url=waLink(p.whatsapp,txt); if(w) w.location=url; else location.href=url }
+  catch(e){ w?.close(); toast("Não deu para abrir o WhatsApp.") }
+}
+async function abreMsg(p,tipo){
+  msgPed=p; tipo=tipo||tipoMsg(p);
+  const box=$("#pedMsgBox"); box.hidden=false;
+  const usaPix=["pronto","cobranca"].includes(tipo);
+  const {txt,pix,link}=await montaMsg(p,tipo); if(msgPed!==p) return;
+  msgPix=pix&&pix.payload?pix:null; msgLink=link;
   box.innerHTML=`<div class="row spread"><h2>Mensagem para ${esc(p.cliente)} · pedido #${p.numero}</h2><button class="btn ghost" data-ma="fechar">Fechar</button></div>
     ${cfg.loja.pixChave?"":`<div class="warnbox"><b>Sua chave Pix não está cadastrada.</b> Sem ela, o cliente não vê o Pix para pagar a entrada. Cadastre em <b>Ajustes → Custos e loja → Chave Pix</b> (com Nome e Cidade do Pix).</div>`}
     <div class="row">${[["orcamento","Orçamento"],["confirmado","Confirmação"],["pronto","Pedido pronto"],["cobranca","Cobrança"],["obrigado","Agradecimento"]].map(([k,n])=>`<button class="chip${k===tipo?" on":""}" data-mt="${k}">${n}</button>`).join("")}</div>

@@ -603,3 +603,4 @@ dialog.pform{width:min(640px,calc(100vw - 24px))}
 .pform .fields .wide{grid-column:1/-1}
 .pform .pres-acoes .btn.primary{flex:1 1 auto}
 @media (max-width:560px){.pf-2{grid-template-columns:1fr}.pfi2-l2{flex-wrap:wrap}}
+.pres-novo{background:var(--good-soft);color:var(--good);font-weight:700;font-size:14px;padding:10px 20px}
