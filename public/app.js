@@ -756,53 +756,64 @@ function abreResumo(p){
     </div>`;
   if(!dlg.open) dlg.showModal();
 }
+// Novo pedido / editar: caixa simples com cliente, itens, prazo e total; o resto fica em "Mais opções".
 function abrePedido(p){
   const novo=!p;
   pedForm={id:p?.id||null,taxaManual:!!p,d:p?clone(p):{cliente:"",whatsapp:"",canal:cfg.canais[0]?.nome||"",data:hojeISO(),prazo:addDias(hojeISO(),num(cfg.loja.prazoDias)||5),itens:[],desconto:0,freteCliente:0,freteVoce:0,taxas:0,sinal:0,obs:"",status:"orcamento"}};
   if(!pedForm.d.itens.length) pedForm.d.itens.push({produto_id:null,descricao:"",quantidade:1,preco_unit:0,custo_unit:0,horas_unit:0,personalizacao:"",doEstoque:false,fil:[]});
-  const d=pedForm.d, box=$("#pedForm"); box.hidden=false;
-  box.innerHTML=`<form class="stack" id="pf" autocomplete="off">
-    <div class="row spread"><h2>${novo?"Novo pedido":"Editar pedido #"+p.numero}</h2><button type="button" class="btn ghost" data-pfa="fechar">Fechar</button></div>
-    <div class="fields">
-      <label class="f">Cliente<input id="pf-cliente" required maxlength="120" value="${esc(d.cliente)}"></label>
-      <label class="f">WhatsApp<span class="hint">Com DDD</span><input id="pf-whats" inputmode="tel" maxlength="30" placeholder="(11) 91234-5678" value="${esc(d.whatsapp)}"></label>
-      <label class="f">Canal<select id="pf-canal">${opcoesCanal(d.canal)}</select></label>
-      <label class="f">Data do pedido<input type="date" id="pf-data" value="${esc(d.data)}"></label>
-      <label class="f">Prazo de entrega<span class="hint" id="pf-sugPrazo"></span><input type="date" id="pf-prazo" value="${esc(d.prazo||"")}"></label>
-      ${novo?`<label class="f">Começa como<select id="pf-status"><option value="orcamento">Orçamento</option><option value="aprovado">Aprovado</option></select></label>`:""}
+  const d=pedForm.d, box=$("#pedForm");
+  const arteOn=d.semArte?false:d.comArte?true:(d.itens||[]).some(i=>!i.doEstoque&&String(i.personalizacao||"").trim());
+  box.innerHTML=`<form id="pf" autocomplete="off">
+    <div class="pres-cab"><div><small>${novo?"Novo":"Editar"}</small><b>${novo?"Pedido":"#"+p.numero}</b></div><div class="pres-cli"><b>${novo?"Só o essencial":esc(d.cliente)}</b></div><button type="button" class="pres-x" data-pfa="fechar" aria-label="Fechar">✕</button></div>
+    <div class="pres-corpo pf-corpo">
+      <div class="pf-2">
+        <label class="f">Cliente<input id="pf-cliente" required maxlength="120" placeholder="Nome do cliente" value="${esc(d.cliente)}"></label>
+        <label class="f">WhatsApp<input id="pf-whats" inputmode="tel" maxlength="30" placeholder="(41) 91234-5678" value="${esc(d.whatsapp)}"></label>
+      </div>
+      <div class="pf-itens"><div class="row spread"><b>Itens</b><button type="button" class="btn sm ghost" data-pfa="addItem">+ Adicionar item</button></div><div id="pfItens"></div></div>
+      <div class="pf-2">
+        <label class="f">Prazo de entrega<input type="date" id="pf-prazo" value="${esc(d.prazo||"")}"><span class="hint" id="pf-sugPrazo"></span></label>
+        <div class="pf-total" id="pfResumo"></div>
+      </div>
+      <details class="maisdet"><summary>Mais opções</summary><div class="fields">
+        <label class="f">Canal<select id="pf-canal">${opcoesCanal(d.canal)}</select></label>
+        <label class="f">Data do pedido<input type="date" id="pf-data" value="${esc(d.data)}"></label>
+        ${novo?`<label class="f">Começa como<select id="pf-status"><option value="orcamento">Orçamento</option><option value="aprovado">Aprovado</option></select></label>`:""}
+        <label class="f">Desconto<div class="unit pre"><span>R$</span><input id="pf-desc" type="number" min="0" step="0.01" value="${esc(d.desconto)}"></div></label>
+        <label class="f">Frete cobrado do cliente<div class="unit pre"><span>R$</span><input id="pf-fc" type="number" min="0" step="0.01" value="${esc(d.freteCliente)}"></div></label>
+        <label class="f">Frete pago por você<div class="unit pre"><span>R$</span><input id="pf-fv" type="number" min="0" step="0.01" value="${esc(d.freteVoce)}"></div></label>
+        <label class="f">Taxas do canal<span class="hint">Calculada; pode ajustar</span><div class="unit pre"><span>R$</span><input id="pf-taxas" type="number" min="0" step="0.01" value="${esc(d.taxas)}"></div></label>
+        <label class="f">Entrada pedida<span class="hint">Vazio = ${entradaPct()}% do total</span><div class="unit pre"><span>R$</span><input id="pf-entrada" type="number" min="0" step="0.01" placeholder="${entradaPct()}%" value="${esc(d.entrada??"")}"></div></label>
+        <label class="f">Sinal já recebido<span class="hint">Entra no caixa hoje</span><div class="unit pre"><span>R$</span><input id="pf-sinal" type="number" min="0" step="0.01" value="${esc(d.sinal)}"></div></label>
+        <label class="f wide">Observação<input id="pf-obs" maxlength="1000" value="${esc(d.obs)}"></label>
+        <label class="chk wide"><input type="checkbox" id="pf-arte" ${arteOn?"checked":""}> O cliente aprova a arte antes da produção</label>
+      </div></details>
     </div>
-    <div class="stack" style="gap:8px"><div class="row spread"><h3>Itens</h3><button type="button" class="btn ghost" data-pfa="addItem">+ Item</button></div><div id="pfItens" class="stack" style="gap:10px"></div></div>
-    <div class="fields">
-      <label class="f">Desconto<div class="unit pre"><span>R$</span><input id="pf-desc" type="number" min="0" step="0.01" value="${esc(d.desconto)}"></div></label>
-      <label class="f">Frete cobrado do cliente<div class="unit pre"><span>R$</span><input id="pf-fc" type="number" min="0" step="0.01" value="${esc(d.freteCliente)}"></div></label>
-      <label class="f">Arte<span class="hint">Liga sozinho quando algum item é personalizado</span><span class="chk"><input type="checkbox" id="pf-arte" ${(d.semArte?false:d.comArte?true:(d.itens||[]).some(i=>!i.doEstoque&&String(i.personalizacao||"").trim()))?"checked":""}> O cliente aprova a arte antes da produção</span></label>
-    </div>
-    <details class="maisdet"><summary>Mais opções · frete pago por você, taxas, entrada, sinal e observação</summary><div class="fields">
-      <label class="f">Frete pago por você<div class="unit pre"><span>R$</span><input id="pf-fv" type="number" min="0" step="0.01" value="${esc(d.freteVoce)}"></div></label>
-      <label class="f">Taxas do canal<span class="hint">Calculada; pode ajustar</span><div class="unit pre"><span>R$</span><input id="pf-taxas" type="number" min="0" step="0.01" value="${esc(d.taxas)}"></div></label>
-      <label class="f">Entrada pedida<span class="hint">Cobrada no link depois que o cliente aprova; vazio = ${entradaPct()}% do total</span><div class="unit pre"><span>R$</span><input id="pf-entrada" type="number" min="0" step="0.01" placeholder="${entradaPct()}%" value="${esc(d.entrada??"")}"></div></label>
-      <label class="f">Sinal já recebido<span class="hint">Entra no caixa (Financeiro) na data de hoje</span><div class="unit pre"><span>R$</span><input id="pf-sinal" type="number" min="0" step="0.01" value="${esc(d.sinal)}"></div></label>
-      <label class="f">Observação<input id="pf-obs" maxlength="1000" value="${esc(d.obs)}"></label>
-    </div></details>
-    <div class="vresumo" id="pfResumo"></div>
-    <div class="row"><button class="btn primary" type="submit">Salvar pedido</button><button class="btn" type="submit" data-msg="1">Salvar e gerar mensagem</button><span class="note" id="pfMsg"></span>
-      ${!novo&&p.status!=="entregue"?'<span style="flex:1"></span><button type="button" class="btn ghost" data-pfa="del">Excluir pedido</button>':""}</div>
+    <div class="pres-acoes"><button class="btn primary" type="submit">${novo?"Criar pedido":"Salvar"}</button><button class="btn" type="submit" data-msg="1">${novo?"Criar e mandar no WhatsApp":"Salvar e mandar mensagem"}</button><span class="note" id="pfMsg"></span>
+      ${!novo&&p.status!=="entregue"?'<span style="flex:1"></span><button type="button" class="btn ghost" data-pfa="del">Excluir</button>':""}</div>
   </form>`;
   renderPfItens(); atualizaPf();
-  box.scrollIntoView({behavior:"smooth",block:"start"}); $("#pf-cliente").focus();
+  if(!box.open) box.showModal();
+  $("#pf-cliente").focus();
 }
+function fechaPf(){ pedForm=null; const b=$("#pedForm"); if(b.open) b.close(); b.innerHTML="" }
 function renderPfItens(){
-  const ps=produtos.slice().sort((a,b)=>a.nome.localeCompare(b.nome));
-  $("#pfItens").innerHTML=pedForm.d.itens.map((it,i)=>{const pr=produtos.find(x=>x.id===it.produto_id);const est=pr?num(pr.estoque):0;
-    return `<div class="pfi" data-ii="${i}">
-      <label class="f">Produto<select data-if="produto_id"><option value="">Outro (digitar)</option>${ps.map(p=>`<option value="${esc(p.id)}"${p.id===it.produto_id?" selected":""}>${esc(p.nome)}${num(p.estoque)>0?` (${num(p.estoque)} prontos)`:""}</option>`).join("")}${kitsCfg().length?`<optgroup label="Kits">${kitsCfg().map(k=>`<option value="kit:${esc(k.id)}"${it.kit_id===k.id?" selected":""}>Kit ${esc(k.nome)}</option>`).join("")}</optgroup>`:""}</select></label>
-      <label class="f">Descrição<input data-if="descricao" maxlength="150" value="${esc(it.descricao)}"></label>
-      <label class="f">Qtd<input data-if="quantidade" type="number" min="1" step="1" value="${esc(it.quantidade)}"></label>
-      <label class="f">Preço un.<div class="unit pre"><span>R$</span><input data-if="preco_unit" type="number" min="0" step="0.01" value="${esc(it.preco_unit)}"></div></label>
-      <label class="f">Tempo un.<div class="unit"><input data-if="horas_unit" type="number" min="0" step="0.05" value="${esc(it.horas_unit?+(+it.horas_unit).toFixed(2):"")}" placeholder="0"><span>h</span></div></label>
-      <label class="f wide">Personalização<input data-if="personalizacao" maxlength="300" placeholder="Nomes, cores, texto…" value="${esc(it.personalizacao)}"></label>
-      <div class="pfi-x">${est>0||it.doEstoque?`<label class="chk"><input type="checkbox" data-if="doEstoque"${it.doEstoque?" checked":""}> Da pronta entrega</label>`:""}
-        <button type="button" class="btn ghost" data-pfa="rmItem" ${pedForm.d.itens.length<2?"disabled":""} aria-label="Remover item">✕</button></div>
+  const ps=produtos.slice().sort((a,b)=>a.nome.localeCompare(b.nome)), varios=pedForm.d.itens.length>1;
+  $("#pfItens").innerHTML=pedForm.d.itens.map((it,i)=>{const pr=produtos.find(x=>x.id===it.produto_id);const est=pr?num(pr.estoque):0;const outro=!it.produto_id&&!it.kit_id;
+    return `<div class="pfi2" data-ii="${i}">
+      <div class="pfi2-l1">
+        <select data-if="produto_id" aria-label="Produto"><option value="">Outro (digitar)</option>${ps.map(p=>`<option value="${esc(p.id)}"${p.id===it.produto_id?" selected":""}>${esc(p.nome)}${num(p.estoque)>0?` (${num(p.estoque)} prontos)`:""}</option>`).join("")}${kitsCfg().length?`<optgroup label="Kits">${kitsCfg().map(k=>`<option value="kit:${esc(k.id)}"${it.kit_id===k.id?" selected":""}>Kit ${esc(k.nome)}</option>`).join("")}</optgroup>`:""}</select>
+        ${varios?`<button type="button" class="btn sm ghost" data-pfa="rmItem" aria-label="Remover item">✕</button>`:""}
+      </div>
+      ${outro?`<input data-if="descricao" maxlength="150" placeholder="O que é? Ex.: Chaveiro com nome" value="${esc(it.descricao)}">`:""}
+      <div class="pfi2-l2">
+        <label>Qtd<input data-if="quantidade" type="number" min="1" step="1" value="${esc(it.quantidade)}"></label>
+        <label>Preço un.<div class="unit pre"><span>R$</span><input data-if="preco_unit" type="number" min="0" step="0.01" value="${esc(it.preco_unit)}"></div></label>
+        ${outro?`<label>Tempo un.<div class="unit"><input data-if="horas_unit" type="number" min="0" step="0.05" value="${esc(it.horas_unit?+(+it.horas_unit).toFixed(2):"")}" placeholder="0"><span>h</span></div></label>`:""}
+        <span class="pfi2-sub num">${brl(num(it.quantidade)*num(it.preco_unit))}</span>
+      </div>
+      <input data-if="personalizacao" maxlength="300" placeholder="Personalização (opcional): nomes, cores, texto…" value="${esc(it.personalizacao)}">
+      ${est>0||it.doEstoque?`<label class="chk"><input type="checkbox" data-if="doEstoque"${it.doEstoque?" checked":""}> Da pronta entrega</label>`:""}
     </div>`}).join("");
 }
 function lePf(){
@@ -820,7 +831,8 @@ function atualizaPf(){
   const t=totPed(d);
   const fim=previsaoNovo(t.horas, pedForm.id);
   $("#pf-sugPrazo").textContent=t.horas>0?`Pela fila, fica pronto ~${ddmm(fim)}`:"";
-  $("#pfResumo").innerHTML=`<span>Total do cliente <b class="num">${brl(t.total)}</b></span><span>A receber <b class="num">${brl(t.receber)}</b></span><span>Lucro <b class="num ${t.lucro<0?"neg":"pos"}">${brl(t.lucro)}</b></span><span>Máquina <b class="num">${fmtH(t.horas)}</b></span><span>Filamento <b class="num">${Math.round(t.gramas)} g</b></span>`;
+  $("#pfResumo").innerHTML=`<span>Total</span><b class="num">${brl(t.total)}</b><small>Lucro <b class="num ${t.lucro<0?"neg":"pos"}">${brl(t.lucro)}</b>${t.horas>0?` · ${fmtH(t.horas)} de máquina`:""}</small>`;
+  $("#pfItens").querySelectorAll("[data-ii]").forEach(el=>{ const it=d.itens[+el.dataset.ii]; const sub=el.querySelector(".pfi2-sub"); if(it&&sub) sub.textContent=brl(num(it.quantidade)*num(it.preco_unit)) });
 }
 $("#pedForm").addEventListener("input",e=>{
   if(!pedForm) return; const el=e.target;
@@ -838,11 +850,11 @@ $("#pedForm").addEventListener("input",e=>{
 $("#pedForm").addEventListener("change",e=>{ if(e.target.matches('select[data-if="produto_id"],#pf-canal,input[data-if="doEstoque"]')) $("#pedForm").dispatchEvent(new Event("input")) });
 $("#pedForm").addEventListener("click",async e=>{
   const b=e.target.closest("[data-pfa]"); if(!b||!pedForm) return; const a=b.dataset.pfa;
-  if(a==="fechar"){pedForm=null;$("#pedForm").hidden=true;$("#pedForm").innerHTML="";return}
+  if(a==="fechar") return fechaPf();
   if(a==="addItem"){lePf();pedForm.d.itens.push({produto_id:null,descricao:"",quantidade:1,preco_unit:0,custo_unit:0,horas_unit:0,personalizacao:"",doEstoque:false,fil:[]});renderPfItens();atualizaPf()}
   if(a==="rmItem"){lePf();pedForm.d.itens.splice(+b.closest("[data-ii]").dataset.ii,1);renderPfItens();atualizaPf()}
   if(a==="del"){b.outerHTML=`<span class="confirm">Excluir este pedido? <button type="button" class="btn danger" data-pfa="delok">Excluir</button></span>`}
-  if(a==="delok"){try{await api("DELETE","/api/pedidos/"+encodeURIComponent(pedForm.id));pedidos=pedidos.filter(x=>x.id!==pedForm.id);pedForm=null;$("#pedForm").hidden=true;renderPedidos();renderFila();toast("Pedido excluído")}catch(err){toast(err.message)}}
+  if(a==="delok"){try{await api("DELETE","/api/pedidos/"+encodeURIComponent(pedForm.id));pedidos=pedidos.filter(x=>x.id!==pedForm.id);fechaPf();renderPedidos();renderFila();toast("Pedido excluído")}catch(err){toast(err.message)}}
 });
 $("#pedForm").addEventListener("submit",async e=>{
   e.preventDefault(); lePf(); const comMsg=e.submitter?.dataset.msg; const m=$("#pfMsg");
@@ -851,7 +863,7 @@ $("#pedForm").addEventListener("submit",async e=>{
     if(pedForm.id){r=await api("PUT","/api/pedidos/"+encodeURIComponent(pedForm.id),d);const i=pedidos.findIndex(x=>x.id===r.id);pedidos[i]=r}
     else{r=await api("POST","/api/pedidos",d);pedidos.unshift(r)}
     toast(pedForm.id?"Pedido atualizado":`Pedido #${r.numero} criado`);
-    pedForm=null;$("#pedForm").hidden=true;$("#pedForm").innerHTML="";renderPedidos();renderFila();
+    fechaPf();renderPedidos();renderFila();
     if(comMsg) abreMsg(r);
   }catch(err){ m.textContent=err.message }
 });
@@ -2501,3 +2513,4 @@ window.addEventListener("scroll",()=>document.querySelectorAll("details.mais[ope
 
 boot();
 })();
+$("#pedForm").addEventListener("close",()=>{ pedForm=null; $("#pedForm").innerHTML="" }); // Esc também fecha a caixa do pedido
