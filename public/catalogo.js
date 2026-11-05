@@ -33,6 +33,11 @@ async function carrega(){
     [ICONES.pag,L.cartao?"Pix ou cartão em até 12x":"Pagamento por Pix",L.pagamento||"Pelo link do pedido, com confirmação automática"],
     [ICONES.arte,"Personalize do seu jeito","Nomes, cores e textos aprovados antes de imprimir"],
   ].filter(Boolean).map(([i,t,s])=>`<div class="selo">${i}<div><b>${esc(t)}</b><span>${esc(s)}</span></div></div>`).join("");
+  // vitrine do topo: até 3 produtos com foto (pronta entrega primeiro); sem foto nenhuma, o texto ocupa a largura toda
+  const comFoto=dados.produtos.filter(p=>p.foto).sort((a,b)=>(b.prontaEntrega?1:0)-(a.prontaEntrega?1:0)).slice(0,3);
+  const vit=$("#vitrine"); vit.hidden=!comFoto.length; vit.classList.toggle("um",comFoto.length===1);
+  vit.innerHTML=comFoto.map(p=>`<button class="vt" type="button" data-ver="${esc(p.id)}" aria-label="Ver ${esc(p.nome)}"><img src="${esc(p.foto)}" alt="${esc(p.nome)}"><span>${esc(p.nome)}<b>${brl(p.preco)}</b></span></button>`).join("");
+  if(!comFoto.length) document.querySelector(".hero .wrap").style.gridTemplateColumns="1fr";
   const wa=waLoja(), ig=String(L.instagram||"").replace(/^@/,"");
   if(L.site){ const url=/^https?:/i.test(L.site)?L.site:"https://"+L.site; $("#lkSite").href=url; $("#lkSite").hidden=false }
   $("#links").innerHTML=[wa?`<a href="https://wa.me/${wa}" target="_blank" rel="noopener">WhatsApp</a>`:"",ig?`<a href="https://instagram.com/${encodeURIComponent(ig)}" target="_blank" rel="noopener">@${esc(ig)}</a>`:"",
