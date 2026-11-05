@@ -39,6 +39,7 @@ async function carrega(){
   vit.innerHTML=comFoto.map(p=>`<button class="vt" type="button" data-ver="${esc(p.id)}" aria-label="Ver ${esc(p.nome)}"><img src="${esc(p.foto)}" alt="${esc(p.nome)}"><span>${esc(p.nome)}<b>${brl(p.preco)}</b></span></button>`).join("");
   if(!comFoto.length&&document.body.classList.contains("sem3d")) document.querySelector(".hero .wrap").style.gridTemplateColumns="1fr";
   const wa=waLoja(), ig=String(L.instagram||"").replace(/^@/,"");
+  if(wa){ $("#zap").href=`https://wa.me/${wa}?text=${encodeURIComponent(`Olá! Vim pelo catálogo da ${L.nome} e queria tirar uma dúvida.`)}`; $("#zap").hidden=false } // botão flutuante
   if(L.site){ const url=/^https?:/i.test(L.site)?L.site:"https://"+L.site; $("#lkSite").href=url; $("#lkSite").hidden=false }
   $("#links").innerHTML=[wa?`<a href="https://wa.me/${wa}" target="_blank" rel="noopener">WhatsApp</a>`:"",ig?`<a href="https://instagram.com/${encodeURIComponent(ig)}" target="_blank" rel="noopener">@${esc(ig)}</a>`:"",
     L.site?`<a href="${esc(/^https?:/i.test(L.site)?L.site:"https://"+L.site)}" target="_blank" rel="noopener">${esc(L.site.replace(/^https?:\/\//,"").replace(/\/$/,""))}</a>`:""].join("");

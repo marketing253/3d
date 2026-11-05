@@ -161,6 +161,12 @@ dialog::backdrop{background:rgba(8,12,16,.55);backdrop-filter:blur(2px)}
 .ok p{margin:0;color:var(--suave)}
 .ok a.grande{display:block;text-decoration:none;text-align:center;width:100%}
 .ok a.sec{color:var(--verde);font-weight:700;text-decoration:none}
+/* botão flutuante do WhatsApp (sobe quando a barra do carrinho aparece no celular) */
+.zap{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:26;display:flex;align-items:center;gap:10px;background:#25d366;color:#fff;text-decoration:none;font-weight:800;border-radius:999px;padding:10px 18px 10px 10px;box-shadow:0 12px 28px rgba(37,211,102,.45);transition:transform .2s,bottom .25s}
+.zap:hover{transform:translateY(-2px) scale(1.03)}
+.zap svg{width:38px;height:38px;flex:none}
+.zap::before{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:0 0 0 0 rgba(37,211,102,.55);animation:zapPulso 2.6s ease-out infinite}
+@keyframes zapPulso{0%{box-shadow:0 0 0 0 rgba(37,211,102,.5)}70%,100%{box-shadow:0 0 0 16px rgba(37,211,102,0)}}
 .toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--escuro);color:#fff;padding:11px 18px;border-radius:12px;font-weight:600;z-index:60;box-shadow:0 10px 24px rgba(0,0,0,.25)}
 
 @media (max-width:820px){
@@ -175,6 +181,9 @@ dialog::backdrop{background:rgba(8,12,16,.55);backdrop-filter:blur(2px)}
   #dProd{max-height:calc(100dvh - 24px);overflow:auto}
   .flut.tem{display:block}
   .topo .btn-carr span{display:none}
+  .zap{padding:9px;right:16px}
+  .zap span{display:none}
+  .flut.tem ~ .zap{bottom:calc(86px + env(safe-area-inset-bottom,0px))}
 }
 @media (max-width:560px){
   .grade{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
@@ -187,7 +196,7 @@ dialog::backdrop{background:rgba(8,12,16,.55);backdrop-filter:blur(2px)}
   #dCarr{width:100vw;border-radius:0}
   .dados{grid-template-columns:1fr}
 }
-@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}.vt img{transition:none}}
+@media (prefers-reduced-motion:reduce){.zap::before{animation:none}*{transition:none!important;scroll-behavior:auto!important}.vt img{transition:none}}
 </style>
 </head>
 <body>
@@ -260,6 +269,10 @@ dialog::backdrop{background:rgba(8,12,16,.55);backdrop-filter:blur(2px)}
   </form>
 </dialog>
 
+<a class="zap" id="zap" href="#" target="_blank" rel="noopener" aria-label="Conversar no WhatsApp" hidden>
+  <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3.5C9.1 3.5 3.5 9 3.5 15.8c0 2.3.6 4.4 1.8 6.3L3.5 28.5l6.6-1.7c1.8 1 3.8 1.5 5.9 1.5 6.9 0 12.5-5.5 12.5-12.4S22.9 3.5 16 3.5z" fill="#fff"/><path d="M12.1 9.6c-.3-.6-.6-.6-.9-.6h-.8c-.3 0-.7.1-1.1.5-.4.4-1.4 1.4-1.4 3.4s1.5 3.9 1.7 4.2c.2.3 2.8 4.4 6.9 6 3.4 1.3 4.1 1.1 4.8 1 .7-.1 2.4-1 2.7-1.9.3-.9.3-1.7.2-1.9-.1-.2-.4-.3-.8-.5l-2.7-1.3c-.4-.1-.6-.2-.9.2-.3.4-1 1.3-1.3 1.5-.2.3-.5.3-.9.1-.4-.2-1.7-.6-3.2-2-1.2-1-2-2.3-2.2-2.7-.2-.4 0-.6.2-.8l.6-.7c.2-.2.3-.4.4-.7.1-.3.1-.5 0-.7l-1.3-3.1z" fill="#25d366"/></svg>
+  <span>Fale com a gente</span>
+</a>
 <div class="toast" id="toast" hidden></div>
 <script src="/catalogo.js"></script>
 <script type="module" src="/impressora3d.js"></script>
