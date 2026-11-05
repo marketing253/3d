@@ -44,7 +44,12 @@ h1,h2,h3{margin:0;line-height:1.15}
 .hero p{color:rgba(255,255,255,.78);font-size:17px;max-width:52ch;margin:14px 0 22px}
 .hero .cta{display:inline-flex;align-items:center;gap:8px;background:var(--menta);color:#06231b;font-weight:800;text-decoration:none;padding:13px 22px;border-radius:999px}
 .selos{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-/* vitrine do topo: fotos reais dos produtos */
+/* impressora 3D do topo */
+.impr3d{width:100%;max-width:540px;aspect-ratio:1/1;justify-self:center;opacity:0;transition:opacity .8s}
+.impr3d.pronta{opacity:1}
+.impr3d canvas{width:100%;height:100%;display:block}
+body:not(.sem3d) .hero .vitrine{display:none!important}
+/* vitrine do topo: fotos reais dos produtos (plano B sem 3D) */
 .vitrine{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .vitrine.um{grid-template-columns:1fr;max-width:400px;justify-self:center;width:100%}
 .vt{position:relative;border-radius:18px;overflow:hidden;aspect-ratio:1/1;background:#1b2229;cursor:pointer;box-shadow:0 18px 40px rgba(0,0,0,.35);border:0;padding:0;color:#fff;text-align:left}
@@ -163,6 +168,7 @@ dialog::backdrop{background:rgba(8,12,16,.55);backdrop-filter:blur(2px)}
   .hero .wrap{grid-template-columns:1fr}
   .selos{grid-template-columns:1fr;gap:8px}
   .vitrine{order:-1}
+  .impr3d{order:-1;max-width:360px;margin:-12px auto -8px}
   .topo .rot,.topo .sep,.topo .lk{display:none}
   .dp{grid-template-columns:1fr}
   .dp .info{padding:20px}
@@ -203,6 +209,8 @@ dialog::backdrop{background:rgba(8,12,16,.55);backdrop-filter:blur(2px)}
       <p id="hSobre">Peças impressas em 3D, feitas sob encomenda ou à pronta entrega.</p>
       <a class="cta" href="#produtos">Ver produtos ↓</a>
     </div>
+    <!-- impressora 3D em cena 3D (impressora3d.js); sem WebGL, aparece a vitrine de fotos -->
+    <div class="impr3d" id="impr3d" aria-hidden="true"></div>
     <!-- vitrine com fotos reais dos produtos (preenchida pelo catalogo.js) -->
     <div class="vitrine" id="vitrine" hidden></div>
   </div>
@@ -254,5 +262,6 @@ dialog::backdrop{background:rgba(8,12,16,.55);backdrop-filter:blur(2px)}
 
 <div class="toast" id="toast" hidden></div>
 <script src="/catalogo.js"></script>
+<script type="module" src="/impressora3d.js"></script>
 </body>
 </html>

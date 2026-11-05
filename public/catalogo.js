@@ -37,7 +37,7 @@ async function carrega(){
   const comFoto=dados.produtos.filter(p=>p.foto).sort((a,b)=>(b.prontaEntrega?1:0)-(a.prontaEntrega?1:0)).slice(0,3);
   const vit=$("#vitrine"); vit.hidden=!comFoto.length; vit.classList.toggle("um",comFoto.length===1);
   vit.innerHTML=comFoto.map(p=>`<button class="vt" type="button" data-ver="${esc(p.id)}" aria-label="Ver ${esc(p.nome)}"><img src="${esc(p.foto)}" alt="${esc(p.nome)}"><span>${esc(p.nome)}<b>${brl(p.preco)}</b></span></button>`).join("");
-  if(!comFoto.length) document.querySelector(".hero .wrap").style.gridTemplateColumns="1fr";
+  if(!comFoto.length&&document.body.classList.contains("sem3d")) document.querySelector(".hero .wrap").style.gridTemplateColumns="1fr";
   const wa=waLoja(), ig=String(L.instagram||"").replace(/^@/,"");
   if(L.site){ const url=/^https?:/i.test(L.site)?L.site:"https://"+L.site; $("#lkSite").href=url; $("#lkSite").hidden=false }
   $("#links").innerHTML=[wa?`<a href="https://wa.me/${wa}" target="_blank" rel="noopener">WhatsApp</a>`:"",ig?`<a href="https://instagram.com/${encodeURIComponent(ig)}" target="_blank" rel="noopener">@${esc(ig)}</a>`:"",
