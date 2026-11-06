@@ -71,13 +71,20 @@ body{margin:0;min-height:100vh;font:15px/1.5 Inter,system-ui,-apple-system,"Sego
 @keyframes okEntra{from{transform:scale(.92);opacity:0}to{transform:none;opacity:1}}
 @media (prefers-reduced-motion:reduce){.ok-box{animation:none}}
 [data-forma].fecha{position:absolute;left:-10000px;top:0;width:min(560px,90vw);opacity:0;pointer-events:none} /* cartão montado e escondido até o clique */
-/* fotos do orçamento: a primeira grande, as outras em grade; toque amplia */
-.galeria{display:grid;gap:8px;grid-template-columns:1fr 1fr}
-.galeria.g1{grid-template-columns:1fr}
-.galeria.g3 .gfoto:first-child{grid-column:1/-1}
-.gfoto{padding:0;border:1px solid var(--linha);border-radius:12px;overflow:hidden;background:#fff;cursor:zoom-in;aspect-ratio:1/1}
-.galeria.g1 .gfoto,.galeria.g3 .gfoto:first-child{aspect-ratio:4/3}
-.gfoto img{width:100%;height:100%;object-fit:cover;display:block}
+/* fotos do orçamento: carrossel, uma foto por vez; arrasta para o lado e toque amplia */
+.carrossel{position:relative;border-radius:14px;overflow:hidden;background:#fff;border:1px solid var(--linha)}
+.trilho{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.trilho::-webkit-scrollbar{display:none}
+.slide{flex:0 0 100%;scroll-snap-align:center;padding:0;border:0;background:#fff;cursor:zoom-in;aspect-ratio:4/3}
+.slide img{width:100%;height:100%;object-fit:cover;display:block}
+.seta{position:absolute;top:50%;transform:translateY(-50%);width:36px;height:36px;border-radius:50%;border:0;background:rgba(255,255,255,.92);color:var(--tinta);font-size:24px;line-height:1;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.18);display:grid;place-items:center;padding-bottom:3px}
+.seta.esq{left:10px}.seta.dir{right:10px}
+.seta[disabled]{opacity:0;pointer-events:none}
+.cont{position:absolute;top:10px;right:10px;background:rgba(14,17,20,.72);color:#fff;font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px}
+.pontos{position:absolute;left:0;right:0;bottom:10px;display:flex;justify-content:center;gap:6px;pointer-events:none}
+.pontos span{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.6);box-shadow:0 1px 3px rgba(0,0,0,.3);transition:width .2s}
+.pontos span.on{width:20px;border-radius:4px;background:#fff}
+@media (hover:none){.seta{display:none}}
 /* contador do código Pix e selo de compra segura */
 .tempo{display:flex;align-items:center;justify-content:center;gap:8px;background:#fff7e6;border:1px solid #f5d48a;color:#8a5a00;border-radius:10px;padding:8px 12px;font-size:13.5px}
 .tempo b{font:800 18px ui-monospace,Consolas,monospace;letter-spacing:.04em}

@@ -98,7 +98,12 @@ async function carrega(){
 
   const corpo={};
   corpo.orcamento=`
-    ${d.fotos&&d.fotos.length?`<div class="galeria g${Math.min(d.fotos.length,4)}">${d.fotos.map((u,i)=>`<button type="button" class="gfoto" data-a="zoom" data-src="${esc(u)}" aria-label="Ver a foto ${i+1} em tela cheia"><img src="${esc(u)}" alt="Foto ${i+1} do orçamento" loading="lazy"></button>`).join("")}</div>`:""}
+    ${d.fotos&&d.fotos.length?`<div class="carrossel" id="carrossel">
+      <div class="trilho" id="trilho">${d.fotos.map((u,i)=>`<button type="button" class="slide" data-a="zoom" data-src="${esc(u)}" aria-label="Foto ${i+1} de ${d.fotos.length}. Toque para ampliar"><img src="${esc(u)}" alt="Foto ${i+1} do orçamento" ${i?'loading="lazy"':''}></button>`).join("")}</div>
+      ${d.fotos.length>1?`<button type="button" class="seta esq" data-a="fotoAnt" aria-label="Foto anterior">‹</button><button type="button" class="seta dir" data-a="fotoProx" aria-label="Próxima foto">›</button>
+      <span class="cont" id="fotoCont">1/${d.fotos.length}</span>
+      <div class="pontos">${d.fotos.map((_,i)=>`<span class="${i?"":"on"}"></span>`).join("")}</div>`:""}
+    </div>`:""}
     <ul class="lista">${d.itens.map(i=>`<li>${i.foto&&!i.personalizacao?`<button type="button" class="fotobig" data-a="zoom" data-src="${esc(i.foto)}" aria-label="Ver a foto de ${esc(i.descricao)} em tela cheia"><img src="${esc(i.foto)}" alt="${esc(i.descricao)}" loading="lazy"><span>Toque para ampliar</span></button>`:""}<span class="txt"><b>${esc(i.descricao)}</b>${i.personalizacao?`<span class="tag">${esc(i.personalizacao)}</span>`:""}<small>${Number(i.quantidade).toLocaleString("pt-BR")} × ${brl(i.preco)}</small></span><b>${brl(i.quantidade*i.preco)}</b></li>`).join("")}</ul>
     <div class="tot"><span>Total</span><b>${brl(d.total)}</b></div>
     ${d.entrada>0&&restante>0
@@ -173,6 +178,7 @@ async function carrega(){
       if(c) montaCartao(d).catch(err=>{ toast(err.message); const el=document.getElementById("cardBrick"); if(el) el.innerHTML="" });
       return;
     }
+    if(a==="fotoAnt"||a==="fotoProx"){ const t=document.getElementById("trilho"); if(t) t.scrollBy({left:(a==="fotoProx"?1:-1)*t.clientWidth,behavior:"smooth"}); return }
     if(a==="copPix") return copia(d.pix.payload,"Código Pix copiado");
     if(a==="copChave") return copia(d.pix.chave,"Chave Pix copiada");
     if(["aprovar","recusar","arte-ok","ajuste"].includes(a)){ mostra(a); const t=grupo.querySelector("textarea:not([hidden])"); if(a==="recusar"||a==="ajuste") setTimeout(()=>grupo.querySelector(`[data-etapa="${a}"] textarea`)?.focus(),0); return }
@@ -191,6 +197,12 @@ async function carrega(){
 
   // Pix do Mercado Pago: pergunta de tempos em tempos e avança a página quando o pagamento cair
   relogio(); // contador do código Pix
+  const trilho=document.getElementById("trilho");
+  if(trilho) trilho.addEventListener("scroll",()=>{ const i=Math.round(trilho.scrollLeft/Math.max(1,trilho.clientWidth)), n=trilho.children.length;
+    document.querySelectorAll("#carrossel .pontos span").forEach((p,k)=>p.classList.toggle("on",k===i));
+    const c=document.getElementById("fotoCont"); if(c) c.textContent=`${i+1}/${n}`;
+    document.querySelector("#carrossel .esq")?.toggleAttribute("disabled",i===0); document.querySelector("#carrossel .dir")?.toggleAttribute("disabled",i===n-1) },{passive:true});
+  document.querySelector("#carrossel .esq")?.setAttribute("disabled","");
   // cartão: monta o formulário do Mercado Pago escondido já na abertura, para o clique em "Cartão" mostrar na hora
   if(d.cartao) montaCartao(d).catch(()=>{ const el=document.getElementById("cardBrick"); if(el) el.innerHTML="" });
   clearTimeout(carrega._t);
