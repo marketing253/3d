@@ -170,6 +170,19 @@ async function carrega(){
     const x=e.target.closest("[data-a]"); if(!x) return; const a=x.dataset.a;
     const grupo=x.closest("#resp,#respArte");
     const mostra=et2=>grupo.querySelectorAll("[data-etapa]").forEach(el=>el.hidden=el.dataset.etapa!==et2);
+    if(a==="zoom"&&x.closest("#trilho")){ // foto do orçamento: tela cheia que também arrasta entre as fotos
+      const fs=d.fotos||[], ini=[...x.parentNode.children].indexOf(x);
+      const z=document.createElement("div"); z.className="zoom galz"; z.setAttribute("role","dialog"); z.setAttribute("aria-label","Fotos do orçamento");
+      z.innerHTML=`<div class="ztrilho">${fs.map((u,i)=>`<div class="zslide"><img src="${esc(u)}" alt="Foto ${i+1} de ${fs.length}"></div>`).join("")}</div>
+        <button type="button" class="zx" aria-label="Fechar">✕</button>${fs.length>1?`<span class="zcont">${ini+1}/${fs.length}</span>`:""}`;
+      document.body.appendChild(z); document.body.style.overflow="hidden";
+      const tr=z.querySelector(".ztrilho"); tr.scrollLeft=ini*tr.clientWidth;
+      tr.addEventListener("scroll",()=>{ const c=z.querySelector(".zcont"); if(c) c.textContent=`${Math.round(tr.scrollLeft/tr.clientWidth)+1}/${fs.length}` },{passive:true});
+      const fecha=()=>{ const t=document.getElementById("trilho"); if(t) t.scrollLeft=Math.round(tr.scrollLeft/tr.clientWidth)*t.clientWidth; z.remove(); document.body.style.overflow=""; document.removeEventListener("keydown",tecla) };
+      const tecla=ev=>{ if(ev.key==="Escape") fecha() };
+      z.addEventListener("click",ev=>{ if(ev.target.closest(".zx")||ev.target.classList.contains("zslide")) fecha() }); // ✕ ou toque fora da foto
+      document.addEventListener("keydown",tecla); z.querySelector(".zx").focus();
+      return }
     if(a==="zoom"){ const z=document.createElement("div"); z.className="zoom"; z.innerHTML=`<img src="${esc(x.dataset.src)}" alt="">`; z.addEventListener("click",()=>z.remove()); document.body.appendChild(z); return }
     if(a==="fPix"||a==="fCartao"){
       const c=a==="fCartao";
