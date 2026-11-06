@@ -16,7 +16,9 @@ async function envia(url,body){
   const r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body||{})});
   const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.erro||"Não deu para enviar. Tente de novo."); return j;
 }
+const seguro=d=>d.pix?.auto?`<div class="seguro"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><div><b>Compra segura</b><span>Pagamento processado pelo Mercado Pago, com confirmação automática. Os dados do seu cartão não passam pela loja.</span></div></div>`:"";
 const pixHtml=d=>`<div class="pixw">
+  ${d.pix.renova!=null?`<div class="tempo" id="tempo" data-fim="${Date.now()+d.pix.renova}"><span>Código Pix válido nesta tela por</span><b id="tempoTxt">05:00</b></div>`:""}
   <div class="qr">${d.pix.svg}</div>
   <div class="cod" id="pixCod">${esc(d.pix.payload)}</div>
   <button class="btn pri" type="button" data-a="copPix">Copiar código Pix</button>
@@ -64,6 +66,15 @@ async function montaCartao(d){
   });
 }
 
+function relogio(){
+  clearInterval(relogio._t);
+  const el=document.getElementById("tempo"); if(!el) return;
+  const passo=()=>{ const r=Math.max(0,Number(el.dataset.fim)-Date.now()), m=Math.floor(r/60000), s2=Math.floor(r%60000/1000);
+    const t=document.getElementById("tempoTxt"); if(t) t.textContent=`${String(m).padStart(2,"0")}:${String(s2).padStart(2,"0")}`;
+    el.classList.toggle("fim",r<60000);
+    if(r<=0){ clearInterval(relogio._t); carrega() } };
+  passo(); relogio._t=setInterval(passo,1000);
+}
 async function carrega(){
   let d;
   try{const r=await fetch("/api/publico/pedido/"+encodeURIComponent(token));if(!r.ok)throw new Error(r.status);d=await r.json()}
@@ -87,13 +98,14 @@ async function carrega(){
 
   const corpo={};
   corpo.orcamento=`
+    ${d.fotos&&d.fotos.length?`<div class="galeria g${Math.min(d.fotos.length,4)}">${d.fotos.map((u,i)=>`<button type="button" class="gfoto" data-a="zoom" data-src="${esc(u)}" aria-label="Ver a foto ${i+1} em tela cheia"><img src="${esc(u)}" alt="Foto ${i+1} do orçamento" loading="lazy"></button>`).join("")}</div>`:""}
     <ul class="lista">${d.itens.map(i=>`<li>${i.foto&&!i.personalizacao?`<button type="button" class="fotobig" data-a="zoom" data-src="${esc(i.foto)}" aria-label="Ver a foto de ${esc(i.descricao)} em tela cheia"><img src="${esc(i.foto)}" alt="${esc(i.descricao)}" loading="lazy"><span>Toque para ampliar</span></button>`:""}<span class="txt"><b>${esc(i.descricao)}</b>${i.personalizacao?`<span class="tag">${esc(i.personalizacao)}</span>`:""}<small>${Number(i.quantidade).toLocaleString("pt-BR")} × ${brl(i.preco)}</small></span><b>${brl(i.quantidade*i.preco)}</b></li>`).join("")}</ul>
     <div class="tot"><span>Total</span><b>${brl(d.total)}</b></div>
     ${d.entrada>0&&restante>0
     ?`<p class="exp">Como você prefere pagar? O pagamento é por Pix, logo depois de aprovar.${d.prazo?` Prazo: pronto até <b>${dataBR(d.prazo)}</b>.`:""}</p>
       <div class="opcoes" role="radiogroup" aria-label="Forma de pagamento">
-        <label class="opc"><input type="radio" name="pagar" value="entrada" checked><span><b>Entrada de ${Math.round(d.entrada/d.total*100)}%: ${brl(d.entrada)}</b><small>E o restante, ${brl(restante)}, quando ficar pronto</small></span></label>
-        <label class="opc"><input type="radio" name="pagar" value="total"><span><b>Pagar 100% agora: ${brl(d.total)}</b><small>Quita o pedido e não precisa pagar mais nada na entrega</small></span></label>
+        <label class="opc"><input type="radio" name="pagar" value="total" checked><span><b>Pagar 100% agora: ${brl(d.total)} <em class="rec">Recomendado</em></b><small>Quita o pedido de uma vez e não precisa pagar mais nada na entrega</small></span></label>
+        <label class="opc"><input type="radio" name="pagar" value="entrada"><span><b>Entrada de ${Math.round(d.entrada/d.total*100)}%: ${brl(d.entrada)}</b><small>E o restante, ${brl(restante)}, quando ficar pronto</small></span></label>
       </div>`
     :`<p class="exp">${d.entrada>0?`Ao aprovar, você paga <b>${brl(d.entrada)}</b> por Pix para começarmos.`:"Ao aprovar, seu pedido segue para a produção."}${d.prazo?` Prazo: pronto até <b>${dataBR(d.prazo)}</b>.`:""}</p>`}
     <div id="resp">
@@ -104,7 +116,7 @@ async function carrega(){
   corpo.pagamento=d.pix?.auto
     ?`<div class="valor">${brl(d.pix.valor)}</div>
       <p class="exp">${d.cartao?"Pague por Pix ou cartão de crédito para começarmos.":"Pague por Pix para começarmos. No app do banco, escolha <b>Pix copia e cola</b>: o valor já vem preenchido."} <b>Assim que o pagamento cair, esta página avança sozinha.</b></p>
-      ${pagHtml(d)}`
+      ${pagHtml(d)}${seguro(d)}`
     :d.pagInformado
     ?`<div class="aviso"><b>Recebemos o seu aviso de pagamento</b><span>Assim que confirmarmos o Pix, a arte aparece aqui para você aprovar.</span></div>
       ${wa(`Olá! Paguei a entrada do pedido #${d.numero}. Segue o comprovante:`)?`<a class="btn" href="${esc(wa(`Olá! Paguei a entrada do pedido #${d.numero}. Segue o comprovante:`))}" target="_blank" rel="noopener">Enviar o comprovante no WhatsApp</a>`:""}`
@@ -167,7 +179,7 @@ async function carrega(){
     if(a==="voltar") return mostra("1");
     x.disabled=true;
     try{
-      if(a==="aprovar-ok"){ await envia(`/api/publico/pedido/${encodeURIComponent(token)}/resposta`,{acao:"aprovar",pagar:document.querySelector('input[name="pagar"]:checked')?.value||"entrada"}); toast("Orçamento aprovado!") }
+      if(a==="aprovar-ok"){ await envia(`/api/publico/pedido/${encodeURIComponent(token)}/resposta`,{acao:"aprovar",pagar:document.querySelector('input[name="pagar"]:checked')?.value||"total"}); toast("Orçamento aprovado!") }
       if(a==="recusar-ok"){ await envia(`/api/publico/pedido/${encodeURIComponent(token)}/resposta`,{acao:"recusar",motivo:$("#motivo").value}); toast("Resposta enviada") }
       if(a==="paguei"){ await envia(`/api/publico/pedido/${encodeURIComponent(token)}/paguei`); toast("Aviso enviado. Obrigado!") }
       if(a==="arte-sim"){ await envia(`/api/publico/arte/${encodeURIComponent(token)}/resposta`,{acao:"aprovar"}); toast("Arte aprovada!") }
@@ -178,6 +190,7 @@ async function carrega(){
   };
 
   // Pix do Mercado Pago: pergunta de tempos em tempos e avança a página quando o pagamento cair
+  relogio(); // contador do código Pix
   // cartão: monta o formulário do Mercado Pago escondido já na abertura, para o clique em "Cartão" mostrar na hora
   if(d.cartao) montaCartao(d).catch(()=>{ const el=document.getElementById("cardBrick"); if(el) el.innerHTML="" });
   clearTimeout(carrega._t);

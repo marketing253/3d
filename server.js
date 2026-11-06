@@ -661,6 +661,7 @@ function limpaPedido(b) {
     ...(b.impressora ? { impressora: txt(b.impressora, 60) } : {}),
     ...(b.entrada !== "" && b.entrada != null && Number.isFinite(Number(b.entrada)) ? { entrada: Math.max(0, n(b.entrada)) } : {}),
     ...(b.semArte ? { semArte: true } : {}), ...(b.comArte ? { comArte: true } : {}),
+    ...(Array.isArray(b.fotosOrc) && b.fotosOrc.length ? { fotosOrc: b.fotosOrc.slice(0, 8).filter(f => FOTO_RE.test(f?.id || "")).map(f => ({ id: f.id })) } : {}), // fotos do orçamento (até 8)
   } };
 }
 // ---------- etapas do pedido ----------
@@ -731,7 +732,7 @@ app.put("/api/pedidos/:id", exigeLogin, exigeEdicao, (req, res) => {
   if (ant.artes) v.artes = ant.artes; // versões da arte enviadas para aprovação
   if (ant.pagInformado) v.pagInformado = ant.pagInformado; // cliente avisou que pagou a entrada
   if (ant.pagarTudo) v.pagarTudo = true; // cliente escolheu pagar 100% ao aprovar
-  for (const k of ["mp", "mpPagos", "mpPagamentos", "avisosPag"]) if (ant[k]) v[k] = ant[k]; // cobrança, pagamentos e avisos do Mercado Pago
+  for (const k of ["mp", "mpPagos", "mpPagamentos", "mpAbertos", "avisosPag"]) if (ant[k]) v[k] = ant[k]; // cobrança, pagamentos e avisos do Mercado Pago
   if (ant.fluxo) v.fluxo = ant.fluxo;
   db.transaction(() => {
     db.prepare("UPDATE pedidos SET dados = ?, prazo = ?, atualizado_em = datetime('now') WHERE id = ?").run(JSON.stringify(v), v.prazo, req.params.id);
@@ -1601,7 +1602,11 @@ function mpAplica(o) {
   const base = p.mp && String(p.mp.id) === id ? n(p.mp.base) : n(p.sinal);
   const antes = n(p.sinal);
   p.sinal = n(Math.max(n(p.sinal), base + pago));
-  if (p.mp && String(p.mp.id) === id) p.mp.status = "processed";
+  // pago um dos códigos: os outros (o atual e os renovados) são cancelados para o cliente não pagar duas vezes
+  const outros = [p.mp?.status === "pending" ? String(p.mp.id) : null, ...(p.mpAbertos || [])].filter(x => x && x !== id);
+  for (const x of outros) mpApi("POST", `/v1/orders/${encodeURIComponent(x)}/cancel`).catch(e => console.error("[mp] cancelar", e.message));
+  p.mpAbertos = [];
+  if (p.mp) p.mp.status = String(p.mp.id) === id ? "processed" : outros.includes(String(p.mp.id)) ? "cancelled" : p.mp.status;
   const forma = mpForma(o);
   p.mpPagamentos = [...(p.mpPagamentos || []), { id, valor: pago, somado: n(p.sinal - antes), forma, taxa: 0, em: new Date().toISOString() }];
   avisoPag(p, { tipo: "pago", valor: pago, forma });
@@ -1652,26 +1657,38 @@ const MP_FIM = ["canceled", "cancelled", "expired", "failed", "refunded", "charg
 const mpConsultas = new Map();
 async function mpConfere(r) {
   const p = JSON.parse(r.dados);
-  if (!MP_TOKEN || p.mp?.status !== "pending" || Date.now() - (mpConsultas.get(r.id) || 0) < 8000) return r;
+  // a cobrança atual e os códigos renovados que ainda valem (o cliente pode ter copiado um código anterior)
+  const ids = [p.mp?.status === "pending" ? p.mp.id : null, ...(p.mpAbertos || [])].filter(Boolean);
+  if (!MP_TOKEN || !ids.length || Date.now() - (mpConsultas.get(r.id) || 0) < 8000) return r;
   mpConsultas.set(r.id, Date.now());
   try {
-    const o = await mpApi("GET", `/v1/orders/${encodeURIComponent(p.mp.id)}`);
-    if (o.status === "processed") mpAplica(o);
-    else if (MP_FIM.includes(o.status)) { p.mp.status = o.status; salvaDados(r.id, p); }
+    for (const id of ids) {
+      const o = await mpApi("GET", `/v1/orders/${encodeURIComponent(id)}`);
+      if (o.status === "processed") { mpAplica(o); break; }
+      if (MP_FIM.includes(o.status)) {
+        const q = JSON.parse(db.prepare("SELECT dados FROM pedidos WHERE id = ?").get(r.id).dados);
+        if (q.mp && q.mp.id === id) q.mp.status = o.status;
+        q.mpAbertos = (q.mpAbertos || []).filter(x => x !== id);
+        salvaDados(r.id, q);
+      }
+    }
   } catch (e) { console.error("[mp] consulta", e.message); }
   return db.prepare("SELECT * FROM pedidos WHERE id = ?").get(r.id);
 }
 // E-mail do pagador exigido pelo Mercado Pago: gerado pelo número do pedido, para o cliente não precisar digitar.
 const mpEmail = (r, base) => { const host = new URL(base).hostname; return `pedido${r.numero}@${/\.[a-z]{2,}$/i.test(host) ? host : "precificador3d.com.br"}`; };
 const baseUrl = req => (process.env.PUBLIC_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
-// Reaproveita a cobrança pendente do mesmo valor; se o valor mudou, cancela a antiga e cria outra (vale 24 h).
+// Reaproveita a cobrança pendente do mesmo valor por 5 minutos; depois mostra um código novo (o anterior continua
+// valendo e fica em mpAbertos). Se o valor mudou, cancela a antiga. Cada código vale 24 h no Mercado Pago.
+const MP_RENOVA = 5 * 60000;
 const mpCriando = new Map();
 async function mpCobranca(r, tipo, valor, base) {
   const p = JSON.parse(r.dados), c = p.mp;
-  if (c && c.status === "pending" && c.tipo === tipo && Math.abs(c.valor - valor) < 0.005 && Date.parse(c.expira) > Date.now() + 10 * 60000) return c;
+  const mesmo = c && c.status === "pending" && c.tipo === tipo && Math.abs(c.valor - valor) < 0.005 && Date.parse(c.expira) > Date.now() + 10 * 60000;
+  if (mesmo && Date.now() - Date.parse(c.criado || 0) < MP_RENOVA) return c;
   if (mpCriando.has(r.id)) return mpCriando.get(r.id);
   const tarefa = (async () => {
-    if (c && c.status === "pending") await mpApi("POST", `/v1/orders/${encodeURIComponent(c.id)}/cancel`).catch(e => console.error("[mp] cancelar", e.message));
+    if (c && c.status === "pending" && !mesmo) await mpApi("POST", `/v1/orders/${encodeURIComponent(c.id)}/cancel`).catch(e => console.error("[mp] cancelar", e.message));
     const v = n(valor).toFixed(2);
     const o = await mpApi("POST", "/v1/orders", {
       type: "online", processing_mode: "automatic", external_reference: r.id, total_amount: v,
@@ -1682,7 +1699,8 @@ async function mpCobranca(r, tipo, valor, base) {
     const pg = o.transactions?.payments?.[0] || {}, qr = pg.payment_method?.qr_code;
     if (!o.id || !qr) throw new Error("Mercado Pago não devolveu o código Pix.");
     const atual = JSON.parse(db.prepare("SELECT dados FROM pedidos WHERE id = ?").get(r.id).dados);
-    atual.mp = { id: String(o.id), tipo, valor: n(valor), base: n(atual.sinal), status: "pending", qr, expira: pg.date_of_expiration || new Date(Date.now() + 24 * 3600000).toISOString() };
+    if (mesmo) atual.mpAbertos = [...(atual.mpAbertos || []), String(c.id)].slice(-6); // código renovado: o anterior ainda pode ser pago
+    atual.mp = { id: String(o.id), tipo, valor: n(valor), base: n(atual.sinal), status: "pending", qr, criado: new Date().toISOString(), expira: pg.date_of_expiration || new Date(Date.now() + 24 * 3600000).toISOString() };
     salvaDados(r.id, atual);
     return atual.mp;
   })();
@@ -1825,6 +1843,7 @@ app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
     try {
       const c = await mpCobranca(r, pixTipo, pixValor, baseUrl(req));
       pix = { payload: c.qr, svg: await QRCode.toString(c.qr, { type: "svg", margin: 1, errorCorrectionLevel: "M" }) }; pixAuto = true;
+      pix.renova = Math.max(0, Date.parse(c.criado || 0) + MP_RENOVA - Date.now()); // ms até mostrar um código novo
     } catch (e) { console.error("[mp] cobrança", e.message); }
   }
   if (pixTipo && !pix) pix = await pixPara(pixValor, (pixTipo === "entrada" ? "ENT" : "PED") + r.numero);
@@ -1836,12 +1855,13 @@ app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
     numero: r.numero, status: r.status, prazo: r.prazo, data: p.data, cliente: txt(p.cliente, 120),
     itens: p.itens.map((i, k) => ({ descricao: i.descricao, quantidade: i.quantidade, preco: i.preco_unit, personalizacao: i.personalizacao || "",
       foto: fotoDoItem(i) ? `/pedido/${r.token}/foto/${k}` : null })),
+    fotos: (p.fotosOrc || []).map((f, k) => `/pedido/${r.token}/foto-orc/${k}`),
     desconto: n(p.desconto), frete: n(p.freteCliente), total, sinal: n(p.sinal), receber,
     entrada, faltaEntrada, resposta: p.resposta ? { acao: p.resposta.acao, em: p.resposta.em } : null,
     etapa: etapaDe(r.status, p), pagInformado: p.pagInformado || null, precisaArte: precisaArte(p),
     arte: p.artes && p.artes.length ? (a => ({ v: a.v, status: a.status, nota: a.nota || "", comentario: a.comentario || "", respondidoEm: a.respondidoEm || null, imagem: `/aprovacao/${r.token}/arte/${a.v}` }))(p.artes.at(-1)) : null,
     cartao: pixTipo && MP_TOKEN && MP_PUBLIC ? { publicKey: MP_PUBLIC, valor: pixValor, parcelas: 12, email: mpEmail(r, baseUrl(req)) } : null,
-    pix: pix ? { payload: pix.payload, svg: pix.svg, tipo: pixTipo, valor: pixValor, auto: pixAuto, chave: pixAuto ? "" : txt(L.pixChave, 77), nome: txt(L.pixNome || L.nome, 60) } : null,
+    pix: pix ? { payload: pix.payload, svg: pix.svg, tipo: pixTipo, valor: pixValor, auto: pixAuto, renova: pix.renova ?? null, chave: pixAuto ? "" : txt(L.pixChave, 77), nome: txt(L.pixNome || L.nome, 60) } : null,
   });
 });
 // ---------- aprovação da arte ----------
@@ -1936,6 +1956,14 @@ app.get("/pedido/:token/foto/:i", limitePublico, (req, res) => {
   const foto = item && fotoDoItem(item); if (!foto) return res.status(404).end();
   res.set("Cache-Control", "private, max-age=3600");
   res.sendFile(path.join(FOTOS_DIR, foto), err => { if (err && !res.headersSent) res.status(404).end(); });
+});
+// fotos anexadas ao orçamento, vistas só por quem tem o link do pedido
+app.get("/pedido/:token/foto-orc/:i", limitePublico, (req, res) => {
+  const r = pedidoPorToken(req.params.token); if (!r) return res.status(404).end();
+  const f = (JSON.parse(r.dados).fotosOrc || [])[Number(req.params.i)];
+  if (!f || !FOTO_RE.test(f.id || "")) return res.status(404).end();
+  res.set("Cache-Control", "private, max-age=3600");
+  res.sendFile(path.join(FOTOS_DIR, f.id), err => { if (err && !res.headersSent) res.status(404).end(); });
 });
 app.get("/pedido/:token", limitePublico, (req, res) => {
   const r = pedidoPorToken(req.params.token);

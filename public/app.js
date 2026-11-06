@@ -827,6 +827,7 @@ function abrePedido(p){
         <label class="f">WhatsApp<input id="pf-whats" inputmode="tel" maxlength="30" placeholder="(41) 91234-5678" value="${esc(d.whatsapp)}"></label>
       </div>
       <div class="pf-itens"><div class="row spread"><b>Itens</b><button type="button" class="btn sm ghost" data-pfa="addItem">+ Adicionar item</button></div><div id="pfItens"></div></div>
+      <div class="pf-itens"><div class="row spread"><b>Fotos do orçamento <span class="pcat">aparecem para o cliente no link</span></b></div><div id="pfFotos" class="pf-fotos"></div><span class="note" id="pfFotoMsg"></span></div>
       <div class="pf-2">
         <label class="f">Prazo de entrega<input type="date" id="pf-prazo" value="${esc(d.prazo||"")}"><span class="hint" id="pf-sugPrazo"></span></label>
         <div class="pf-total" id="pfResumo"></div>
@@ -848,9 +849,14 @@ function abrePedido(p){
     <div class="pres-acoes"><button class="btn primary" type="submit">${novo?"Criar pedido":"Salvar"}</button><button class="btn" type="submit" data-msg="1">${novo?"Criar e mandar no WhatsApp":"Salvar e mandar mensagem"}</button><span class="note" id="pfMsg"></span>
       ${!novo&&p.status!=="entregue"?'<span style="flex:1"></span><button type="button" class="btn ghost" data-pfa="del">Excluir</button>':""}</div>
   </form>`;
-  renderPfItens(); atualizaPf();
+  renderPfItens(); renderPfFotos(); atualizaPf();
   if(!box.open) box.showModal();
   $("#pf-cliente").focus();
+}
+function renderPfFotos(){
+  const fs=pedForm.d.fotosOrc||[];
+  $("#pfFotos").innerHTML=fs.map((f,i)=>`<div class="pf-foto"><img src="/fotos/${esc(f.id)}" alt="Foto ${i+1}"><button type="button" data-pfa="rmFoto" data-i="${i}" aria-label="Tirar foto">✕</button></div>`).join("")
+    +(fs.length<8?`<label class="pf-foto add" for="pf-fotos">+ Fotos<small>${fs.length}/8</small><input id="pf-fotos" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden></label>`:"");
 }
 function fechaPf(){ pedForm=null; const b=$("#pedForm"); if(b.open) b.close(); b.innerHTML="" }
 function renderPfItens(){
@@ -903,12 +909,19 @@ $("#pedForm").addEventListener("input",e=>{
   if(el.id==="pf-canal") pedForm.taxaManual=false;
   atualizaPf();
 });
-$("#pedForm").addEventListener("change",e=>{ if(e.target.matches('select[data-if="produto_id"],#pf-canal,input[data-if="doEstoque"]')) $("#pedForm").dispatchEvent(new Event("input")) });
+$("#pedForm").addEventListener("change",async e=>{
+  if(e.target.id==="pf-fotos"&&pedForm){ // várias de uma vez, até 8
+    const d=pedForm.d; d.fotosOrc=d.fotosOrc||[]; const todas=[...e.target.files], fs=todas.slice(0,Math.max(0,8-d.fotosOrc.length)); e.target.value="";
+    try{ for(let i=0;i<fs.length;i++){ $("#pfFotoMsg").textContent=`Enviando foto ${i+1} de ${fs.length}…`; d.fotosOrc.push({id:await enviaImagem(fs[i])}); renderPfFotos() }
+      $("#pfFotoMsg").textContent=todas.length>fs.length?"Cabem até 8 fotos; as demais ficaram de fora.":"" }
+    catch(err){ $("#pfFotoMsg").textContent=err.message }
+    return } if(e.target.matches('select[data-if="produto_id"],#pf-canal,input[data-if="doEstoque"]')) $("#pedForm").dispatchEvent(new Event("input")) });
 $("#pedForm").addEventListener("click",async e=>{
   const b=e.target.closest("[data-pfa]"); if(!b||!pedForm) return; const a=b.dataset.pfa;
   if(a==="fechar") return fechaPf();
   if(a==="addItem"){lePf();pedForm.d.itens.push({produto_id:null,descricao:"",quantidade:1,preco_unit:0,custo_unit:0,horas_unit:0,personalizacao:"",doEstoque:false,fil:[]});renderPfItens();atualizaPf()}
   if(a==="rmItem"){lePf();pedForm.d.itens.splice(+b.closest("[data-ii]").dataset.ii,1);renderPfItens();atualizaPf()}
+  if(a==="rmFoto"){pedForm.d.fotosOrc.splice(+b.dataset.i,1);renderPfFotos()}
   if(a==="del"){b.outerHTML=`<span class="confirm">Excluir este pedido? <button type="button" class="btn danger" data-pfa="delok">Excluir</button></span>`}
   if(a==="delok"){try{await api("DELETE","/api/pedidos/"+encodeURIComponent(pedForm.id));pedidos=pedidos.filter(x=>x.id!==pedForm.id);fechaPf();renderPedidos();renderFila();toast("Pedido excluído")}catch(err){toast(err.message)}}
 });
