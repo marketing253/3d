@@ -659,3 +659,4 @@ dialog.pform{width:min(640px,calc(100vw - 24px))}
   .auth .auth-box .auth-topo{display:flex}
   .auth .auth-box .card{padding:32px}
 }
+.propfoto.add small{font-size:11.5px;color:var(--muted)}

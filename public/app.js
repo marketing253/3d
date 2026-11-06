@@ -2226,7 +2226,7 @@ function renderProposta(){
       <div class="fields"><label class="f" style="grid-column:1/-1">Título da capa<input data-pf="titulo" maxlength="120" value="${esc(d.titulo)}"></label></div>
       <h3>Fotos</h3><p class="note" style="margin:0">A 1ª vai na capa, a 2ª e a 3ª na página do produto e a 4ª nas especificações.</p>
       <div class="propfotos">${d.fotos.map((f,i)=>`<div class="propfoto" data-i="${i}"><img src="/fotos/${esc(f.id)}" alt=""><input data-ff2="${i}" maxlength="80" placeholder="Legenda (opcional)" value="${esc(f.legenda)}"><button type="button" class="btn ghost sm" data-pa2="rmfoto">Remover</button></div>`).join("")}
-        ${d.fotos.length<4?`<label class="propfoto add" for="prop-foto">+ Foto<input id="prop-foto" type="file" accept="image/png,image/jpeg,image/webp" hidden></label>`:""}</div>
+        ${d.fotos.length<8?`<label class="propfoto add" for="prop-foto">+ Fotos<small>${d.fotos.length}/8 · pode escolher várias</small><input id="prop-foto" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden></label>`:""}</div>
     </div>
     <div class="card stack"><h3>O produto</h3>
       <label class="f">Título da página<input data-pf="produtoTitulo" maxlength="80" value="${esc(d.produtoTitulo)}"></label>
@@ -2276,8 +2276,12 @@ $("#propBox").addEventListener("click",async e=>{
 });
 $("#propBox").addEventListener("change",async e=>{
   if(!prop) return;
-  if(e.target.id==="prop-foto"){ const f=e.target.files[0]; e.target.value=""; if(!f) return; leProposta(); $("#propMsg").textContent="Enviando foto…";
-    try{ prop.d.fotos.push({id:await enviaImagem(f),legenda:""}); $("#propMsg").textContent=""; renderProposta() }catch(err){ $("#propMsg").textContent=err.message } return }
+  if(e.target.id==="prop-foto"){ // várias de uma vez, até completar 8
+    const todas=[...e.target.files], fs=todas.slice(0,Math.max(0,8-prop.d.fotos.length)); e.target.value=""; if(!fs.length) return; leProposta();
+    try{ for(let i=0;i<fs.length;i++){ $("#propMsg").textContent=`Enviando foto ${i+1} de ${fs.length}…`; prop.d.fotos.push({id:await enviaImagem(fs[i]),legenda:""}) }
+      $("#propMsg").textContent=todas.length>fs.length?"A proposta aceita até 8 fotos; as demais ficaram de fora.":"" }
+    catch(err){ $("#propMsg").textContent=err.message }
+    renderProposta(); return }
   if(e.target.dataset.pf==="somar"){ leProposta(); renderProposta() }
 });
 

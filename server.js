@@ -835,7 +835,7 @@ function limpaProposta(b) {
   const lista = (x, max, f) => (Array.isArray(x) ? x : []).slice(0, max).map(f).filter(Boolean);
   return {
     titulo: txt(b.titulo, 120), produtoTitulo: txt(b.produtoTitulo, 80), texto: txt(b.texto, 1200),
-    fotos: lista(b.fotos, 4, f => FOTO_RE.test(f?.id || "") ? { id: f.id, legenda: txt(f.legenda, 80) } : null),
+    fotos: lista(b.fotos, 8, f => FOTO_RE.test(f?.id || "") ? { id: f.id, legenda: txt(f.legenda, 80) } : null),
     destaques: lista(b.destaques, 6, d => (txt(d?.t, 60) || txt(d?.d, 200)) ? { t: txt(d.t, 60), d: txt(d.d, 200) } : null),
     specs: lista(b.specs, 10, d => (txt(d?.k, 60) || txt(d?.v, 160)) ? { k: txt(d.k, 60), v: txt(d.v, 160) } : null),
     faixas: lista(b.faixas, 8, f => n(f?.preco) > 0 ? { rotulo: txt(f.rotulo, 80), q: Math.max(1, Math.round(n(f.q))), preco: n(f.preco), prazo: txt(f.prazo, 40) } : null),
@@ -890,6 +890,13 @@ app.get("/imprimir/proposta/:id", exigeLogin, (req, res) => {
       ${pr.fotos[3] ? `<div class="fotos n1">${fotoTag(pr.fotos[3])}</div>` : ""}
       ${specTab}
       ${rodape(++pag)}</section>`);
+  // galeria: fotos que não entraram na capa, na página do produto nem nas especificações (até 5, da 4ª à 8ª)
+  const usouQuarta = pr.specs.length && !specJunto && pr.fotos[3];
+  const galeria = pr.fotos.slice(usouQuarta ? 4 : 3);
+  if (galeria.length)
+    pags.push(`<section class="pg"><div class="k">Galeria</div>${tit("Mais fotos", "h2")}
+      <div class="fotos galeria g${galeria.length}">${galeria.map(fotoTag).join("")}</div>
+      ${rodape(++pag)}</section>`);
   // investimento + condições
   const temPrazo = pr.faixas.some(f => f.prazo), vazio = temPrazo ? "<td></td>" : "";
   const totalItens = pr.faixas.reduce((s, f) => s + f.q * f.preco, 0);
@@ -937,6 +944,7 @@ h1 u{text-decoration:none;background:linear-gradient(${cor},${cor}) left bottom/
 .lead{font-size:12pt;line-height:1.5;margin:0 0 8mm}.lead.sm{font-size:10.5pt;color:#4b5058}
 .fotos{display:grid;gap:6mm;margin-bottom:9mm}.fotos.n2{grid-template-columns:1fr 1fr}.fotos.n1{grid-template-columns:1fr}
 .fotos .ph{height:72mm}.fotos.n1 .ph{height:90mm}
+.fotos.galeria{grid-template-columns:1fr 1fr;gap:6mm}.fotos.galeria .ph{height:68mm}.fotos.g1 .ph,.fotos.g2 .ph{height:100mm}.fotos.g1{grid-template-columns:1fr}.fotos.g3 figure:first-child,.fotos.g5 figure:first-child{grid-column:1/-1}.fotos.g3 figure:first-child .ph,.fotos.g5 figure:first-child .ph{height:84mm}.fotos.g5 .ph{height:52mm}
 figure{margin:0}figcaption{font-size:8.5pt;color:#7a7f87;margin-top:2.5mm}
 table{width:100%;border-collapse:collapse}
 .dest td{padding:2.2mm 0;vertical-align:top;font-size:10.5pt}.dest td:first-child{width:62mm}.dest td:last-child{color:#4b5058}
