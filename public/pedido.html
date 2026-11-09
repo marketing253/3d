@@ -143,6 +143,23 @@ textarea{width:100%;font:14px Inter,sans-serif;border:1px solid var(--linha);bor
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--tinta);color:#fff;padding:11px 18px;border-radius:10px;font-weight:600;font-size:14px;z-index:40}
 .vazio{max-width:480px;margin:15vh auto;text-align:center;background:#fff;border-radius:14px;padding:28px 20px}
 @media (max-width:480px){body{padding:8px 8px 28px}.passo,.resumo{margin-left:0;margin-right:0}.passo{padding:0 12px}.resumo{margin:0 12px}.doc > .aviso{margin:0 12px}}
+/* pagamento confirmado + comprovante */
+.pagok{margin:16px 18px 14px;border-radius:16px;padding:16px;background:linear-gradient(135deg,rgba(31,190,140,.16),rgba(31,190,140,.05));border:1px solid rgba(31,190,140,.45);display:flex;flex-direction:column;gap:12px}
+.pagok.parcial{background:linear-gradient(135deg,rgba(31,190,140,.10),rgba(31,190,140,.03));border-color:rgba(31,190,140,.3)}
+.pk-cab{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center}
+.pk-ic{width:42px;height:42px;border-radius:50%;background:#1FBE8C;display:grid;place-items:center;box-shadow:0 0 0 6px rgba(31,190,140,.16)}
+.pk-ic svg{width:24px;height:24px;fill:none;stroke:#06231b;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.pk-cab b{display:block;font-size:16px}
+.pk-cab small{display:block;opacity:.75;font-size:13px;line-height:1.35}
+.pk-cab strong{font-size:20px;letter-spacing:-.02em;color:#1FBE8C;white-space:nowrap}
+.pk-lista{list-style:none;margin:0;padding:10px 0 0;border-top:1px dashed rgba(127,140,155,.35);display:flex;flex-direction:column;gap:6px;font-size:13.5px}
+.pk-lista li{display:flex;justify-content:space-between;gap:10px}
+.pk-lista span{opacity:.8}
+.pk-btn{display:flex;align-items:center;justify-content:center;gap:8px;background:#1FBE8C;color:#06231b;font-weight:800;text-decoration:none;border-radius:999px;padding:12px 16px;font-size:15px}
+.pk-btn:hover{filter:brightness(1.06)}
+.pk-btn svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.resumo .quit b{color:#1FBE8C}
+@media (max-width:480px){.pagok{margin:14px 12px 12px;padding:14px}.pk-cab strong{font-size:18px}}
 </style>
 <link rel="preconnect" href="https://sdk.mercadopago.com"><link rel="preconnect" href="https://api.mercadopago.com"><link rel="preconnect" href="https://http2.mlstatic.com" crossorigin>
 </head>

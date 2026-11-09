@@ -1332,6 +1332,57 @@ $("#pecasLista").addEventListener("click",async e=>{
   try{ const r=await api("POST","/api/produtos/"+encodeURIComponent(p.id)+"/estoque",{delta}); p.estoque=r.estoque; renderEstoque(); renderLista() }catch(err){ toast(err.message) }
 });
 
+/* ---------- banners rotativos do catálogo ---------- */
+function bnAlvos(){
+  const cats=[...new Set(produtos.filter(p=>p.catalogo).map(p=>p.categoria).filter(Boolean))].sort();
+  const ps=produtos.filter(p=>p.catalogo&&num(p.precoCatalogo)>0).sort((a,b)=>a.nome.localeCompare(b.nome));
+  return [["","Não abre nada"],...cats.map(c=>["cat:"+c,"Categoria: "+c]),...ps.map(p=>["p:"+p.id,"Produto: "+p.nome])];
+}
+function renderBanners(){
+  const el=$("#bnLista"); if(!el) return; const bs=cfg.loja.banners||[], ed=podeEditar(), alvos=bnAlvos();
+  el.innerHTML=bs.length?bs.map((b,i)=>{ const opc=alvos.some(([v])=>v===(b.alvo||""))?alvos:[...alvos,[b.alvo,"Link: "+b.alvo]];
+    return `<div class="bnitem" data-bi="${i}">
+      <div class="bnfotos"><img class="bnd" src="/fotos/${esc(b.foto)}" alt="Banner ${i+1} no computador">
+        ${b.cel?`<img class="bnc" src="/fotos/${esc(b.cel)}" alt="Banner ${i+1} no celular">`:`<span class="bnc vazio">sem foto<br>do celular</span>`}</div>
+      <div class="bncampos">
+        <label class="f">Nome do banner<input data-bk="titulo" maxlength="80" value="${esc(b.titulo||"")}" placeholder="Ex.: Promoção de Natal"></label>
+        <label class="f">Ao tocar, abre<select data-bk="alvo">${opc.map(([v,t])=>`<option value="${esc(v)}"${v===(b.alvo||"")?" selected":""}>${esc(t)}</option>`).join("")}</select></label>
+        <div class="row edit-only" style="gap:6px;flex-wrap:wrap">
+          <label class="btn sm" for="bnc-${i}">${b.cel?"Trocar foto do celular":"+ Foto do celular"}</label><input id="bnc-${i}" data-bcel type="file" accept="image/jpeg,image/png,image/webp" hidden>
+          ${b.cel?'<button type="button" class="btn sm ghost" data-bact="semcel">Tirar foto do celular</button>':""}
+          <label class="btn sm ghost" for="bnd-${i}">Trocar foto</label><input id="bnd-${i}" data-bdesk type="file" accept="image/jpeg,image/png,image/webp" hidden>
+          <button type="button" class="btn sm ghost" data-bact="sobe"${i?"":" disabled"} aria-label="Subir">↑</button><button type="button" class="btn sm ghost" data-bact="desce"${i<bs.length-1?"":" disabled"} aria-label="Descer">↓</button>
+          <button type="button" class="btn sm ghost" data-bact="tira" style="color:var(--bad,#c0392b)">Remover</button>
+        </div>
+      </div></div>` }).join(""):`<p class="note" style="margin:0">Nenhum banner ainda. O catálogo abre direto na apresentação da loja.</p>`;
+  if(!ed) el.querySelectorAll("input,select,button").forEach(i=>i.disabled=true);
+  // avisa quando a proporção da foto foge do tamanho pedido
+  el.querySelectorAll("img").forEach(img=>img.addEventListener("load",()=>{ const r=img.naturalWidth/img.naturalHeight, alvo=img.classList.contains("bnd")?3:1.5;
+    if(Math.abs(r-alvo)/alvo>.08) { img.title=`Esta foto tem ${img.naturalWidth}×${img.naturalHeight}: fora do formato, ela será cortada.`; img.classList.add("torta");
+      img.closest(".bnitem").querySelector(".bncampos").insertAdjacentHTML("afterbegin",`<p class="note" style="margin:0;color:#b7791f">A foto do ${img.classList.contains("bnd")?"computador":"celular"} tem ${img.naturalWidth}×${img.naturalHeight} px. O ideal é ${img.classList.contains("bnd")?"1920×640":"1080×720"}: fora desse formato, as bordas são cortadas.</p>`) } },{once:true}));
+}
+async function enviaFoto(f){ const fd=new FormData(); fd.append("foto",f,f.name); return (await api("POST","/api/fotos",fd)).id }
+$("#bnNovo")?.addEventListener("change",async e=>{
+  const fs=[...e.target.files]; e.target.value=""; cfg.loja.banners=cfg.loja.banners||[];
+  const vagas=8-cfg.loja.banners.length; if(vagas<=0) return toast("O máximo é 8 banners.");
+  try{ for(const f of fs.slice(0,vagas)) cfg.loja.banners.push({foto:await enviaFoto(f),cel:"",titulo:"",alvo:""});
+    saveCfg(); renderBanners(); toast(fs.length>vagas?`Entraram ${vagas}: o máximo é 8 banners.`:"Banner adicionado") }catch(err){ toast(err.message) }
+});
+$("#bnLista")?.addEventListener("change",async e=>{
+  const it=e.target.closest("[data-bi]"); if(!it) return; const b=cfg.loja.banners[Number(it.dataset.bi)]; if(!b) return;
+  if(e.target.dataset.bk){ b[e.target.dataset.bk]=e.target.value; return saveCfg() }
+  const f=e.target.files?.[0]; e.target.value=""; if(!f) return;
+  try{ const id=await enviaFoto(f); if(e.target.hasAttribute("data-bcel")) b.cel=id; else b.foto=id; saveCfg(); renderBanners(); toast("Foto salva") }catch(err){ toast(err.message) }
+});
+$("#bnLista")?.addEventListener("input",e=>{ const it=e.target.closest("[data-bi]"); if(!it||e.target.dataset.bk!=="titulo") return; cfg.loja.banners[Number(it.dataset.bi)].titulo=e.target.value; saveCfg() });
+$("#bnLista")?.addEventListener("click",e=>{
+  const a=e.target.closest("[data-bact]"); if(!a) return; const i=Number(a.closest("[data-bi]").dataset.bi), bs=cfg.loja.banners;
+  if(a.dataset.bact==="tira"){ if(!confirm("Remover este banner do catálogo?")) return; bs.splice(i,1) }
+  else if(a.dataset.bact==="semcel") bs[i].cel="";
+  else { const j=a.dataset.bact==="sobe"?i-1:i+1; [bs[i],bs[j]]=[bs[j],bs[i]] }
+  saveCfg(); renderBanners();
+});
+
 /* ---------- sua loja (config) ---------- */
 const LOJA=[["nome","Nome da loja","text","Ex.: Freire 3D"],["whatsapp","WhatsApp da loja","tel","Recebe os pedidos do catálogo"],["instagram","Instagram","text","@sualoja"],["pagamento","Formas de pagamento","text","Pix, cartão ou dinheiro"],["prazoDias","Prazo padrão (dias)","number","Usado em pedidos novos"],["horasDia","Horas por dia (padrão)","number","Para impressoras novas; cada uma tem o seu em Impressoras e fila"],["sobre","Texto do catálogo","text","Uma frase sobre a loja"],["metaLucro","Meta de lucro por mês (R$)","number","Aparece na tela Hoje"],["pixChave","Chave Pix","text","CPF, CNPJ, e-mail, celular (+55…) ou aleatória"],["pixNome","Nome no Pix","text","Como aparece no banco (vazio = nome da loja)"],["pixCidade","Cidade no Pix","text","Ex.: São Paulo"],["entradaPct","Entrada ao aprovar (%)","number","Pedida pelo link do pedido; 0 = sem entrada"],["site","Site","text","Aparece na proposta em PDF"],["cor","Cor da proposta","color","Destaques e sublinhados do PDF"]];
 function renderLoja(){
@@ -1341,6 +1392,7 @@ function renderLoja(){
   $("#catLink").innerHTML=`<span class="num clip">${esc(url)}</span><button class="btn sm" id="copCat">Copiar link</button><a class="btn sm" href="/catalogo" target="_blank" rel="noopener">Abrir catálogo ↗</a>`;
   $("#copCat").addEventListener("click",async()=>{try{await navigator.clipboard.writeText(url);toast("Link copiado")}catch(e){toast(url)}});
   if(!podeEditar()) $("#cfgLoja").querySelectorAll("input").forEach(i=>i.disabled=true);
+  renderBanners();
 }
 $("#cfgLoja").addEventListener("change",async e=>{ if(e.target.id!=="lj-logo") return; const f=e.target.files[0]; e.target.value=""; if(!f) return;
   try{ const fd=new FormData(); fd.append("foto",f,f.name); cfg.loja.logo=(await api("POST","/api/fotos",fd)).id; saveCfg(); renderConfig(); toast("Logo salvo") }catch(err){ toast(err.message) } });

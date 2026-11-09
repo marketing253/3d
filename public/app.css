@@ -667,3 +667,19 @@ dialog.pform{width:min(640px,calc(100vw - 24px))}
 .pf-foto button{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;border:0;background:rgba(8,12,16,.7);color:#fff;font-size:11px;cursor:pointer}
 .pf-foto.add{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border-style:dashed;color:var(--muted);font-weight:700;font-size:13px;cursor:pointer;background:var(--bg)}
 .pf-foto.add small{font-weight:500;font-size:11px}
+/* banners do catálogo (Configurações) */
+.bntam{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.bntam>div{border:1px dashed var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;background:var(--bg)}
+.bntam b{font-size:13px}
+.bntam span{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
+.bntam small{color:var(--muted);font-size:12px}
+.bntam .note{grid-column:1/-1}
+.bnitem{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:14px;border:1px solid var(--line);border-radius:12px;padding:12px;align-items:start}
+.bnfotos{display:grid;grid-template-columns:3fr 1fr;gap:8px;align-items:start}
+.bnfotos img,.bnfotos .vazio{width:100%;border-radius:8px;object-fit:cover;display:block;background:var(--bg)}
+.bnfotos .bnd{aspect-ratio:3/1}
+.bnfotos .bnc{aspect-ratio:3/2}
+.bnfotos .vazio{display:grid;place-items:center;text-align:center;font-size:11px;color:var(--muted);border:1px dashed var(--line)}
+.bnfotos img.torta{outline:2px solid #e0a100;outline-offset:1px}
+.bncampos{display:flex;flex-direction:column;gap:8px}
+@media (max-width:720px){.bnitem{grid-template-columns:1fr}.bntam{grid-template-columns:1fr 1fr}}

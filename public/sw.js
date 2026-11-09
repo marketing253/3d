@@ -1,6 +1,6 @@
 // Service worker: deixa o sistema instalável e abre a tela mesmo sem internet.
 // Sempre busca a versão nova primeiro; o cache só é usado quando a rede falha.
-const CACHE = "prec3d-v2"; // v2: ícones novos da 8ON
+const CACHE = "prec3d-v3"; // v2: ícones novos da 8ON
 const BASE = ["/", "/app.css", "/app.js", "/fatiado.js", "/icon-192.png", "/manifest.webmanifest"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(BASE)).catch(() => {})); self.skipWaiting(); });
 self.addEventListener("activate", e => {

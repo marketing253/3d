@@ -75,6 +75,20 @@ function relogio(){
     if(r<=0){ clearInterval(relogio._t); carrega() } };
   passo(); relogio._t=setInterval(passo,1000);
 }
+// último pagamento confirmado (com data), para o resumo do passo
+const ultPag=d=>(d.pagamentos||[]).filter(x=>x.em).sort((a,b)=>a.em<b.em?-1:1).at(-1)||null;
+// cartão verde com o que já foi pago e o botão do comprovante
+function pagoHtml(d){
+  if(!d.comprovante) return "";
+  const quit=d.receber<=0.004, pago=Math.max(0,d.total-d.receber), u=ultPag(d);
+  return `<section class="pagok${quit?"":" parcial"}">
+    <div class="pk-cab"><span class="pk-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+      <div><b>${quit?"Pagamento confirmado":"Entrada confirmada"}</b><small>${quit?"Pedido quitado. Não falta pagar nada.":`Falta ${brl(d.receber)}, pago quando ficar pronto.`}</small></div>
+      <strong>${brl(pago)}</strong></div>
+    <ul class="pk-lista">${(d.pagamentos||[]).map(x=>`<li><span>${esc(x.forma)}${x.em?` · ${quando(x.em)}`:""}</span><b>${brl(x.valor)}</b></li>`).join("")}</ul>
+    <a class="pk-btn" href="${esc(d.comprovante)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>Baixar comprovante</a>
+  </section>`;
+}
 async function carrega(){
   let d;
   try{const r=await fetch("/api/publico/pedido/"+encodeURIComponent(token));if(!r.ok)throw new Error(r.status);d=await r.json()}
@@ -89,7 +103,7 @@ async function carrega(){
   const temArte=!!d.precisaArte;
   const passos=[
     ["orcamento","Orçamento",d.resposta?.acao==="aprovado"?`Aprovado em ${quando(d.resposta.em)}`:"Aprovado"],
-    ["pagamento",et==="orcamento"&&restante>0?"Pagamento":`Pagamento de ${d.entrada>0&&d.total>0?Math.round(d.entrada/d.total*100)+"%":"entrada"}`,`Entrada de ${brl(d.entrada)} recebida`],
+    ["pagamento",et==="orcamento"&&restante>0?"Pagamento":d.receber<=0.004&&et!=="orcamento"?"Pagamento de 100%":`Pagamento de ${d.entrada>0&&d.total>0?Math.round(d.entrada/d.total*100)+"%":"entrada"}`,d.receber<=0.004?`${brl(d.total)} pago${ultPag(d)?" via "+ultPag(d).forma+" em "+quando(ultPag(d).em):""}`:`Entrada de ${brl(Math.max(0,d.total-d.receber))} recebida`],
     ...(temArte?[["arte","Aprovação da arte",d.arte?`Arte ${V(d.arte.v)} aprovada`:"Arte aprovada"]]:[]),
     ["producao","Produção","Produzido"],
     ["pronto","Pronto e entrega","Entregue"],
@@ -159,7 +173,8 @@ async function carrega(){
     ${recusado?"":`<ol class="passo">${passos.map(([k,t,feito],i)=>{
       const st=i<atual?"feito":i===atual?"agora":"depois";
       return `<li class="${st}"><div class="cab"><span class="n">${i<atual?"✓":i+1}</span><div><b>${esc(t)}</b>${st==="feito"?`<small>${esc(feito)}</small>`:""}</div></div>${st==="agora"?`<div class="corpo">${corpo[k]}</div>`:""}</li>`}).join("")}</ol>`}
-    <div class="resumo"><div><span>Total</span><b>${brl(d.total)}</b></div><div><span>Pago</span><b>${brl(Math.max(0,d.total-d.receber))}</b></div><div><span>Falta</span><b>${brl(et==="entregue"?0:d.receber)}</b></div></div>
+    ${recusado?"":pagoHtml(d)}
+    <div class="resumo"><div><span>Total</span><b>${brl(d.total)}</b></div><div><span>Pago</span><b>${brl(Math.max(0,d.total-d.receber))}</b></div><div class="${d.receber<=0.004?"quit":""}"><span>Falta</span><b>${d.receber<=0.004?"Quitado ✓":brl(et==="entregue"?0:d.receber)}</b></div></div>
     <footer class="rodape">
       <div class="loja">${esc(L.nome)}${L.whatsappTxt?` · WhatsApp ${esc(L.whatsappTxt)}`:""}${L.site?` · ${esc(L.site)}`:""}</div>
       ${wa(`Olá! Sobre o meu pedido #${d.numero}:`)?`<a href="${esc(wa(`Olá! Sobre o meu pedido #${d.numero}:`))}" target="_blank" rel="noopener">Dúvidas? Fale com a loja</a>`:""}

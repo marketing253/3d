@@ -105,6 +105,29 @@ body:not(.sem3d) .hero .vitrine{display:none!important}
 .qtd span{min-width:26px;text-align:center;font-weight:700}
 .vazio{grid-column:1/-1;text-align:center;color:var(--suave);padding:40px 0}
 
+/* banners rotativos: computador 1920×640 (3:1); celular 1080×720 (3:2) quando houver foto própria */
+.banners{padding:16px 0 0;background:var(--escuro)}
+.bnbox{position:relative;border-radius:18px;overflow:hidden;background:#1b2229;box-shadow:0 18px 40px rgba(0,0,0,.35)}
+.bntrilho{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.bntrilho::-webkit-scrollbar{display:none}
+.bn{flex:0 0 100%;scroll-snap-align:center;aspect-ratio:3/1;border:0;padding:0;margin:0;background:none;display:block;position:relative}
+.bn[data-alvo]{cursor:pointer}
+.bn img{width:100%;height:100%;object-fit:cover;display:block}
+.bnseta{position:absolute;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.9);font-size:26px;line-height:1;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.2);display:grid;place-items:center;padding-bottom:3px;opacity:0;transition:opacity .2s}
+.bnbox:hover .bnseta{opacity:1}
+.bnseta.esq{left:14px}.bnseta.dir{right:14px}
+.bnpontos{position:absolute;left:0;right:0;bottom:12px;display:flex;justify-content:center;gap:6px}
+.bnpontos button{width:8px;height:8px;border-radius:999px;border:0;padding:0;background:rgba(255,255,255,.55);box-shadow:0 1px 3px rgba(0,0,0,.35);cursor:pointer;transition:width .25s}
+.bnpontos button.on{width:24px;background:#fff}
+@media (max-width:640px){.banners{padding-top:12px}.bnbox{border-radius:14px}.bntrilho.temcel .bn{aspect-ratio:3/2}.bntrilho.temcel .bn:not(.cel) img{object-fit:contain}.bnseta{display:none}}
+/* vitrine por categoria */
+.grupo{margin-bottom:30px}
+.grupo .prod .cat{display:none}
+.grupo .secao button{border:0;background:none;color:var(--verde);font-weight:700;font-size:14px;cursor:pointer;padding:4px 0;white-space:nowrap}
+.grupo .secao button:hover{text-decoration:underline}
+.grupo .secao h2{display:flex;align-items:baseline;gap:10px}
+.grupo .secao small{color:var(--suave);font:600 14px Inter,sans-serif}
+
 /* rodapé */
 .rodape{margin-top:56px;background:var(--escuro);color:rgba(255,255,255,.7);padding:32px 0 calc(110px + env(safe-area-inset-bottom,0px))}
 .rodape .wrap{display:flex;flex-wrap:wrap;gap:20px;align-items:center;justify-content:space-between}
@@ -214,6 +237,13 @@ dialog::backdrop{background:rgba(8,12,16,.55);backdrop-filter:blur(2px)}
   </div>
 </header>
 
+<!-- banners rotativos (Configurações > Sua loja > Banners do catálogo) -->
+<section class="banners" id="banners" hidden aria-roledescription="carrossel" aria-label="Destaques">
+  <div class="wrap"><div class="bnbox"><div class="bntrilho" id="bnTrilho"></div>
+    <button type="button" class="bnseta esq" data-bn="-1" aria-label="Banner anterior">‹</button><button type="button" class="bnseta dir" data-bn="1" aria-label="Próximo banner">›</button>
+    <div class="bnpontos" id="bnPontos"></div></div></div>
+</section>
+
 <section class="hero">
   <div class="wrap">
     <div>
@@ -239,7 +269,8 @@ dialog::backdrop{background:rgba(8,12,16,.55);backdrop-filter:blur(2px)}
 
 <main class="wrap">
   <section id="kits" hidden><div class="secao"><h2 class="titulo">Kits e combos</h2><span>Mais peças, melhor preço</span></div><div class="grade" id="kitGrid"></div></section>
-  <div class="secao"><h2 class="titulo" id="tGrade">Produtos</h2><span id="nGrade"></span></div>
+  <div id="grupos"></div>
+  <div class="secao" id="cabGrade"><h2 class="titulo" id="tGrade">Produtos</h2><span id="nGrade"></span></div>
   <div class="grade" id="grid"><p class="vazio">Carregando produtos…</p></div>
 </main>
 

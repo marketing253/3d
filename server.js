@@ -549,7 +549,10 @@ function limpaFotosOrfas() {
     for (const f of JSON.parse(r.dados).proposta?.fotos || []) usadas.add(f.id);
   for (const r of db.prepare("SELECT dados FROM pedidos WHERE dados LIKE '%\"artes\"%'").all())
     for (const a of JSON.parse(r.dados).artes || []) usadas.add(a.foto);
-  const logo = lojaConfig().logo; if (logo) usadas.add(logo);
+  for (const r of db.prepare("SELECT dados FROM pedidos WHERE dados LIKE '%\"fotosOrc\"%'").all())
+    for (const f of JSON.parse(r.dados).fotosOrc || []) usadas.add(f.id);
+  const L0 = lojaConfig(); if (L0.logo) usadas.add(L0.logo);
+  for (const b of bannersLoja(L0)) { usadas.add(b.foto); if (b.cel) usadas.add(b.cel); }
   for (const f of fs.readdirSync(FOTOS_DIR)) {
     if (!FOTO_RE.test(f) || usadas.has(f)) continue;
     const st = fs.statSync(path.join(FOTOS_DIR, f));
@@ -1205,6 +1208,18 @@ function pixPayload({ chave, nome, cidade, valor, txid }) {
   p += "6304";
   return p + crc16(p);
 }
+// banners rotativos do catálogo: foto do computador (obrigatória), do celular (opcional), título e destino
+function bannersLoja(L) {
+  return (Array.isArray(L.banners) ? L.banners : []).filter(b => b && FOTO_RE.test(b.foto || "")).slice(0, 8)
+    .map(b => ({ foto: b.foto, cel: FOTO_RE.test(b.cel || "") ? b.cel : "", titulo: txt(b.titulo, 80), alvo: txt(b.alvo, 120) }));
+}
+function pagamentosDe(p) {
+  const mp = (p.mpPagamentos || []).filter(x => !x.estornado && n(x.valor) > 0).map(x => ({ valor: n(x.valor), forma: x.forma || "Mercado Pago", em: x.em || null, ref: String(x.pagId || x.id || "") }));
+  const somaMp = mp.reduce((t, x) => t + x.valor, 0), outros = n(n(p.sinal) - somaMp);
+  // o que a loja confirmou à mão (Pix direto, dinheiro…) aparece como um lançamento só
+  if (outros > 0.004) mp.unshift({ valor: outros, forma: "Confirmado pela loja", em: null, ref: "" });
+  return mp;
+}
 function lojaConfig() {
   const c = db.prepare("SELECT dados FROM config WHERE id = 1").get();
   return (c && JSON.parse(c.dados).loja) || {};
@@ -1520,6 +1535,7 @@ app.get("/api/publico/catalogo", limitePublico, (req, res) => {
     })),
     kits: kitsPublicos().map(({ itens, ...k }) => ({ ...k, itens: itens.map(i => ({ nome: i.nome, q: i.q })) })),
     temCupom: (configCompleta().cupons || []).some(c => c && c.ativo),
+    banners: bannersLoja(loja).map((b, i) => ({ img: "/loja/banner/" + i + "/d?v=" + b.foto.slice(0, 8), cel: b.cel ? "/loja/banner/" + i + "/c?v=" + b.cel.slice(0, 8) : "", titulo: b.titulo, alvo: b.alvo })),
   });
 });
 app.get("/fotos-publicas/:nome", limitePublico, (req, res) => {
@@ -1859,6 +1875,7 @@ app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
     desconto: n(p.desconto), frete: n(p.freteCliente), total, sinal: n(p.sinal), receber,
     entrada, faltaEntrada, resposta: p.resposta ? { acao: p.resposta.acao, em: p.resposta.em } : null,
     etapa: etapaDe(r.status, p), pagInformado: p.pagInformado || null, precisaArte: precisaArte(p),
+    pagamentos: pagamentosDe(p).map(({ ref, ...x }) => x), comprovante: n(p.sinal) > 0 ? `/pedido/${r.token}/comprovante` : null,
     arte: p.artes && p.artes.length ? (a => ({ v: a.v, status: a.status, nota: a.nota || "", comentario: a.comentario || "", respondidoEm: a.respondidoEm || null, imagem: `/aprovacao/${r.token}/arte/${a.v}` }))(p.artes.at(-1)) : null,
     cartao: pixTipo && MP_TOKEN && MP_PUBLIC ? { publicKey: MP_PUBLIC, valor: pixValor, parcelas: 12, email: mpEmail(r, baseUrl(req)) } : null,
     pix: pix ? { payload: pix.payload, svg: pix.svg, tipo: pixTipo, valor: pixValor, auto: pixAuto, renova: pix.renova ?? null, chave: pixAuto ? "" : txt(L.pixChave, 77), nome: txt(L.pixNome || L.nome, 60) } : null,
@@ -1949,6 +1966,76 @@ app.get("/loja/logo", limitePublico, (req, res) => {
   const logo = lojaConfig().logo; if (!logo || !FOTO_RE.test(logo)) return res.status(404).end();
   res.set("Cache-Control", "public, max-age=3600");
   res.sendFile(path.join(FOTOS_DIR, logo), err => { if (err && !res.headersSent) res.status(404).end(); });
+});
+app.get("/pedido/:token/comprovante", limitePublico, (req, res) => {
+  const r = pedidoPorToken(req.params.token); if (!r) return res.status(404).send("Pedido não encontrado.");
+  const p = JSON.parse(r.dados), L = lojaConfig(), e = escH, loja = txt(L.nome, 80) || "Impressões 3D";
+  if (!(n(p.sinal) > 0)) return res.status(404).send("Este pedido ainda não tem pagamento confirmado.");
+  const bruto = p.itens.reduce((t, i) => t + i.quantidade * i.preco_unit, 0), total = n(bruto - (p.desconto || 0) + (p.freteCliente || 0));
+  const pago = n(Math.min(total, p.sinal)), falta = n(Math.max(0, total - pago)), quitado = falta <= 0.004;
+  const pags = pagamentosDe(p);
+  const dh = iso => iso ? new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).replace(",", " às") : "—";
+  const ultimo = pags.filter(x => x.em).map(x => x.em).sort().at(-1);
+  const codigo = crypto.createHash("sha256").update(r.id + ":" + pago + ":" + (ultimo || "")).digest("hex").slice(0, 12).toUpperCase().replace(/(.{4})(?=.)/g, "$1-");
+  const site = txt(L.site, 80).replace(/^https?:\/\//, "").replace(/\/$/, "");
+  const contato = [txt(L.whatsapp, 30) ? "WhatsApp " + txt(L.whatsapp, 30) : "", site].filter(Boolean).map(e).join(" · ");
+  const logo = L.logo && FOTO_RE.test(L.logo) ? "/loja/logo" : "/logo-8on.png";
+  res.set("Cache-Control", "no-store");
+  res.send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Comprovante · Pedido #${r.numero} · ${e(loja)}</title><link rel="icon" href="/favicon.ico">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#e9edf1;font:14px/1.5 Inter,system-ui,sans-serif;color:#16202b;-webkit-font-smoothing:antialiased}
+.barra{max-width:640px;margin:0 auto;padding:16px 16px 0;display:flex;gap:10px}
+.barra button,.barra a{flex:1;border:0;border-radius:999px;padding:13px 16px;font:800 15px Inter,sans-serif;cursor:pointer;text-align:center;text-decoration:none}
+.barra button{background:#12977A;color:#fff}.barra a{background:#fff;color:#16202b;border:1px solid #d5dce3}
+.folha{max-width:640px;margin:16px auto 32px;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 18px 40px rgba(16,24,40,.12)}
+.cab{background:linear-gradient(135deg,#0E1114 55%,#12443a);color:#fff;padding:22px 26px;display:flex;justify-content:space-between;align-items:center;gap:16px}
+.cab img{height:44px;width:auto;display:block}.cab .t{text-align:right}.cab small{display:block;color:#1FBE8C;font-weight:800;letter-spacing:.14em;font-size:11px}
+.cab b{font-size:15px}
+.selo{display:flex;align-items:center;gap:14px;padding:22px 26px 6px}
+.ok{width:52px;height:52px;flex:none;border-radius:50%;background:#1FBE8C;display:grid;place-items:center}
+.ok svg{width:28px;height:28px;stroke:#06231b;stroke-width:3;fill:none}
+.selo h1{margin:0;font-size:21px;letter-spacing:-.01em}.selo p{margin:2px 0 0;color:#5a6878}
+.valor{margin:14px 26px 4px;padding:18px 20px;border-radius:14px;background:#ecfaf4;border:1px solid #bfe9d7;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.valor span{color:#0f6b56;font-weight:700}.valor b{font-size:30px;letter-spacing:-.02em;color:#0b3d31}
+.tag{display:inline-block;font-size:11.5px;font-weight:800;border-radius:999px;padding:4px 10px;background:#1FBE8C;color:#06231b;letter-spacing:.04em}
+.tag.parcial{background:#fde7b0;color:#6b4a00}
+.sec{padding:14px 26px 4px}.sec h2{margin:0 0 8px;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:#5a6878}
+.dados{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px}.dados div span{display:block;color:#5a6878;font-size:12px}.dados div b{font-size:14.5px}
+table{width:100%;border-collapse:collapse}td{padding:9px 0;border-bottom:1px solid #eef1f4;vertical-align:top}td.v{text-align:right;white-space:nowrap;font-weight:700;padding-left:12px}
+td small{display:block;color:#5a6878}
+.tot td{border:0;padding:5px 0;color:#5a6878}.tot td.v{color:#16202b}.tot tr.g td{font-size:16px;color:#16202b;font-weight:800;padding-top:9px;border-top:2px solid #16202b}
+.pe{margin-top:16px;padding:16px 26px 22px;border-top:1px dashed #d5dce3;color:#5a6878;font-size:12px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.pe b{color:#16202b;font-family:ui-monospace,Consolas,monospace;letter-spacing:.04em}
+@media (max-width:520px){.cab,.selo,.sec,.pe{padding-left:18px;padding-right:18px}.valor{margin-left:18px;margin-right:18px}.valor b{font-size:26px}.dados{gap:10px 12px}}
+@media print{@page{size:A4;margin:12mm}body{background:#fff}.barra{display:none}.folha{box-shadow:none;margin:0 auto;border:1px solid #d5dce3}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+<div class="barra"><button type="button" id="baixar">Baixar PDF</button><a href="/pedido/${e(r.token)}">Voltar ao pedido</a></div>
+<main class="folha">
+  <header class="cab"><img src="${logo}" alt="${e(loja)}"><div class="t"><small>COMPROVANTE DE PAGAMENTO</small><b>Pedido #${r.numero}</b></div></header>
+  <div class="selo"><div class="ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+    <div><h1>${quitado ? "Pagamento confirmado" : "Pagamento parcial confirmado"}</h1><p>${ultimo ? "Recebido em " + dh(ultimo) : "Confirmado pela loja"}</p></div></div>
+  <div class="valor"><div><span>Valor pago</span><br><b>${brlS(pago)}</b></div><span class="tag${quitado ? "" : " parcial"}">${quitado ? "PEDIDO QUITADO" : "FALTA " + brlS(falta)}</span></div>
+  <section class="sec"><h2>Dados</h2><div class="dados">
+    <div><span>Cliente</span><b>${e(txt(p.cliente, 120))}</b></div>
+    <div><span>Recebedor</span><b>${e(loja)}</b></div>
+    <div><span>Data do pedido</span><b>${p.data ? e(new Date(p.data + "T12:00:00").toLocaleDateString("pt-BR")) : "—"}</b></div>
+    <div><span>Previsão de entrega</span><b>${r.prazo ? e(new Date(r.prazo + "T12:00:00").toLocaleDateString("pt-BR")) : "A combinar"}</b></div>
+  </div></section>
+  <section class="sec"><h2>Pagamentos</h2><table>${pags.map(x => `<tr><td><b>${e(x.forma)}</b><small>${x.em ? dh(x.em) : "Registrado pela loja"}${x.ref ? " · Transação " + e(x.ref) : ""}</small></td><td class="v">${brlS(x.valor)}</td></tr>`).join("")}</table></section>
+  <section class="sec"><h2>Itens</h2><table>${p.itens.map(i => `<tr><td>${e(i.descricao)}${i.personalizacao ? `<small>${e(i.personalizacao)}</small>` : ""}<small>${Number(i.quantidade).toLocaleString("pt-BR")} × ${brlS(i.preco_unit)}</small></td><td class="v">${brlS(i.quantidade * i.preco_unit)}</td></tr>`).join("")}</table>
+    <table class="tot">${n(p.desconto) > 0 ? `<tr><td>Desconto</td><td class="v">− ${brlS(p.desconto)}</td></tr>` : ""}${n(p.freteCliente) > 0 ? `<tr><td>Frete</td><td class="v">${brlS(p.freteCliente)}</td></tr>` : ""}
+      <tr class="g"><td>Total do pedido</td><td class="v">${brlS(total)}</td></tr><tr><td>Pago</td><td class="v">${brlS(pago)}</td></tr><tr><td>Falta pagar</td><td class="v">${brlS(falta)}</td></tr></table></section>
+  <footer class="pe"><div>${e(loja)}${contato ? "<br>" + contato : ""}</div><div style="text-align:right">Autenticação <b>${codigo}</b><br>Emitido em ${dh(new Date().toISOString())} · sem valor fiscal</div></footer>
+</main>
+<script src="/comprovante.js"></script></body></html>`);
+});
+app.get("/loja/banner/:i/:t", limitePublico, (req, res) => {
+  const b = bannersLoja(lojaConfig())[Number(req.params.i)], f = b && (req.params.t === "c" ? b.cel : b.foto);
+  if (!f) return res.status(404).end();
+  res.set("Cache-Control", "public, max-age=86400");
+  res.sendFile(path.join(FOTOS_DIR, f), err => { if (err && !res.headersSent) res.status(404).end(); });
 });
 app.get("/pedido/:token/foto/:i", limitePublico, (req, res) => {
   const r = pedidoPorToken(req.params.token); if (!r) return res.status(404).end();

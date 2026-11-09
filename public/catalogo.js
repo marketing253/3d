@@ -49,6 +49,7 @@ async function carrega(){
   $("#cupBox").hidden=!dados.temCupom;
   if(dados.temCupom){ let c=""; try{c=new URLSearchParams(location.search).get("cupom")||sessionStorage.getItem("cat3d.cupom")||""}catch(e){} if(c){ $("#cCupom").value=c; setTimeout(aplicaCupom,0) } }
   $("#cNome").value=cli.nome; $("#cWhats").value=cli.whatsapp;
+  banners();
   render();
   if(foco&&item(foco)) abreProduto(foco);
 }
@@ -77,8 +78,14 @@ function render(){
   const ks=cat==="Todos"&&!b?dados.kits:[];
   $("#kits").hidden=!ks.length;
   $("#kitGrid").innerHTML=ks.map(k=>card(item("kit:"+k.id))).join("");
+  const nP=n=>`${n} ${n===1?"produto":"produtos"}`;
+  // em "Todos", sem busca e com 2+ categorias: uma seção por categoria (sem categoria vai para "Outros", no fim)
+  const grupos=cat==="Todos"&&!b&&cats.length>2&&lst.length>0;
+  $("#cabGrade").hidden=$("#grid").hidden=grupos;
+  $("#grupos").innerHTML=grupos?[...cats.slice(1),""].map(c=>{ const its=lst.filter(p=>(p.categoria||"")===c); if(!its.length) return "";
+    return `<section class="grupo"><div class="secao"><h2 class="titulo">${esc(c||"Outros")} <small>${nP(its.length)}</small></h2>${c?`<button type="button" data-c="${esc(c)}">Ver só ${esc(c)} →</button>`:""}</div><div class="grade">${its.map(card).join("")}</div></section>` }).join(""):"";
   $("#tGrade").textContent=b?"Resultado da busca":cat==="Todos"?"Produtos":cat;
-  $("#nGrade").textContent=lst.length?`${lst.length} ${lst.length===1?"produto":"produtos"}`:"";
+  $("#nGrade").textContent=lst.length?nP(lst.length):"";
   $("#grid").innerHTML=lst.length?lst.map(card).join(""):`<p class="vazio">${ps.length?"Nenhum produto encontrado. Tente outra busca.":"Nenhum produto no catálogo ainda."}</p>`;
   renderCarrinho();
 }
@@ -87,6 +94,33 @@ function muda(id,d){
   if(c.q) carrinho[id]=c; else delete carrinho[id];
   if(d>0&&c.q===1) toast("Adicionado ao carrinho");
   render(); if($("#dProd").open) abreProduto(id); if($("#dCarr").open) renderCarrinho();
+}
+
+const vaiProdutos=()=>{ const y=$("#produtos").getBoundingClientRect().top+scrollY; scrollTo({top:y,behavior:"smooth"}) };
+
+/* banners rotativos: trocam sozinhos a cada 5 s e param enquanto o cliente mexe */
+function banners(){
+  const bs=dados.banners||[]; $("#banners").hidden=!bs.length; if(!bs.length) return;
+  $("#bnTrilho").innerHTML=bs.map((b,i)=>{ const tag=b.alvo?"button":"div";
+    return `<${tag} ${tag==="button"?'type="button"':""} class="bn${b.cel?" cel":""}" ${b.alvo?`data-alvo="${esc(b.alvo)}"`:""} aria-label="${esc(b.titulo||"Banner "+(i+1))}"><picture>${b.cel?`<source media="(max-width:640px)" srcset="${esc(b.cel)}">`:""}<img src="${esc(b.img)}" alt="${esc(b.titulo||"")}" ${i?'loading="lazy"':'fetchpriority="high"'}></picture></${tag}>` }).join("");
+  $("#bnTrilho").classList.toggle("temcel",bs.some(b=>b.cel)); // no celular todos ficam 3:2; quem não tem foto do celular aparece inteiro
+  const um=bs.length<2; document.querySelectorAll(".bnseta").forEach(x=>x.hidden=um);
+  $("#bnPontos").innerHTML=um?"":bs.map((_,i)=>`<button type="button" data-bnp="${i}" class="${i?"":"on"}" aria-label="Banner ${i+1}"></button>`).join("");
+  const t=$("#bnTrilho");
+  t.addEventListener("scroll",()=>{ const i=bnAtual(); document.querySelectorAll("#bnPontos button").forEach((p,k)=>p.classList.toggle("on",k===i)) },{passive:true});
+  if(um||matchMedia("(prefers-reduced-motion:reduce)").matches) return;
+  let parado=false; const box=$(".bnbox");
+  for(const [ev,v] of [["mouseenter",true],["mouseleave",false],["touchstart",true],["touchend",false],["focusin",true],["focusout",false]]) box.addEventListener(ev,()=>{ parado=v; if(!v) bnTempo() },{passive:true});
+  function bnTempo(){ clearTimeout(banners._t); banners._t=setTimeout(()=>{ if(!parado&&!document.hidden) bnVai(bnAtual()+1); bnTempo() },5000) }
+  bnTempo();
+}
+const bnAtual=()=>{ const t=$("#bnTrilho"); return Math.round(t.scrollLeft/Math.max(1,t.clientWidth)) };
+function bnVai(i){ const t=$("#bnTrilho"), n=t.children.length; if(!n) return; i=(i+n)%n; t.scrollTo({left:i*t.clientWidth,behavior:"smooth"}) }
+function bnAbre(alvo){
+  if(alvo.startsWith("cat:")){ const c=alvo.slice(4); cat=dados.produtos.some(p=>p.categoria===c)?c:"Todos"; busca=""; $("#busca").value=""; render(); return vaiProdutos() }
+  if(alvo.startsWith("p:")){ const id=alvo.slice(2); if(item(id)) abreProduto(id); return }
+  if(alvo.startsWith("kit:")){ if(item(alvo)) abreProduto(alvo); return }
+  if(/^https:\/\//i.test(alvo)) window.open(alvo,"_blank","noopener");
 }
 
 /* janela do produto */
@@ -160,7 +194,10 @@ document.addEventListener("click",e=>{
   const d=e.target.closest("[data-d]"); if(d){ e.stopPropagation(); return muda(d.dataset.id||d.closest("[data-id]").dataset.id,Number(d.dataset.d)) }
   if(e.target.closest("[data-abre-carr]")) return abreCarrinho();
   if(e.target.closest("[data-fecha]")){ e.target.closest("dialog").close(); return }
-  const c=e.target.closest("[data-c]"); if(c){ cat=c.dataset.c; return render() }
+  const c=e.target.closest("[data-c]"); if(c){ cat=c.dataset.c; render(); if(!c.closest("#cats")||scrollY>$("#produtos").offsetTop) vaiProdutos(); return }
+  const bn=e.target.closest("[data-bn]"); if(bn) return bnVai(bnAtual()+Number(bn.dataset.bn));
+  const bp=e.target.closest("[data-bnp]"); if(bp) return bnVai(Number(bp.dataset.bnp));
+  const ba=e.target.closest("[data-alvo]"); if(ba) return bnAbre(ba.dataset.alvo);
   const v=e.target.closest("[data-ver]"); if(v&&!e.target.closest("input")) return abreProduto(v.dataset.ver);
 });
 for(const id of ["#dProd","#dCarr"]) $(id).addEventListener("click",e=>{ if(e.target===e.currentTarget) e.currentTarget.close() }); // clique fora fecha
