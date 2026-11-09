@@ -696,3 +696,20 @@ dialog.pform{width:min(640px,calc(100vw - 24px))}
 html{background:#0E1114}
 main,.main,.content{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
 @supports (padding:max(0px)){body{padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}}
+/* lista de pedidos no celular: um cartão por pedido, sem rolar para o lado */
+@media (max-width:640px){
+  #pedLista .tablewrap{overflow:visible;border:0;background:none;box-shadow:none;border-radius:0}
+  #pedLista table.ajusta,#pedLista table.ajusta tbody{display:block;width:100%}
+  #pedLista table.ajusta thead{display:none}
+  #pedLista table.ajusta tr{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:6px 10px;align-items:start;padding:12px 14px;margin-bottom:10px;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:var(--shadow)}
+  #pedLista table.ajusta tr.pago{background:var(--good-soft);border-color:color-mix(in srgb,var(--good) 35%,var(--line))}
+  #pedLista table.ajusta td{display:block;padding:0;border:0;background:none!important;max-width:none!important;min-width:0}
+  #pedLista table.ajusta td:nth-child(1){font-weight:700;color:var(--muted);padding-top:1px}
+  #pedLista table.ajusta td:nth-child(3){font-weight:800;white-space:nowrap}
+  #pedLista table.ajusta td:nth-child(4),#pedLista table.ajusta td.pact{grid-column:1/-1}
+  #pedLista table.ajusta td.pact{white-space:normal;text-align:left;padding-top:4px;border-top:1px dashed var(--line);margin-top:2px}
+  #pedLista .pact > .row.atl{justify-content:flex-start;flex-wrap:wrap!important;gap:6px;margin:6px 0 0}
+  #pedLista .pcat.clip{white-space:normal;overflow:visible;text-overflow:clip}
+  #pedLista details.mais .menu{position:fixed;left:12px;right:12px;width:calc(100vw - 24px);top:auto;bottom:calc(12px + env(safe-area-inset-bottom,0px));min-width:0;z-index:60;padding:8px;border-radius:16px;box-shadow:0 -10px 40px rgba(0,0,0,.25)}
+  #pedLista details.mais .menu button{padding:12px}
+}
