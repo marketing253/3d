@@ -207,7 +207,7 @@ async function buscaFrete(){
     ent={...ent,cidade:j.cidade,uf:j.uf,valor:j.valor,combinar:j.valor==null,achou:true};
     if(!ent.rua||ent._cepRua!==cep){ ent.rua=j.rua; ent.bairro=j.bairro; ent._cepRua=cep; $("#eRua").value=j.rua; $("#eBairro").value=j.bairro }
     m.className="nota "+(ent.combinar?"aviso":"bom");
-    m.textContent=`${j.cidade}/${j.uf} · ${ent.combinar?"Frete a combinar pelo WhatsApp depois do pedido.":"Frete "+brl(j.valor)+"."}${!ent.combinar&&opE().gratisAcima>0?" Grátis a partir de "+brl(opE().gratisAcima)+".":""}`;
+    m.textContent=`${j.cidade}/${j.uf}${j.km!=null?" · "+String(j.km).replace(".",",")+" km":""} · ${ent.combinar?"Frete a combinar pelo WhatsApp depois do pedido.":"Frete "+brl(j.valor)+"."}${!ent.combinar&&opE().gratisAcima>0?" Grátis a partir de "+brl(opE().gratisAcima)+".":""}`;
     salvaEnt(); mostraEntrega(); if(!$("#eNum").value) $("#eNum").focus();
   }catch(err){ if(ent.cep!==cep) return; m.className="nota aviso"; m.textContent=err.message; ent.achou=false; mostraEntrega() }
 }

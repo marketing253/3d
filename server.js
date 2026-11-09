@@ -1280,7 +1280,7 @@ td.v{text-align:right;white-space:nowrap}
 <p class="dica">Escolha a impressora térmica e o papel 100 × 150 mm. Se a janela de impressão não abrir, use Ctrl+P.</p>
 <div class="et">
   <div class="top"><div><div class="lb">Pedido</div><div class="loja">${escH(L.nome || "Impressões 3D")}</div></div><div class="num">#${r.numero}</div></div>
-  <div><div class="lb">Cliente</div><div class="cli">${escH(p.cliente)}</div>${p.whatsapp ? `<div>${escH(p.whatsapp)}</div>` : ""}${p.entrega?.tipo === "entrega" ? `<div style="margin-top:1mm;font-size:9pt;line-height:1.25"><b>Entregar em:</b> ${escH(p.entrega.rua)}, ${escH(p.entrega.numero)}${p.entrega.complemento ? " (" + escH(p.entrega.complemento) + ")" : ""}<br>${escH(p.entrega.bairro ? p.entrega.bairro + " · " : "")}${escH(p.entrega.cidade)}/${escH(p.entrega.uf)} · CEP ${escH(String(p.entrega.cep).replace(/(\d{5})(\d{3})/, "$1-$2"))}</div>` : p.entrega?.tipo === "retirada" ? `<div style="margin-top:1mm;font-size:9pt"><b>Retirada na loja</b></div>` : ""}<div class="lb" style="margin-top:1mm">Pedido em ${dataBR(p.data)}${p.prazo ? ` · entrega até ${dataBR(p.prazo)}` : ""}</div></div>
+  <div><div class="lb">Cliente</div><div class="cli">${escH(p.cliente)}</div>${p.whatsapp ? `<div>${escH(p.whatsapp)}</div>` : ""}${p.entrega?.tipo === "entrega" ? `<div style="margin-top:1mm;font-size:9pt;line-height:1.25"><b>Entregar em:</b> ${escH(p.entrega.rua)}, ${escH(p.entrega.numero)}${p.entrega.complemento ? " (" + escH(p.entrega.complemento) + ")" : ""}<br>${escH(p.entrega.bairro ? p.entrega.bairro + " · " : "")}${escH(p.entrega.cidade)}/${escH(p.entrega.uf)} · CEP ${escH(String(p.entrega.cep).replace(/(\d{5})(\d{3})/, "$1-$2"))}</div>` : p.entrega?.tipo === "retirada" ? `<div style="margin-top:1mm;font-size:9pt"><b>Retirar pessoalmente</b></div>` : ""}<div class="lb" style="margin-top:1mm">Pedido em ${dataBR(p.data)}${p.prazo ? ` · entrega até ${dataBR(p.prazo)}` : ""}</div></div>
   <table>${p.itens.map(i => `<tr><td class="q">${i.quantidade}×</td><td>${escH(i.descricao)}${i.personalizacao ? `<div class="pers">${escH(i.personalizacao)}</div>` : ""}</td><td class="v">${brlS(i.quantidade * i.preco_unit)}</td></tr>`).join("")}</table>
   ${p.desconto ? `<div class="tot" style="font-size:9pt;font-weight:400"><span>Desconto</span><span>-${brlS(p.desconto)}</span></div>` : ""}
   ${p.freteCliente ? `<div class="tot" style="font-size:9pt;font-weight:400"><span>Frete</span><span>${brlS(p.freteCliente)}</span></div>` : ""}
@@ -1372,9 +1372,9 @@ app.post("/api/publico/pedido", limitePedidoPublico, async (req, res) => {
     const end = await buscaCep(be.cep); if (!end) return res.status(400).json({ erro: "Confira o CEP da entrega." });
     const numEnd = txt(be.numero, 20), rua = txt(be.rua, 120) || end.rua;
     if (!rua || !numEnd) return res.status(400).json({ erro: "Informe a rua e o número para a entrega." });
-    const fr = valorFrete(fc, end.cidade, end.uf, n(bruto - dados.desconto));
+    const fr = valorFrete(fc, end.cidade, end.uf, n(bruto - dados.desconto), await kmAte(fc, end));
     dados.entrega = { tipo: "entrega", cep: end.cep, rua, numero: numEnd, complemento: txt(be.complemento, 80), bairro: txt(be.bairro, 80) || end.bairro,
-      cidade: end.cidade, uf: end.uf, valor: fr.valor, ...(fr.valor == null ? { combinar: true } : {}), ...(fr.gratis ? { gratis: true } : {}) };
+      cidade: end.cidade, uf: end.uf, valor: fr.valor, ...(fr.km != null ? { km: fr.km } : {}), ...(fr.valor == null ? { combinar: true } : {}), ...(fr.gratis ? { gratis: true } : {}) };
     dados.freteCliente = n(fr.valor || 0);
     dados.obs += fr.valor == null ? " · frete a combinar" : fr.gratis ? " · frete grátis" : "";
   } else if (fc.entrega && fc.retirada) dados.entrega = { tipo: "retirada" }; // sem entrega ligada, fica como antes (sem escolha)
@@ -1383,7 +1383,7 @@ app.post("/api/publico/pedido", limitePedidoPublico, async (req, res) => {
   const id = crypto.randomUUID(), token = crypto.randomBytes(16).toString("hex");
   const numero = (db.prepare("SELECT COALESCE(MAX(numero),0) m FROM pedidos").get().m) + 1;
   db.prepare("INSERT INTO pedidos (id, numero, dados, status, prazo, token) VALUES (?, ?, ?, 'orcamento', ?, ?)").run(id, numero, JSON.stringify(dados), dados.prazo, token);
-  pushAviso(numero, id, { tipo: "novo", valor: n(bruto - dados.desconto + dados.freteCliente), cliente: nome + (dados.entrega?.tipo === "entrega" ? " · entrega em " + dados.entrega.cidade : dados.entrega ? " · retirada" : "") });
+  pushAviso(numero, id, { tipo: "novo", valor: n(bruto - dados.desconto + dados.freteCliente), cliente: nome + (dados.entrega?.tipo === "entrega" ? " · entregar em " + dados.entrega.cidade : dados.entrega ? " · retirar pessoalmente" : "") });
   res.json({ numero, link: "/pedido/" + token }); // o cliente segue pelo link: aprova, paga e acompanha
 });
 
@@ -1599,15 +1599,63 @@ const chaveLugar = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f
 function freteConfig(L) {
   const f = L.frete || {};
   return { retirada: f.retirada !== false, retiradaTxt: txt(f.retiradaTxt, 200), entrega: !!f.entrega, gratisAcima: n(f.gratisAcima),
-    regras: (Array.isArray(f.regras) ? f.regras : []).slice(0, 30).map(r => ({ onde: txt(r.onde, 60), valor: n(r.valor) })).filter(r => r.onde) };
+    regras: (Array.isArray(f.regras) ? f.regras : []).slice(0, 30).map(r => ({ onde: txt(r.onde, 60), valor: n(r.valor) })).filter(r => r.onde),
+    km: (k => ({ ativo: !!k.ativo && Number.isFinite(+k.lat) && Number.isFinite(+k.lon), lat: +k.lat, lon: +k.lon, base: n(k.base), porKm: n(k.porKm), minimo: n(k.minimo), raio: n(k.raio) }))(f.km || {}) };
 }
 // valor do frete para a cidade/UF; null = sem regra, combina pelo WhatsApp
-function valorFrete(fc, cidade, uf, subtotal) {
+function valorFrete(fc, cidade, uf, subtotal, km) {
+  if (fc.km.ativo && km != null && (!fc.km.raio || km <= fc.km.raio)) {
+    if (fc.gratisAcima > 0 && subtotal >= fc.gratisAcima) return { valor: 0, gratis: true, km };
+    return { valor: Math.max(fc.km.minimo, Math.ceil((fc.km.base + fc.km.porKm * km) * 2) / 2), gratis: false, km, porKm: true };
+  }
   const c = chaveLugar(cidade), u = chaveLugar(uf), rs = fc.regras;
   const r = rs.find(x => chaveLugar(x.onde) === c) || rs.find(x => chaveLugar(x.onde) === u) || rs.find(x => ["*", "todas", "outras", "demais"].includes(chaveLugar(x.onde)));
-  if (!r) return { valor: null, gratis: false };
-  if (fc.gratisAcima > 0 && subtotal >= fc.gratisAcima) return { valor: 0, gratis: true };
-  return { valor: n(r.valor), gratis: false };
+  const k = km != null ? { km } : {};
+  if (!r) return { valor: null, gratis: false, ...k };
+  if (fc.gratisAcima > 0 && subtotal >= fc.gratisAcima) return { valor: 0, gratis: true, ...k };
+  return { valor: n(r.valor), gratis: false, ...k };
+}
+// ---------- distância loja → cliente (OpenStreetMap: Nominatim para achar o ponto, OSRM para a rota de carro) ----------
+const GEO_UA = { "User-Agent": "Precificador3D/1.0 (+" + (process.env.PUBLIC_URL || "https://8ondigital.com.br") + ")", "Accept-Language": "pt-BR" };
+let geoFila = Promise.resolve(); // o Nominatim aceita 1 consulta por segundo
+function geoBusca(params) {
+  const vez = geoFila.then(async () => {
+    try {
+      const r = await fetch("https://nominatim.openstreetmap.org/search?" + new URLSearchParams({ format: "json", limit: "1", countrycodes: "br", ...params }), { headers: GEO_UA, signal: AbortSignal.timeout(8000) });
+      const j = r.ok ? await r.json() : []; return j[0] ? { lat: +j[0].lat, lon: +j[0].lon } : null;
+    } catch (e) { return null; }
+  });
+  geoFila = vez.then(() => new Promise(ok => setTimeout(ok, 1100)));
+  return vez;
+}
+const geoCache = new Map();
+async function pontoDoEndereco(end) { // tenta rua, depois bairro, depois só a cidade
+  const ch = end.cep + "|" + (end.numero || ""); if (geoCache.has(ch)) return geoCache.get(ch);
+  const base = { city: end.cidade, state: end.uf };
+  let p = end.rua ? await geoBusca({ ...base, street: (end.numero ? end.numero + " " : "") + end.rua }) : null;
+  if (!p && end.rua && end.numero) p = await geoBusca({ ...base, street: end.rua });
+  if (!p && end.bairro) p = await geoBusca({ q: `${end.bairro}, ${end.cidade}, ${end.uf}` });
+  if (!p) p = await geoBusca(base);
+  if (p) { if (geoCache.size > 2000) geoCache.clear(); geoCache.set(ch, p); }
+  return p;
+}
+function kmReta(a, b) {
+  const R = 6371, r = x => x * Math.PI / 180, dLa = r(b.lat - a.lat), dLo = r(b.lon - a.lon);
+  return 2 * R * Math.asin(Math.sqrt(Math.sin(dLa / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLo / 2) ** 2));
+}
+const kmCache = new Map();
+async function kmAte(fc, end) { // km de carro da loja até o CEP; null se não achar o endereço
+  if (!fc.km.ativo) return null;
+  const ch = fc.km.lat.toFixed(5) + "," + fc.km.lon.toFixed(5) + "|" + end.cep; if (kmCache.has(ch)) return kmCache.get(ch);
+  const p = await pontoDoEndereco(end); if (!p) return null;
+  let km = null;
+  try {
+    const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${fc.km.lon},${fc.km.lat};${p.lon},${p.lat}?overview=false`, { headers: GEO_UA, signal: AbortSignal.timeout(8000) });
+    const j = await r.json(); if (j.code === "Ok" && j.routes?.[0]) km = j.routes[0].distance / 1000;
+  } catch (e) {}
+  if (km == null) km = kmReta(fc.km, p) * 1.3; // sem rota: linha reta + 30%
+  km = Math.round(km * 10) / 10;
+  if (kmCache.size > 2000) kmCache.clear(); kmCache.set(ch, km); return km;
 }
 const cepCache = new Map();
 async function buscaCep(cep) {
@@ -1624,7 +1672,19 @@ const limiteCep = rateLimit({ windowMs: 60 * 1000, limit: 30, standardHeaders: "
 app.get("/api/publico/frete", limiteCep, async (req, res) => {
   const fc = freteConfig(lojaConfig()); if (!fc.entrega) return res.status(400).json({ erro: "A loja não faz entrega." });
   const end = await buscaCep(req.query.cep); if (!end) return res.status(404).json({ erro: "CEP não encontrado. Confira os números." });
-  res.json({ ...end, ...valorFrete(fc, end.cidade, end.uf, n(req.query.subtotal)) });
+  res.json({ ...end, ...valorFrete(fc, end.cidade, end.uf, n(req.query.subtotal), await kmAte(fc, end)) });
+});
+// painel: acha o ponto da loja pelo CEP e número (o painel salva lat/lon em cfg.loja.frete.km)
+app.post("/api/frete/origem", exigeLogin, exigeEdicao, async (req, res) => {
+  const end = await buscaCep(req.body?.cep); if (!end) return res.status(400).json({ erro: "CEP não encontrado." });
+  const numero = txt(req.body?.numero, 20), p = await pontoDoEndereco({ ...end, numero });
+  if (!p) return res.status(404).json({ erro: "Não achei esse endereço no mapa. Confira o CEP." });
+  res.json({ ...p, cep: end.cep, endereco: `${end.rua ? end.rua + (numero ? ", " + numero : "") + " – " : ""}${end.bairro ? end.bairro + ", " : ""}${end.cidade}/${end.uf}` });
+});
+// painel: simula o frete de um CEP
+app.get("/api/frete/simula", exigeLogin, async (req, res) => {
+  const fc = freteConfig(lojaConfig()), end = await buscaCep(req.query.cep); if (!end) return res.status(404).json({ erro: "CEP não encontrado." });
+  res.json({ ...end, ...valorFrete(fc, end.cidade, end.uf, 0, await kmAte(fc, end)) });
 });
 
 // ---------- catálogo público (sem login) ----------

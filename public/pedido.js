@@ -91,8 +91,8 @@ function pagoHtml(d){
 }
 // retirada ou entrega, com o frete (pedidos do catálogo)
 function entHtml(d){ const e=d.entrega; if(!e) return d.frete>0?`<div class="ent"><span>Frete</span><b>${brl(d.frete)}</b></div>`:"";
-  if(e.tipo==="retirada") return `<div class="ent"><span>🏬 Retirada${e.retiradaTxt?`<small>${esc(e.retiradaTxt)}</small>`:""}</span><b>Sem frete</b></div>`;
-  return `<div class="ent"><span>🚚 Entrega<small>${esc(e.rua)}, ${esc(e.numero)}${e.complemento?" ("+esc(e.complemento)+")":""} · ${esc(e.bairro?e.bairro+", ":"")}${esc(e.cidade)}/${esc(e.uf)}</small></span><b>${d.frete>0?brl(d.frete):e.combinar?"A combinar":"Grátis"}</b></div>` }
+  if(e.tipo==="retirada") return `<div class="ent"><span>🏬 Retirar pessoalmente${e.retiradaTxt?`<small>${esc(e.retiradaTxt)}</small>`:""}</span><b>Sem frete</b></div>`;
+  return `<div class="ent"><span>🚚 Entregar<small>${esc(e.rua)}, ${esc(e.numero)}${e.complemento?" ("+esc(e.complemento)+")":""} · ${esc(e.bairro?e.bairro+", ":"")}${esc(e.cidade)}/${esc(e.uf)}${e.km!=null?" · "+String(e.km).replace(".",",")+" km":""}</small></span><b>${d.frete>0?brl(d.frete):e.combinar?"A combinar":"Grátis"}</b></div>` }
 async function carrega(){
   let d;
   try{const r=await fetch("/api/publico/pedido/"+encodeURIComponent(token));if(!r.ok)throw new Error(r.status);d=await r.json()}

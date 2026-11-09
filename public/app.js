@@ -764,9 +764,9 @@ function somPagamento(){
 // Caixa "Pedido #N": resumo com o que importa (cliente, itens, valores, prazo) e os botões principais.
 // "Retirada" ou "Entrega: Rua X, 12 – Bairro, Cidade/UF · CEP" (pedidos do catálogo)
 function entregaTxt(p){ const e=p.entrega; if(!e) return "";
-  if(e.tipo==="retirada") return "Retirada na loja";
+  if(e.tipo==="retirada") return "Retirar pessoalmente";
   return `Entrega: ${e.rua}, ${e.numero}${e.complemento?" ("+e.complemento+")":""} – ${e.bairro?e.bairro+", ":""}${e.cidade}/${e.uf} · CEP ${String(e.cep).replace(/(\d{5})(\d{3})/,"$1-$2")}` }
-const freteTxt=p=>{ const e=p.entrega; if(!e||e.tipo!=="entrega") return ""; return e.combinar?"frete a combinar":e.gratis?"frete grátis":"frete "+brl(num(e.valor)) };
+const freteTxt=p=>{ const e=p.entrega; if(!e||e.tipo!=="entrega") return ""; return (e.km!=null?String(e.km).replace(".",",")+" km · ":"")+(e.combinar?"frete a combinar":e.gratis?"frete grátis":"frete "+brl(num(e.valor))) };
 function abreResumo(p,criado){
   let dlg=$("#pedResumo");
   if(!dlg){
@@ -1383,13 +1383,37 @@ async function abrePedidoDaUrl(){
 }
 
 /* ---------- entrega e retirada (catálogo) ---------- */
-function freteCfg(){ cfg.loja.frete=cfg.loja.frete||{retirada:true,retiradaTxt:"",entrega:false,regras:[],gratisAcima:0}; return cfg.loja.frete }
+function freteCfg(){ cfg.loja.frete=cfg.loja.frete||{retirada:true,retiradaTxt:"",entrega:false,regras:[],gratisAcima:0}; cfg.loja.frete.km=cfg.loja.frete.km||{ativo:false,base:5,porKm:1.5,minimo:8,raio:30}; return cfg.loja.frete }
+const saveCfgJa=()=>{ clearTimeout(saveT); return podeEditar()?api("PUT","/api/config",clone(cfg)).catch(e=>toast(e.message)):Promise.resolve() };
+const kmN=v=>String(v).replace(".",",");
 function renderFrete(){
   const el=$("#freteBox"); if(!el) return; const f=freteCfg(), ed=podeEditar();
-  el.innerHTML=`<label class="chk"><input type="checkbox" data-fr="retirada"${f.retirada!==false?" checked":""}> <b>Retirada</b>: o cliente busca com você (sem frete)</label>
+  const k=f.km, temPonto=Number.isFinite(+k.lat)&&k.lat!==null&&k.lat!=="";
+  el.innerHTML=`<label class="chk"><input type="checkbox" data-fr="retirada"${f.retirada!==false?" checked":""}> <b>Retirar pessoalmente</b>: o cliente busca com você (sem frete)</label>
     <label class="f" style="max-width:640px">Onde e como retirar<input data-fr="retiradaTxt" maxlength="200" value="${esc(f.retiradaTxt||"")}" placeholder="Ex.: Bairro Xaxim, Curitiba. Combinamos o horário pelo WhatsApp"></label>
-    <label class="chk"><input type="checkbox" data-fr="entrega"${f.entrega?" checked":""}> <b>Entrega</b>: o cliente informa o CEP e paga o frete</label>
+    <label class="chk"><input type="checkbox" data-fr="entrega"${f.entrega?" checked":""}> <b>Entregar</b>: o cliente informa o CEP e paga o frete</label>
     <div class="stack" style="gap:8px${f.entrega?"":";opacity:.5"}">
+      <div class="frkm">
+        <label class="chk"><input type="checkbox" data-fk="ativo"${k.ativo?" checked":""}${temPonto?"":" disabled"}> <b>Cobrar por distância</b>: km de carro da sua loja até o cliente</label>
+        <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
+          <label class="f" style="max-width:150px">CEP da loja<input id="frOCep" inputmode="numeric" maxlength="9" value="${esc(k.cep?String(k.cep).replace(/(\d{5})(\d{3})/,"$1-$2"):"")}" placeholder="00000-000"></label>
+          <label class="f" style="max-width:110px">Número<input id="frONum" maxlength="20" value="${esc(k.numero||"")}"></label>
+          <button type="button" class="btn sm edit-only" data-frorig>${temPonto?"Trocar endereço":"Achar no mapa"}</button>
+        </div>
+        <p class="note" id="frOMsg" style="margin:0">${temPonto?"📍 "+esc(k.endereco||"Endereço da loja marcado"):"Coloque o CEP e o número de onde sai a entrega para ligar o cálculo por km."}</p>
+        <div class="frkmv">
+          <label class="f">Valor fixo<div class="unit"><span>R$</span><input data-fk="base" type="number" min="0" step="0.5" value="${k.base??""}"></div></label>
+          <label class="f">Por km<div class="unit"><span>R$</span><input data-fk="porKm" type="number" min="0" step="0.1" value="${k.porKm??""}"></div></label>
+          <label class="f">Frete mínimo<div class="unit"><span>R$</span><input data-fk="minimo" type="number" min="0" step="0.5" value="${k.minimo??""}"></div></label>
+          <label class="f">Até<div class="unit"><input data-fk="raio" type="number" min="0" step="1" value="${k.raio||""}" placeholder="sem limite"><span>km</span></div></label>
+        </div>
+        <p class="note" style="margin:0">Frete = valor fixo + km × valor por km, nunca abaixo do mínimo. Ex.: 10 km → ${brl(Math.max(num(k.minimo),num(k.base)+num(k.porKm)*10))}. Mais longe que o limite, valem as regras abaixo.</p>
+        <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
+          <label class="f" style="max-width:150px">Testar um CEP<input id="frSCep" inputmode="numeric" maxlength="9" placeholder="00000-000"></label>
+          <button type="button" class="btn sm ghost" data-frsim>Calcular frete</button><span class="note" id="frSMsg" style="margin:0"></span>
+        </div>
+      </div>
+      <b style="margin-top:6px">${k.ativo?"Fora do limite de km":"Frete por cidade ou estado"}</b>
       <div class="frregras">${(f.regras||[]).map((r,i)=>`<div class="frr" data-fi="${i}"><input data-frr="onde" maxlength="60" value="${esc(r.onde)}" placeholder="Cidade, UF ou *"><div class="unit"><span>R$</span><input data-frr="valor" type="number" min="0" step="0.5" value="${r.valor??""}"></div><button type="button" class="btn sm ghost edit-only" data-frx aria-label="Remover">✕</button></div>`).join("")}</div>
       <div class="row" style="gap:8px;flex-wrap:wrap"><button type="button" class="btn sm edit-only" data-fradd>+ Regra de frete</button>
         ${(f.regras||[]).length?"":'<button type="button" class="btn sm ghost edit-only" data-frex>Usar exemplo (Curitiba, PR, resto do Brasil)</button>'}</div>
@@ -1400,13 +1424,27 @@ function renderFrete(){
 }
 $("#freteBox")?.addEventListener("input",e=>{
   const f=freteCfg(), k=e.target.dataset.fr, rr=e.target.dataset.frr;
+  const fk=e.target.dataset.fk;
+  if(fk){ f.km[fk]=e.target.type==="checkbox"?e.target.checked:(e.target.value===""?"":num(e.target.value)); saveCfg(); if(e.target.type==="checkbox") renderFrete(); return }
+  if(e.target.id==="frOCep"||e.target.id==="frSCep"){ const d=e.target.value.replace(/\D/g,"").slice(0,8); e.target.value=d.length>5?d.slice(0,5)+"-"+d.slice(5):d; return }
   if(k) f[k]=e.target.type==="checkbox"?e.target.checked:k==="gratisAcima"?num(e.target.value):e.target.value;
   else if(rr){ const r=f.regras[Number(e.target.closest("[data-fi]").dataset.fi)]; r[rr]=rr==="valor"?(e.target.value===""?"":num(e.target.value)):e.target.value }
   else return;
   saveCfg(); if(e.target.type==="checkbox") renderFrete();
 });
-$("#freteBox")?.addEventListener("click",e=>{
+$("#freteBox")?.addEventListener("click",async e=>{
   const f=freteCfg();
+  if(e.target.closest("[data-frorig]")){ const b=e.target.closest("button"), m=$("#frOMsg"), cep=$("#frOCep").value.replace(/\D/g,""), numero=$("#frONum").value.trim();
+    if(cep.length!==8){ m.textContent="Digite o CEP da loja com 8 números."; return }
+    b.disabled=true; m.textContent="Procurando no mapa…";
+    try{ const r=await fetch("/api/frete/origem",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cep,numero})}); const j=await r.json(); if(!r.ok) throw new Error(j.erro||"Não achei.");
+      Object.assign(f.km,{lat:j.lat,lon:j.lon,cep:j.cep,numero,endereco:j.endereco,ativo:true}); await saveCfgJa(); renderFrete(); toast("Endereço da loja marcado. O frete agora é por km.") }
+    catch(err){ m.textContent=err.message; b.disabled=false } return }
+  if(e.target.closest("[data-frsim]")){ const m=$("#frSMsg"), cep=$("#frSCep").value.replace(/\D/g,""); if(cep.length!==8){ m.textContent="CEP com 8 números."; return }
+    m.textContent="Calculando…"; await saveCfgJa();
+    try{ const r=await fetch("/api/frete/simula?cep="+cep); const j=await r.json(); if(!r.ok) throw new Error(j.erro||"Erro.");
+      m.innerHTML=`<b>${esc(j.cidade)}/${esc(j.uf)}${j.km!=null?" · "+kmN(j.km)+" km":""}</b> → ${j.valor==null?"a combinar":"<b>"+brl(j.valor)+"</b>"}${j.km!=null&&!j.porKm?" (fora do limite, regra por cidade/estado)":""}` }
+    catch(err){ m.textContent=err.message } return }
   if(e.target.closest("[data-fradd]")){ f.regras.push({onde:"",valor:""}); renderFrete(); $("#freteBox .frr:last-child input")?.focus(); return }
   if(e.target.closest("[data-frex]")){ f.regras=[{onde:"Curitiba",valor:12},{onde:"PR",valor:25},{onde:"*",valor:40}]; f.entrega=true; saveCfg(); renderFrete(); toast("Exemplo colocado. Troque os valores pelos seus."); return }
   const x=e.target.closest("[data-frx]"); if(x){ f.regras.splice(Number(x.closest("[data-fi]").dataset.fi),1); saveCfg(); renderFrete() }

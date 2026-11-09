@@ -720,3 +720,6 @@ main,.main,.content{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
 .pres-ent{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:10px;background:var(--sunken);font-size:14px}
 .pres-ent span{color:var(--muted);font-size:13px}
 .pres-ent.warn{background:var(--warn-soft,#fff4d6)}
+.frkm{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--line,#2a3138);border-radius:12px}
+.frkmv{display:grid;grid-template-columns:repeat(4,minmax(0,140px));gap:8px}
+@media(max-width:640px){.frkmv{grid-template-columns:repeat(2,minmax(0,1fr))}}

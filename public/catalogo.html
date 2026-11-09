@@ -316,10 +316,10 @@ dialog::backdrop{background:rgba(8,12,16,.55);backdrop-filter:blur(2px)}
     <div class="cupom" id="cupBox" hidden><input class="campo" id="cCupom" maxlength="30" autocapitalize="characters" placeholder="Cupom de desconto"><button type="button" id="cAplicar">Aplicar</button></div>
     <p class="nota" id="cupMsg"></p>
     <div class="receber" id="recBox" hidden>
-      <b class="rtit">Como você quer receber?</b>
+      <b class="rtit">Retirar pessoalmente ou entregar?</b>
       <div class="opcrec" id="recOpc" role="radiogroup" aria-label="Retirada ou entrega">
-        <label><input type="radio" name="rec" value="retirada" checked><span><b>Retirar</b><small id="recRetTxt">Sem frete</small></span></label>
-        <label><input type="radio" name="rec" value="entrega"><span><b>Receber em casa</b><small>Frete pelo CEP</small></span></label>
+        <label><input type="radio" name="rec" value="retirada" checked><span><b>Retirar pessoalmente</b><small id="recRetTxt">Sem frete</small></span></label>
+        <label><input type="radio" name="rec" value="entrega"><span><b>Entregar</b><small>No seu endereço · frete pelo CEP</small></span></label>
       </div>
       <div id="endBox" class="endbox" hidden>
         <label class="cep">CEP<input class="campo" id="eCep" inputmode="numeric" maxlength="9" placeholder="00000-000" autocomplete="postal-code"></label>
