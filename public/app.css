@@ -38,8 +38,8 @@ h3{font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
 .dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
 .dot.ok{background:var(--good)} .dot.off{background:var(--warn)}
 /* layout com menu lateral */
-.shell{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh}
-.side{position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:18px;padding:calc(22px + env(safe-area-inset-top,0px)) 12px 16px;z-index:30}
+.shell{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh;min-height:100dvh}
+.side{position:sticky;top:0;height:100vh;height:100dvh;overflow-y:auto;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:18px;padding:calc(22px + env(safe-area-inset-top,0px)) 12px calc(16px + env(safe-area-inset-bottom,0px));z-index:30}
 .brand{font-family:var(--display);font-weight:800;font-size:21px;line-height:1.1;padding-inline:10px}
 .brand small{display:block;font:400 10.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
 nav.tabs{display:flex;flex-direction:column;gap:2px}
@@ -148,7 +148,7 @@ label.btn{display:inline-block;font:600 14px var(--body);border-radius:7px;paddi
 @media (prefers-reduced-motion:no-preference){.bar i{transition:width .25s ease}}
 
 /* login e conta */
-.auth{min-height:100vh;display:grid;place-items:center;padding-block:32px}
+.auth{min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding-block:calc(32px + env(safe-area-inset-top,0px)) calc(32px + env(safe-area-inset-bottom,0px))}
 .auth .card{width:100%;max-width:400px}
 .auth h1{font-size:30px}
 .auth form{display:flex;flex-direction:column;gap:14px}
@@ -450,7 +450,7 @@ tr.agora td{background:var(--accent-soft)}
 .hojehero .btn.primary:hover{background:#4ade80;color:#06231b}
 
 /* login */
-.auth{background:radial-gradient(circle at 15% 15%,rgba(69,214,140,.25),transparent 40%),linear-gradient(135deg,#0E1114,#0a0c0f);max-width:none;min-height:100vh}
+.auth{background:radial-gradient(circle at 15% 15%,rgba(69,214,140,.25),transparent 40%),linear-gradient(135deg,#0E1114,#0a0c0f);max-width:none;min-height:100vh;min-height:100dvh}
 .auth .card{max-width:420px;padding:32px;box-shadow:0 20px 50px rgba(0,0,0,.35);border:0;border-radius:18px}
 .auth .card::before{content:"";display:block;width:48px;height:48px;border-radius:14px;margin-bottom:4px;background:#12977A url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M12 2.8l8 4.6v9.2l-8 4.6-8-4.6V7.4z'/%3E%3Cpath d='M4 7.4l8 4.6 8-4.6M12 12v9.2'/%3E%3C/svg%3E") center/26px no-repeat;box-shadow:0 6px 16px rgba(18,151,122,.4)}
 .auth h1{font-size:26px}
@@ -605,7 +605,7 @@ dialog.pform{width:min(640px,calc(100vw - 24px))}
 @media (max-width:560px){.pf-2{grid-template-columns:1fr}.pfi2-l2{flex-wrap:wrap}}
 .pres-novo{background:var(--good-soft);color:var(--good);font-weight:700;font-size:14px;padding:10px 20px}
 /* avisos de pagamento no canto da tela */
-#avisosPag{position:fixed;right:16px;bottom:16px;z-index:70;display:flex;flex-direction:column;gap:8px;align-items:flex-end;max-width:min(380px,calc(100vw - 32px))}
+#avisosPag{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:70;display:flex;flex-direction:column;gap:8px;align-items:flex-end;max-width:min(380px,calc(100vw - 32px))}
 .avp{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--good);border-radius:12px;padding:10px 10px 10px 12px;box-shadow:0 12px 30px rgba(8,12,16,.18);width:100%}
 .avp.bad{border-left-color:var(--bad)}
 .avp > div{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -691,3 +691,8 @@ dialog.pform{width:min(640px,calc(100vw - 24px))}
 .apppasso .btn{align-self:flex-start}
 .appn{flex:none;width:26px;height:26px;border-radius:50%;background:var(--accent,#1FBE8C);color:#06231b!important;font-weight:800;display:grid;place-items:center;font-size:13px!important}
 @media (max-width:720px){.appgrid{grid-template-columns:1fr}}
+
+/* iPhone em tela cheia (app instalado): nada fica embaixo do notch nem da barrinha de baixo */
+html{background:#0E1114}
+main,.main,.content{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+@supports (padding:max(0px)){body{padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}}

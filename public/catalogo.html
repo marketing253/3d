@@ -10,6 +10,11 @@
 <title>Catálogo 3D</title>
 <meta name="description" content="Peças impressas em 3D sob encomenda e à pronta entrega.">
 <meta name="theme-color" content="#0E1114">
+<link rel="manifest" href="/catalogo.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Catálogo 8ON">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&display=swap">
@@ -17,17 +22,17 @@
 :root{--escuro:#0E1114;--verde:#12977A;--menta:#1FBE8C;--tinta:#16202b;--suave:#5a6878;--linha:#e2e7ec;--fundo:#f4f6f8;--branco:#fff;--raio:16px}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-html{scroll-behavior:smooth}
+html{scroll-behavior:smooth;background:#0E1114}
 body{margin:0;font:15px/1.5 Inter,system-ui,sans-serif;color:var(--tinta);background:var(--fundo);-webkit-font-smoothing:antialiased}
 img{max-width:100%;display:block}
 button,input{font:inherit;color:inherit}
 a{color:inherit}
-.wrap{max-width:1180px;margin:0 auto;padding:0 16px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 max(16px,env(safe-area-inset-left,0px)) 0 max(16px,env(safe-area-inset-right,0px))}
 h1,h2,h3{margin:0;line-height:1.15}
 .titulo{font-family:"Archivo Black",Inter,sans-serif;font-weight:400;letter-spacing:-.01em}
 
 /* topo */
-.topo{position:sticky;top:0;z-index:30;background:rgba(14,17,20,.94);backdrop-filter:blur(10px);color:#fff}
+.topo{position:sticky;top:0;z-index:30;padding-top:env(safe-area-inset-top,0px);background:rgba(14,17,20,.94);backdrop-filter:blur(10px);color:#fff}
 .topo .wrap{display:flex;align-items:center;gap:14px;height:64px}
 .topo .logo img{height:38px;width:auto}
 .topo .sep{width:1px;height:26px;background:rgba(255,255,255,.18)}
@@ -68,7 +73,7 @@ body:not(.sem3d) .hero .vitrine{display:none!important}
 .selo span{color:rgba(255,255,255,.65);font-size:13px}
 
 /* busca e categorias */
-.barra{position:sticky;top:64px;z-index:20;background:var(--fundo);padding:16px 0 10px}
+.barra{position:sticky;top:calc(64px + env(safe-area-inset-top,0px));z-index:20;background:var(--fundo);padding:16px 0 10px}
 .barra .wrap{display:flex;flex-direction:column;gap:12px}
 .busca{position:relative}
 .busca svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);width:18px;height:18px;fill:none;stroke:var(--suave);stroke-width:2}

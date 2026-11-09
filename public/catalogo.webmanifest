@@ -1,0 +1,28 @@
+{
+  "name": "Catálogo 3D · 8ON",
+  "short_name": "Catálogo 8ON",
+  "lang": "pt-BR",
+  "start_url": "/catalogo",
+  "scope": "/catalogo",
+  "display": "standalone",
+  "background_color": "#0E1114",
+  "theme_color": "#0E1114",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
