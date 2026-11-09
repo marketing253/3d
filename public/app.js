@@ -1332,6 +1332,49 @@ $("#pecasLista").addEventListener("click",async e=>{
   try{ const r=await api("POST","/api/produtos/"+encodeURIComponent(p.id)+"/estoque",{delta}); p.estoque=r.estoque; renderEstoque(); renderLista() }catch(err){ toast(err.message) }
 });
 
+/* ---------- app no celular + notificações de venda ---------- */
+let instalarEv=null;
+const ehIOS=/iphone|ipad|ipod/i.test(navigator.userAgent), instalado=()=>matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;
+window.addEventListener("beforeinstallprompt",e=>{ e.preventDefault(); instalarEv=e; renderApp() });
+window.addEventListener("appinstalled",()=>{ instalarEv=null; renderApp(); toast("App instalado. Agora ative as notificações.") });
+const b64uBytes=s=>{ const b=atob(s.replace(/-/g,"+").replace(/_/g,"/")+"===".slice((s.length+3)%4)); return Uint8Array.from(b,c=>c.charCodeAt(0)) };
+async function inscricaoAtual(){ if(!("serviceWorker" in navigator)||!("PushManager" in window)) return null; const r=await navigator.serviceWorker.ready; return r.pushManager.getSubscription() }
+async function renderApp(){
+  if(!$("#appCard")) return;
+  const it=$("#appInstTxt"), bi=$("#appInstalar");
+  if(instalado()){ it.textContent="Pronto: você está usando o app."; bi.hidden=true }
+  else if(instalarEv){ it.textContent="Coloca o ícone da 8ON na tela inicial, como um app."; bi.hidden=false }
+  else if(ehIOS){ it.innerHTML="No iPhone, abra no <b>Safari</b>, toque em <b>Compartilhar</b> (o quadrado com a seta) e em <b>Adicionar à Tela de Início</b>. Depois abra pelo ícone novo."; bi.hidden=true }
+  else { it.innerHTML="No celular Android, abra no <b>Chrome</b> e toque em <b>⋮ → Instalar app</b> (ou <b>Adicionar à tela inicial</b>)."; bi.hidden=true }
+  const pt=$("#pushTxt"), lig=$("#pushLigar"), tes=$("#pushTeste"), des=$("#pushDesligar"); lig.hidden=tes.hidden=des.hidden=true;
+  if(!("Notification" in window)||!("PushManager" in window)){ pt.textContent=ehIOS&&!instalado()?"No iPhone, as notificações só funcionam depois de instalar o app (passo 1), no iOS 16.4 ou mais novo.":"Este navegador não aceita notificações. Use o Chrome no Android."; return }
+  if(Notification.permission==="denied"){ pt.innerHTML="As notificações estão <b>bloqueadas</b> para este site. Libere em: cadeado ao lado do endereço → Permissões → Notificações. No app: segure o ícone → Informações do app → Notificações."; return }
+  let s=null; try{ s=await inscricaoAtual() }catch(e){}
+  if(s&&Notification.permission==="granted"){ pt.innerHTML='<b style="color:var(--good,#1a9b6c)">Ligadas neste aparelho.</b> Você recebe aviso de pedido novo e de pagamento.'; tes.hidden=des.hidden=false }
+  else { pt.textContent="Toque para o celular avisar quando tiver uma venda."; lig.hidden=false }
+}
+$("#appInstalar")?.addEventListener("click",async()=>{ if(!instalarEv) return; instalarEv.prompt(); try{ await instalarEv.userChoice }catch(e){} instalarEv=null; renderApp() });
+$("#pushLigar")?.addEventListener("click",async e=>{
+  const b=e.currentTarget; b.disabled=true;
+  try{
+    const perm=await Notification.requestPermission(); if(perm!=="granted"){ toast("Sem permissão, o celular não pode avisar."); return }
+    const {chave}=await api("GET","/api/push/chave"), reg=await navigator.serviceWorker.ready;
+    let s=await reg.pushManager.getSubscription();
+    if(!s) s=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64uBytes(chave)});
+    await api("POST","/api/push/inscrever",{sub:s.toJSON()});
+    await api("POST","/api/push/teste"); toast("Notificações ligadas. Mandei um aviso de teste.");
+  }catch(err){ toast("Não deu para ligar: "+err.message) }
+  finally{ b.disabled=false; renderApp() }
+});
+$("#pushTeste")?.addEventListener("click",async()=>{ try{ const r=await api("POST","/api/push/teste"); toast(r.enviados?"Aviso de teste enviado.":"Nenhum aparelho recebeu. Desligue e ligue de novo.") }catch(err){ toast(err.message) } });
+$("#pushDesligar")?.addEventListener("click",async()=>{ try{ const s=await inscricaoAtual(); if(s){ await api("POST","/api/push/sair",{endpoint:s.endpoint}); await s.unsubscribe() } toast("Notificações desligadas neste aparelho.") }catch(err){ toast(err.message) } renderApp() });
+// a notificação abre o painel com ?pedido=<id>: mostra o resumo desse pedido
+async function abrePedidoDaUrl(){
+  const id=new URLSearchParams(location.search).get("pedido"); if(!id) return;
+  try{ history.replaceState(null,"","/") }catch(e){}
+  setTab("pedidos"); await carregaPedidos(); const p=pedidos.find(x=>x.id===id); if(p) abreResumo(p);
+}
+
 /* ---------- banners rotativos do catálogo ---------- */
 function bnAlvos(){
   const cats=[...new Set(produtos.filter(p=>p.catalogo).map(p=>p.categoria).filter(Boolean))].sort();
@@ -1392,7 +1435,7 @@ function renderLoja(){
   $("#catLink").innerHTML=`<span class="num clip">${esc(url)}</span><button class="btn sm" id="copCat">Copiar link</button><a class="btn sm" href="/catalogo" target="_blank" rel="noopener">Abrir catálogo ↗</a>`;
   $("#copCat").addEventListener("click",async()=>{try{await navigator.clipboard.writeText(url);toast("Link copiado")}catch(e){toast(url)}});
   if(!podeEditar()) $("#cfgLoja").querySelectorAll("input").forEach(i=>i.disabled=true);
-  renderBanners();
+  renderBanners(); renderApp();
 }
 $("#cfgLoja").addEventListener("change",async e=>{ if(e.target.id!=="lj-logo") return; const f=e.target.files[0]; e.target.value=""; if(!f) return;
   try{ const fd=new FormData(); fd.append("foto",f,f.name); cfg.loja.logo=(await api("POST","/api/fotos",fd)).id; saveCfg(); renderConfig(); toast("Logo salvo") }catch(err){ toast(err.message) } });
@@ -2561,6 +2604,7 @@ async function showApp(){
   if(!t||t==="novo"||(t==="usuarios"&&me.papel!=="admin")||!$("#p-"+t)) t="hoje";
   setTab(t);
   await carregaDados();
+  abrePedidoDaUrl();
 }
 async function carregaDados(){
   try{

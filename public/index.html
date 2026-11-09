@@ -356,6 +356,15 @@
   <section class="panel" id="p-config" hidden>
     <div class="stack">
       <p class="note">Estes valores entram no custo de todos os produtos. Os números iniciais são estimativas. <strong>Troque pelos seus:</strong> a tarifa de luz está na sua conta de energia, e o preço do filamento é o que você pagou no rolo.</p>
+      <div class="card stack" id="appCard">
+        <h3>App no celular e avisos de venda</h3>
+        <p class="note" style="margin:0">Instale o sistema como app no celular e receba uma notificação a cada <b>pedido novo do catálogo</b> e a cada <b>pagamento recebido</b>, mesmo com o app fechado.</p>
+        <div class="appgrid">
+          <div class="apppasso"><span class="appn">1</span><div><b>Instalar o app</b><span id="appInstTxt">Abra este site no celular.</span><button type="button" class="btn sm primary" id="appInstalar" hidden>Instalar app</button></div></div>
+          <div class="apppasso"><span class="appn">2</span><div><b>Ligar as notificações</b><span id="pushTxt">Verificando…</span>
+            <div class="row" style="gap:6px;flex-wrap:wrap"><button type="button" class="btn sm primary" id="pushLigar" hidden>Ativar notificações</button><button type="button" class="btn sm" id="pushTeste" hidden>Enviar teste</button><button type="button" class="btn sm ghost" id="pushDesligar" hidden>Desligar neste aparelho</button></div></div></div>
+        </div>
+      </div>
       <div class="card stack">
         <h3>Sua loja e catálogo</h3>
         <div class="fields" id="cfgLoja"></div>

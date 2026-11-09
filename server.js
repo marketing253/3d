@@ -12,6 +12,7 @@ const multer = require("multer");
 const bcrypt = require("bcryptjs");
 const QRCode = require("qrcode");
 const { db, DATA_DIR } = require("./db");
+const push = require("./push");
 
 // Carrega .env simples (sem dependência extra)
 const envFile = path.join(__dirname, ".env");
@@ -1370,6 +1371,7 @@ app.post("/api/publico/pedido", limitePedidoPublico, (req, res) => {
   const id = crypto.randomUUID(), token = crypto.randomBytes(16).toString("hex");
   const numero = (db.prepare("SELECT COALESCE(MAX(numero),0) m FROM pedidos").get().m) + 1;
   db.prepare("INSERT INTO pedidos (id, numero, dados, status, prazo, token) VALUES (?, ?, ?, 'orcamento', ?, ?)").run(id, numero, JSON.stringify(dados), dados.prazo, token);
+  pushAviso(numero, id, { tipo: "novo", valor: n(bruto - dados.desconto), cliente: nome });
   res.json({ numero, link: "/pedido/" + token }); // o cliente segue pelo link: aprova, paga e acompanha
 });
 
@@ -1515,6 +1517,38 @@ app.get("/api/cobrancas", exigeLogin, (req, res) => {
     return { id: v.id, data: v.data, descricao: v.descricao, cliente: v.cliente || "", valor: n(v.bruto), numero: v.numero || null, whatsapp: pd ? pd.whatsapp || "" : "" }; }));
 });
 
+// ---------- notificações no celular (Web Push) ----------
+db.exec("CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, dados TEXT NOT NULL, usuario_id TEXT, criado_em TEXT NOT NULL DEFAULT (datetime('now')))");
+const PUSH_CONTATO = (process.env.PUBLIC_URL || "https://8ondigital.com.br").replace(/\/$/, "");
+function notifica(msg, usuarioId) {
+  const subs = usuarioId ? db.prepare("SELECT endpoint, dados FROM push_subs WHERE usuario_id = ?").all(usuarioId) : db.prepare("SELECT endpoint, dados FROM push_subs").all();
+  return Promise.all(subs.map(x => push.envia(DATA_DIR, JSON.parse(x.dados), msg, PUSH_CONTATO)
+    .then(st => { if (st === 404 || st === 410) db.prepare("DELETE FROM push_subs WHERE endpoint = ?").run(x.endpoint); else if (st >= 400) console.error("[push] status", st); return st; })
+    .catch(e => { console.error("[push]", e.message); return 0; })));
+}
+// aviso de venda: pedido novo do catálogo, pagamento recebido, estornado ou contestado
+function pushAviso(numero, pedidoId, a) {
+  const titulo = a.tipo === "novo" ? `🛒 Novo pedido #${numero} pelo catálogo` : a.tipo === "pago" ? `💰 Pedido #${numero} pago`
+    : a.tipo === "contestado" ? `⚠️ Pedido #${numero}: pagamento contestado` : `↩️ Pedido #${numero}: pagamento estornado`;
+  const corpo = [brlS(a.valor) + (a.forma ? " via " + a.forma : ""), a.cliente].filter(Boolean).join(" · ");
+  notifica({ titulo, corpo, url: "/?pedido=" + encodeURIComponent(pedidoId), tag: a.tipo + "-" + pedidoId });
+}
+app.get("/api/push/chave", exigeLogin, (req, res) => res.json({ chave: push.chaves(DATA_DIR).publica }));
+app.post("/api/push/inscrever", exigeLogin, (req, res) => {
+  const sub = req.body?.sub; if (!push.inscricaoValida(sub)) return res.status(400).json({ erro: "Inscrição inválida." });
+  db.prepare("INSERT INTO push_subs (endpoint, dados, usuario_id) VALUES (?, ?, ?) ON CONFLICT(endpoint) DO UPDATE SET dados = excluded.dados, usuario_id = excluded.usuario_id")
+    .run(sub.endpoint, JSON.stringify({ endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } }), req.usuario.id);
+  res.json({ ok: true });
+});
+app.post("/api/push/sair", exigeLogin, (req, res) => {
+  db.prepare("DELETE FROM push_subs WHERE endpoint = ? AND usuario_id = ?").run(txt(req.body?.endpoint, 1000), req.usuario.id);
+  res.json({ ok: true });
+});
+app.post("/api/push/teste", exigeLogin, async (req, res) => {
+  const st = await notifica({ titulo: "🔔 Notificações ligadas", corpo: "Você vai receber um aviso aqui a cada pedido novo e a cada pagamento.", url: "/", tag: "teste" }, req.usuario.id);
+  res.json({ enviados: st.filter(x => x >= 200 && x < 300).length, total: st.length });
+});
+
 // ---------- catálogo público (sem login) ----------
 const limitePublico = rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: "draft-7", legacyHeaders: false });
 function produtosPublicos() {
@@ -1629,6 +1663,7 @@ function mpAplica(o) {
   delete p.pagInformado;
   db.transaction(() => { salvaDados(r.id, p); sincronizaSinal(r.id, null); })();
   mpTaxa(r.id, id, pago).catch(e => console.error("[mp] taxa", e.message));
+  pushAviso(r.numero, r.id, { tipo: "pago", valor: pago, forma, cliente: txt(p.cliente, 60) });
   return true;
 }
 // Taxa descontada pelo Mercado Pago (valor cobrado − valor líquido): entra nas taxas do pedido, para o lucro sair certo.
@@ -1657,6 +1692,7 @@ function mpEstorno(o) {
   const valor = reg ? n(reg.valor) : n(o.total_amount);
   if (reg) reg.estornado = o.status;
   avisoPag(p, { tipo: o.status === "charged_back" ? "contestado" : "estornado", valor, forma: reg?.forma || mpForma(o) });
+  pushAviso(r.numero, r.id, { tipo: o.status === "charged_back" ? "contestado" : "estornado", valor, forma: reg?.forma || mpForma(o), cliente: txt(p.cliente, 60) });
   if (r.status === "entregue") { salvaDados(r.id, p); return true; } // venda já fechada: só avisa; o ajuste no Financeiro é manual
   p.sinal = n(Math.max(0, n(p.sinal) - (reg ? n(reg.somado ?? reg.valor) : valor)));
   if (reg) p.taxas = n(Math.max(0, n(p.taxas) - n(reg.taxa)));

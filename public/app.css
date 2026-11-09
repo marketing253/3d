@@ -683,3 +683,11 @@ dialog.pform{width:min(640px,calc(100vw - 24px))}
 .bnfotos img.torta{outline:2px solid #e0a100;outline-offset:1px}
 .bncampos{display:flex;flex-direction:column;gap:8px}
 @media (max-width:720px){.bnitem{grid-template-columns:1fr}.bntam{grid-template-columns:1fr 1fr}}
+/* app no celular */
+.appgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.apppasso{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line);border-radius:12px;padding:12px}
+.apppasso>div{display:flex;flex-direction:column;gap:6px;min-width:0}
+.apppasso span{color:var(--muted);font-size:13px;line-height:1.45}
+.apppasso .btn{align-self:flex-start}
+.appn{flex:none;width:26px;height:26px;border-radius:50%;background:var(--accent,#1FBE8C);color:#06231b!important;font-weight:800;display:grid;place-items:center;font-size:13px!important}
+@media (max-width:720px){.appgrid{grid-template-columns:1fr}}
