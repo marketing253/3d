@@ -713,3 +713,10 @@ main,.main,.content{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
   #pedLista details.mais .menu{position:fixed;left:12px;right:12px;width:calc(100vw - 24px);top:auto;bottom:calc(12px + env(safe-area-inset-bottom,0px));min-width:0;z-index:60;padding:8px;border-radius:16px;box-shadow:0 -10px 40px rgba(0,0,0,.25)}
   #pedLista details.mais .menu button{padding:12px}
 }
+/* entrega e retirada */
+.frregras{display:flex;flex-direction:column;gap:6px;max-width:520px}
+.frr{display:grid;grid-template-columns:minmax(0,1fr) 140px auto;gap:8px;align-items:center}
+.frr input{width:100%}
+.pres-ent{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:10px;background:var(--sunken);font-size:14px}
+.pres-ent span{color:var(--muted);font-size:13px}
+.pres-ent.warn{background:var(--warn-soft,#fff4d6)}

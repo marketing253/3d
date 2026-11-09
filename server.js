@@ -736,7 +736,7 @@ app.put("/api/pedidos/:id", exigeLogin, exigeEdicao, (req, res) => {
   if (ant.artes) v.artes = ant.artes; // versões da arte enviadas para aprovação
   if (ant.pagInformado) v.pagInformado = ant.pagInformado; // cliente avisou que pagou a entrada
   if (ant.pagarTudo) v.pagarTudo = true; // cliente escolheu pagar 100% ao aprovar
-  for (const k of ["mp", "mpPagos", "mpPagamentos", "mpAbertos", "avisosPag"]) if (ant[k]) v[k] = ant[k]; // cobrança, pagamentos e avisos do Mercado Pago
+  for (const k of ["mp", "mpPagos", "mpPagamentos", "mpAbertos", "avisosPag", "entrega", "lembretesPix"]) if (ant[k]) v[k] = ant[k]; // cobrança, pagamentos e avisos do Mercado Pago
   if (ant.fluxo) v.fluxo = ant.fluxo;
   db.transaction(() => {
     db.prepare("UPDATE pedidos SET dados = ?, prazo = ?, atualizado_em = datetime('now') WHERE id = ?").run(JSON.stringify(v), v.prazo, req.params.id);
@@ -1280,7 +1280,7 @@ td.v{text-align:right;white-space:nowrap}
 <p class="dica">Escolha a impressora térmica e o papel 100 × 150 mm. Se a janela de impressão não abrir, use Ctrl+P.</p>
 <div class="et">
   <div class="top"><div><div class="lb">Pedido</div><div class="loja">${escH(L.nome || "Impressões 3D")}</div></div><div class="num">#${r.numero}</div></div>
-  <div><div class="lb">Cliente</div><div class="cli">${escH(p.cliente)}</div>${p.whatsapp ? `<div>${escH(p.whatsapp)}</div>` : ""}<div class="lb" style="margin-top:1mm">Pedido em ${dataBR(p.data)}${p.prazo ? ` · entrega até ${dataBR(p.prazo)}` : ""}</div></div>
+  <div><div class="lb">Cliente</div><div class="cli">${escH(p.cliente)}</div>${p.whatsapp ? `<div>${escH(p.whatsapp)}</div>` : ""}${p.entrega?.tipo === "entrega" ? `<div style="margin-top:1mm;font-size:9pt;line-height:1.25"><b>Entregar em:</b> ${escH(p.entrega.rua)}, ${escH(p.entrega.numero)}${p.entrega.complemento ? " (" + escH(p.entrega.complemento) + ")" : ""}<br>${escH(p.entrega.bairro ? p.entrega.bairro + " · " : "")}${escH(p.entrega.cidade)}/${escH(p.entrega.uf)} · CEP ${escH(String(p.entrega.cep).replace(/(\d{5})(\d{3})/, "$1-$2"))}</div>` : p.entrega?.tipo === "retirada" ? `<div style="margin-top:1mm;font-size:9pt"><b>Retirada na loja</b></div>` : ""}<div class="lb" style="margin-top:1mm">Pedido em ${dataBR(p.data)}${p.prazo ? ` · entrega até ${dataBR(p.prazo)}` : ""}</div></div>
   <table>${p.itens.map(i => `<tr><td class="q">${i.quantidade}×</td><td>${escH(i.descricao)}${i.personalizacao ? `<div class="pers">${escH(i.personalizacao)}</div>` : ""}</td><td class="v">${brlS(i.quantidade * i.preco_unit)}</td></tr>`).join("")}</table>
   ${p.desconto ? `<div class="tot" style="font-size:9pt;font-weight:400"><span>Desconto</span><span>-${brlS(p.desconto)}</span></div>` : ""}
   ${p.freteCliente ? `<div class="tot" style="font-size:9pt;font-weight:400"><span>Frete</span><span>${brlS(p.freteCliente)}</span></div>` : ""}
@@ -1334,7 +1334,7 @@ app.get("/api/resumo", exigeLogin, (req, res) => {
 // ---------- pedido vindo do catálogo público ----------
 const limitePedidoPublico = rateLimit({ windowMs: 10 * 60 * 1000, limit: 6, standardHeaders: "draft-7", legacyHeaders: false,
   message: { erro: "Muitos pedidos seguidos. Tente de novo em alguns minutos." } });
-app.post("/api/publico/pedido", limitePedidoPublico, (req, res) => {
+app.post("/api/publico/pedido", limitePedidoPublico, async (req, res) => {
   const b = req.body || {};
   const nome = txt(b.nome, 80);
   if (nome.length < 2) return res.status(400).json({ erro: "Informe seu nome." });
@@ -1367,11 +1367,23 @@ app.post("/api/publico/pedido", limitePedidoPublico, (req, res) => {
     obs: "Pedido feito pelo catálogo do site" + (cup && !cup.erro ? ` · cupom ${cup.codigo}` : ""), origem: "catalogo",
     ...(cup && !cup.erro ? { cupom: cup.codigo } : {}) };
   if (dados.whatsapp.replace(/\D/g, "").length < 10) return res.status(400).json({ erro: "Informe seu WhatsApp com DDD." });
-  avisoPag(dados, { tipo: "novo", valor: n(bruto - dados.desconto), forma: "Catálogo" }); // aparece no painel como "Novo pedido"
+  const fc = freteConfig(L), be = b.entrega || {};
+  if (fc.entrega && be.tipo === "entrega") {
+    const end = await buscaCep(be.cep); if (!end) return res.status(400).json({ erro: "Confira o CEP da entrega." });
+    const numEnd = txt(be.numero, 20), rua = txt(be.rua, 120) || end.rua;
+    if (!rua || !numEnd) return res.status(400).json({ erro: "Informe a rua e o número para a entrega." });
+    const fr = valorFrete(fc, end.cidade, end.uf, n(bruto - dados.desconto));
+    dados.entrega = { tipo: "entrega", cep: end.cep, rua, numero: numEnd, complemento: txt(be.complemento, 80), bairro: txt(be.bairro, 80) || end.bairro,
+      cidade: end.cidade, uf: end.uf, valor: fr.valor, ...(fr.valor == null ? { combinar: true } : {}), ...(fr.gratis ? { gratis: true } : {}) };
+    dados.freteCliente = n(fr.valor || 0);
+    dados.obs += fr.valor == null ? " · frete a combinar" : fr.gratis ? " · frete grátis" : "";
+  } else if (fc.entrega && fc.retirada) dados.entrega = { tipo: "retirada" }; // sem entrega ligada, fica como antes (sem escolha)
+  else if (fc.entrega) return res.status(400).json({ erro: "Escolha a entrega e informe o CEP." });
+  avisoPag(dados, { tipo: "novo", valor: n(bruto - dados.desconto + dados.freteCliente), forma: "Catálogo" }); // aparece no painel como "Novo pedido"
   const id = crypto.randomUUID(), token = crypto.randomBytes(16).toString("hex");
   const numero = (db.prepare("SELECT COALESCE(MAX(numero),0) m FROM pedidos").get().m) + 1;
   db.prepare("INSERT INTO pedidos (id, numero, dados, status, prazo, token) VALUES (?, ?, ?, 'orcamento', ?, ?)").run(id, numero, JSON.stringify(dados), dados.prazo, token);
-  pushAviso(numero, id, { tipo: "novo", valor: n(bruto - dados.desconto), cliente: nome });
+  pushAviso(numero, id, { tipo: "novo", valor: n(bruto - dados.desconto + dados.freteCliente), cliente: nome + (dados.entrega?.tipo === "entrega" ? " · entrega em " + dados.entrega.cidade : dados.entrega ? " · retirada" : "") });
   res.json({ numero, link: "/pedido/" + token }); // o cliente segue pelo link: aprova, paga e acompanha
 });
 
@@ -1528,11 +1540,43 @@ function notifica(msg, usuarioId) {
 }
 // aviso de venda: pedido novo do catálogo, pagamento recebido, estornado ou contestado
 function pushAviso(numero, pedidoId, a) {
+  const extra = { aprovado: `✅ Pedido #${numero}: orçamento aprovado`, recusado: `❌ Pedido #${numero}: orçamento recusado`,
+    "arte-ok": `🎨 Pedido #${numero}: arte aprovada`, "arte-ajuste": `✏️ Pedido #${numero}: cliente pediu ajuste na arte` }[a.tipo];
+  if (extra) return notifica({ titulo: extra, corpo: [a.texto, a.cliente].filter(Boolean).join(" · "), url: "/?pedido=" + encodeURIComponent(pedidoId), tag: a.tipo + "-" + pedidoId });
   const titulo = a.tipo === "novo" ? `🛒 Novo pedido #${numero} pelo catálogo` : a.tipo === "pago" ? `💰 Pedido #${numero} pago`
     : a.tipo === "contestado" ? `⚠️ Pedido #${numero}: pagamento contestado` : `↩️ Pedido #${numero}: pagamento estornado`;
   const corpo = [brlS(a.valor) + (a.forma ? " via " + a.forma : ""), a.cliente].filter(Boolean).join(" · ");
   notifica({ titulo, corpo, url: "/?pedido=" + encodeURIComponent(pedidoId), tag: a.tipo + "-" + pedidoId });
 }
+// Atrasados, que vencem hoje e Pix aprovado há mais de 24 h sem pagar. Só manda se tiver algo.
+function resumoPendencias() {
+  const hoje = hojeBR(), r = { atrasados: [], hoje: [], pix: [] };
+  for (const x of db.prepare("SELECT * FROM pedidos WHERE status NOT IN ('entregue','cancelado') ORDER BY numero").all()) {
+    const p = JSON.parse(x.dados), et = etapaDe(x.status, p);
+    if (et === "pagamento" && p.resposta?.acao === "aprovado" && !p.pagInformado && Date.now() - Date.parse(p.resposta.em) > 24 * 3600 * 1000) r.pix.push(x.numero);
+    if (!x.prazo || ["orcamento", "pronto"].includes(et)) continue;
+    if (x.prazo < hoje) r.atrasados.push(x.numero); else if (x.prazo === hoje) r.hoje.push(x.numero);
+  }
+  return r;
+}
+function enviaResumoManha(forcar) {
+  const r = resumoPendencias(), lista = a => a.slice(0, 6).map(x => "#" + x).join(", ") + (a.length > 6 ? "…" : "");
+  const partes = [r.atrasados.length ? `${r.atrasados.length} atrasado${r.atrasados.length > 1 ? "s" : ""} (${lista(r.atrasados)})` : "",
+    r.hoje.length ? `${r.hoje.length} vence${r.hoje.length > 1 ? "m" : ""} hoje (${lista(r.hoje)})` : "",
+    r.pix.length ? `${r.pix.length} Pix sem pagar há +24 h (${lista(r.pix)})` : ""].filter(Boolean);
+  if (!partes.length && !forcar) return Promise.resolve([]);
+  return notifica({ titulo: partes.length ? "☀️ Bom dia! Pedidos para hoje" : "☀️ Bom dia! Nada pendente", corpo: partes.join(" · ") || "Nenhum pedido atrasado ou vencendo hoje.", url: "/", tag: "resumo-manha" });
+}
+const RESUMO_ARQ = path.join(DATA_DIR, "resumo-manha.txt");
+setInterval(() => {
+  const agora = new Date(), h = Number(agora.toLocaleString("en-US", { timeZone: "America/Sao_Paulo", hour: "2-digit", hour12: false }));
+  if (h !== 8) return;
+  const dia = hojeBR(); let ult = ""; try { ult = fs.readFileSync(RESUMO_ARQ, "utf8").trim(); } catch (e) { /* primeira vez */ }
+  if (ult === dia) return;
+  fs.writeFileSync(RESUMO_ARQ, dia);
+  enviaResumoManha().catch(e => console.error("[push] resumo", e.message));
+}, 60 * 1000).unref();
+app.post("/api/push/resumo-teste", exigeLogin, async (req, res) => { const st = await enviaResumoManha(true); res.json({ enviados: st.filter(x => x >= 200 && x < 300).length, ...resumoPendencias() }); });
 app.get("/api/push/chave", exigeLogin, (req, res) => res.json({ chave: push.chaves(DATA_DIR).publica }));
 app.post("/api/push/inscrever", exigeLogin, (req, res) => {
   const sub = req.body?.sub; if (!push.inscricaoValida(sub)) return res.status(400).json({ erro: "Inscrição inválida." });
@@ -1547,6 +1591,40 @@ app.post("/api/push/sair", exigeLogin, (req, res) => {
 app.post("/api/push/teste", exigeLogin, async (req, res) => {
   const st = await notifica({ titulo: "🔔 Notificações ligadas", corpo: "Você vai receber um aviso aqui a cada pedido novo e a cada pagamento.", url: "/", tag: "teste" }, req.usuario.id);
   res.json({ enviados: st.filter(x => x >= 200 && x < 300).length, total: st.length });
+});
+
+// ---------- entrega ou retirada (catálogo) ----------
+// cfg.loja.frete = { retirada, retiradaTxt, entrega, regras: [{ onde: "Curitiba" | "PR" | "*", valor }], gratisAcima }
+const chaveLugar = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+function freteConfig(L) {
+  const f = L.frete || {};
+  return { retirada: f.retirada !== false, retiradaTxt: txt(f.retiradaTxt, 200), entrega: !!f.entrega, gratisAcima: n(f.gratisAcima),
+    regras: (Array.isArray(f.regras) ? f.regras : []).slice(0, 30).map(r => ({ onde: txt(r.onde, 60), valor: n(r.valor) })).filter(r => r.onde) };
+}
+// valor do frete para a cidade/UF; null = sem regra, combina pelo WhatsApp
+function valorFrete(fc, cidade, uf, subtotal) {
+  const c = chaveLugar(cidade), u = chaveLugar(uf), rs = fc.regras;
+  const r = rs.find(x => chaveLugar(x.onde) === c) || rs.find(x => chaveLugar(x.onde) === u) || rs.find(x => ["*", "todas", "outras", "demais"].includes(chaveLugar(x.onde)));
+  if (!r) return { valor: null, gratis: false };
+  if (fc.gratisAcima > 0 && subtotal >= fc.gratisAcima) return { valor: 0, gratis: true };
+  return { valor: n(r.valor), gratis: false };
+}
+const cepCache = new Map();
+async function buscaCep(cep) {
+  cep = String(cep || "").replace(/\D/g, ""); if (cep.length !== 8) return null;
+  if (cepCache.has(cep)) return cepCache.get(cep);
+  try {
+    const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`, { signal: AbortSignal.timeout(6000) });
+    const j = await r.json(); if (!r.ok || j.erro) return null;
+    const v = { cep, rua: txt(j.logradouro, 120), bairro: txt(j.bairro, 80), cidade: txt(j.localidade, 80), uf: txt(j.uf, 2).toUpperCase() };
+    if (cepCache.size > 2000) cepCache.clear(); cepCache.set(cep, v); return v;
+  } catch (e) { return null; }
+}
+const limiteCep = rateLimit({ windowMs: 60 * 1000, limit: 30, standardHeaders: "draft-7", legacyHeaders: false });
+app.get("/api/publico/frete", limiteCep, async (req, res) => {
+  const fc = freteConfig(lojaConfig()); if (!fc.entrega) return res.status(400).json({ erro: "A loja não faz entrega." });
+  const end = await buscaCep(req.query.cep); if (!end) return res.status(404).json({ erro: "CEP não encontrado. Confira os números." });
+  res.json({ ...end, ...valorFrete(fc, end.cidade, end.uf, n(req.query.subtotal)) });
 });
 
 // ---------- catálogo público (sem login) ----------
@@ -1569,6 +1647,7 @@ app.get("/api/publico/catalogo", limitePublico, (req, res) => {
     })),
     kits: kitsPublicos().map(({ itens, ...k }) => ({ ...k, itens: itens.map(i => ({ nome: i.nome, q: i.q })) })),
     temCupom: (configCompleta().cupons || []).some(c => c && c.ativo),
+    entrega: (fc => ({ retirada: fc.retirada || !fc.entrega, retiradaTxt: fc.retiradaTxt, entrega: fc.entrega, gratisAcima: fc.gratisAcima }))(freteConfig(loja)),
     banners: bannersLoja(loja).map((b, i) => ({ img: "/loja/banner/" + i + "/d?v=" + b.foto.slice(0, 8), cel: b.cel ? "/loja/banner/" + i + "/c?v=" + b.cel.slice(0, 8) : "", titulo: b.titulo, alvo: b.alvo })),
   });
 });
@@ -1861,6 +1940,8 @@ app.post("/api/publico/pedido/:token/resposta", limiteResposta, (req, res) => {
   if (acao === "aprovar" && req.body.pagar === "total") p.pagarTudo = true; else delete p.pagarTudo;
   db.prepare("UPDATE pedidos SET dados = ?, status = ?, atualizado_em = datetime('now') WHERE id = ?")
     .run(JSON.stringify(p), acao === "aprovar" ? "aprovado" : "cancelado", r.id);
+  pushAviso(r.numero, r.id, { tipo: acao === "aprovar" ? "aprovado" : "recusado", cliente: txt(p.cliente, 60),
+    texto: acao === "aprovar" ? brlS(totalPedido(p)) + (p.pagarTudo ? " · vai pagar 100%" : " · vai pagar a entrada") : p.resposta.motivo ? "“" + p.resposta.motivo + "”" : "" });
   res.json({ ok: true });
 });
 app.post("/api/publico/pedido/:token/paguei", limiteResposta, (req, res) => {
@@ -1870,6 +1951,14 @@ app.post("/api/publico/pedido/:token/paguei", limiteResposta, (req, res) => {
   p.pagInformado = new Date().toISOString();
   db.prepare("UPDATE pedidos SET dados = ? WHERE id = ?").run(JSON.stringify(p), r.id);
   res.json({ ok: true });
+});
+// marca que você lembrou o cliente do Pix (o aviso some da tela Hoje por 2 dias)
+app.post("/api/pedidos/:id/lembrete-pix", exigeLogin, exigeEdicao, (req, res) => {
+  const r = db.prepare("SELECT dados FROM pedidos WHERE id = ?").get(req.params.id);
+  if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  const p = JSON.parse(r.dados); p.lembretesPix = [...(p.lembretesPix || []), new Date().toISOString()].slice(-10);
+  db.prepare("UPDATE pedidos SET dados = ? WHERE id = ?").run(JSON.stringify(p), req.params.id);
+  res.json(linhaPedido(db.prepare("SELECT * FROM pedidos WHERE id = ?").get(req.params.id)));
 });
 app.post("/api/pedidos/:id/resposta-vista", exigeLogin, (req, res) => {
   const r = db.prepare("SELECT dados FROM pedidos WHERE id = ?").get(req.params.id);
@@ -1909,6 +1998,7 @@ app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
       foto: fotoDoItem(i) ? `/pedido/${r.token}/foto/${k}` : null })),
     fotos: (p.fotosOrc || []).map((f, k) => `/pedido/${r.token}/foto-orc/${k}`),
     desconto: n(p.desconto), frete: n(p.freteCliente), total, sinal: n(p.sinal), receber,
+    entrega: p.entrega ? { ...p.entrega, ...(p.entrega.tipo === "retirada" ? { retiradaTxt: freteConfig(L).retiradaTxt } : {}) } : null,
     entrada, faltaEntrada, resposta: p.resposta ? { acao: p.resposta.acao, em: p.resposta.em } : null,
     etapa: etapaDe(r.status, p), pagInformado: p.pagInformado || null, precisaArte: precisaArte(p),
     pagamentos: pagamentosDe(p).map(({ ref, ...x }) => x), comprovante: n(p.sinal) > 0 ? `/pedido/${r.token}/comprovante` : null,
@@ -1990,6 +2080,8 @@ app.post("/api/publico/arte/:token/resposta", limiteResposta, (req, res) => {
   a.status = acao === "aprovar" ? "aprovada" : "ajuste"; a.respondidoEm = new Date().toISOString(); a.visto = false;
   if (comentario) a.comentario = comentario;
   salvaDados(r.id, p);
+  pushAviso(r.numero, r.id, { tipo: acao === "aprovar" ? "arte-ok" : "arte-ajuste", cliente: txt(p.cliente, 60),
+    texto: acao === "aprovar" ? `versão ${a.v} · já pode produzir` : "“" + comentario.slice(0, 120) + "”" });
   res.json({ ok: true });
 });
 app.get("/aprovacao/:token", limitePublico, (req, res) => {

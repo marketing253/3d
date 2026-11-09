@@ -133,6 +133,24 @@ body:not(.sem3d) .hero .vitrine{display:none!important}
 .grupo .secao h2{display:flex;align-items:baseline;gap:10px}
 .grupo .secao small{color:var(--suave);font:600 14px Inter,sans-serif}
 
+/* retirar ou receber */
+.receber{display:flex;flex-direction:column;gap:8px;padding-bottom:4px}
+.rtit{font-size:14px}
+.opcrec{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.opcrec label{position:relative;cursor:pointer}
+.opcrec input{position:absolute;opacity:0;pointer-events:none}
+.opcrec span{display:flex;flex-direction:column;gap:1px;border:1.5px solid var(--linha);border-radius:12px;padding:10px 12px;transition:border-color .15s,background .15s}
+.opcrec small{color:var(--suave);font-size:12.5px}
+.opcrec input:checked + span{border-color:var(--verde);background:#eefaf5;box-shadow:0 0 0 3px rgba(18,151,122,.12)}
+.opcrec input:focus-visible + span{outline:2px solid var(--verde);outline-offset:2px}
+.endbox{display:flex;flex-direction:column;gap:8px}
+.endbox label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}
+.endbox .cep{max-width:180px}
+.end{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.end .wide{grid-column:1/-1}
+.nota.bom{color:var(--verde);font-weight:600}
+.nota.aviso{color:#8a5a00}
+
 /* rodapé */
 .rodape{margin-top:56px;background:var(--escuro);color:rgba(255,255,255,.7);padding:32px 0 calc(110px + env(safe-area-inset-bottom,0px))}
 .rodape .wrap{display:flex;flex-wrap:wrap;gap:20px;align-items:center;justify-content:space-between}
@@ -170,7 +188,7 @@ dialog::backdrop{background:rgba(8,12,16,.55);backdrop-filter:blur(2px)}
 .dc-cab{padding:20px 22px;border-bottom:1px solid var(--linha);display:flex;justify-content:space-between;align-items:center}
 .dc-cab h2{font-size:20px}
 .dc-cab .x{position:static;box-shadow:none;background:var(--fundo)}
-.dc-corpo{flex:1;overflow:auto;padding:16px 22px;display:flex;flex-direction:column;gap:14px}
+.dc-corpo{flex:1 0 auto;overflow:visible;padding:16px 22px;display:flex;flex-direction:column;gap:14px}
 .it{display:grid;grid-template-columns:56px 1fr auto;gap:10px;align-items:center}
 .it .mini{width:56px;height:56px;border-radius:10px;background:linear-gradient(135deg,#eef2f5,#dff4ea);overflow:hidden}
 .it .mini img{width:100%;height:100%;object-fit:cover}
@@ -297,7 +315,25 @@ dialog::backdrop{background:rgba(8,12,16,.55);backdrop-filter:blur(2px)}
   <form class="dc-pe" id="dcPe" autocomplete="on">
     <div class="cupom" id="cupBox" hidden><input class="campo" id="cCupom" maxlength="30" autocapitalize="characters" placeholder="Cupom de desconto"><button type="button" id="cAplicar">Aplicar</button></div>
     <p class="nota" id="cupMsg"></p>
+    <div class="receber" id="recBox" hidden>
+      <b class="rtit">Como você quer receber?</b>
+      <div class="opcrec" id="recOpc" role="radiogroup" aria-label="Retirada ou entrega">
+        <label><input type="radio" name="rec" value="retirada" checked><span><b>Retirar</b><small id="recRetTxt">Sem frete</small></span></label>
+        <label><input type="radio" name="rec" value="entrega"><span><b>Receber em casa</b><small>Frete pelo CEP</small></span></label>
+      </div>
+      <div id="endBox" class="endbox" hidden>
+        <label class="cep">CEP<input class="campo" id="eCep" inputmode="numeric" maxlength="9" placeholder="00000-000" autocomplete="postal-code"></label>
+        <p class="nota" id="eMsg"></p>
+        <div id="endCampos" class="end" hidden>
+          <label class="wide">Rua<input class="campo" id="eRua" maxlength="120" autocomplete="address-line1"></label>
+          <label>Número<input class="campo" id="eNum" maxlength="20" inputmode="numeric" placeholder="Ex.: 120"></label>
+          <label>Complemento<input class="campo" id="eComp" maxlength="80" placeholder="Apto, bloco… (opcional)" autocomplete="address-line2"></label>
+          <label class="wide">Bairro<input class="campo" id="eBairro" maxlength="80"></label>
+        </div>
+      </div>
+    </div>
     <div class="lin" id="linDesc" hidden><span>Desconto</span><span id="vDesc"></span></div>
+    <div class="lin" id="linFrete" hidden><span>Frete</span><span id="vFrete"></span></div>
     <div class="lin tot"><span>Total</span><span id="vTot"></span></div>
     <div class="dados">
       <label>Seu nome<input class="campo" id="cNome" name="name" maxlength="80" autocomplete="name" placeholder="Nome e sobrenome" required></label>

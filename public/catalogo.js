@@ -10,8 +10,11 @@ const sem=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase()
 let dados=null, cat="Todos", busca="", carrinho={}, cupom=null;
 let foco=new URLSearchParams(location.search).get("p");
 let cli={nome:"",whatsapp:""};
+// entrega: tipo, cep e endereço; valor/combinar vêm do servidor pelo CEP (o servidor confere de novo no pedido)
+let ent={tipo:"retirada",cep:"",rua:"",numero:"",complemento:"",bairro:"",cidade:"",uf:"",valor:null,combinar:false,achou:false};
 try{ carrinho=JSON.parse(localStorage.getItem("cat3d.carrinho")||"{}")||{} }catch(e){ carrinho={} }
 try{ cli={...cli,...JSON.parse(localStorage.getItem("cat3d.cliente")||"{}")} }catch(e){}
+try{ const x=JSON.parse(localStorage.getItem("cat3d.entrega")||"{}"); if(x&&typeof x==="object") ent={...ent,...x,achou:false} }catch(e){}
 const salva=()=>{ try{ localStorage.setItem("cat3d.carrinho",JSON.stringify(carrinho)) }catch(e){} };
 function toast(m){const t=$("#toast");t.textContent=m;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,3000)}
 
@@ -49,6 +52,7 @@ async function carrega(){
   $("#cupBox").hidden=!dados.temCupom;
   if(dados.temCupom){ let c=""; try{c=new URLSearchParams(location.search).get("cupom")||sessionStorage.getItem("cat3d.cupom")||""}catch(e){} if(c){ $("#cCupom").value=c; setTimeout(aplicaCupom,0) } }
   $("#cNome").value=cli.nome; $("#cWhats").value=cli.whatsapp;
+  montaEntrega();
   banners();
   render();
   if(foco&&item(foco)) abreProduto(foco);
@@ -155,7 +159,10 @@ function renderCarrinho(){
       ${x.p.personalizavel?`<input class="campo" data-pers="${esc(x.p.id)}" maxlength="200" placeholder="Personalização: nome, cor, texto…" value="${esc(x.pers||"")}">`:""}
     </div>`).join(""):`<p class="vazio" style="padding:30px 0">Seu carrinho está vazio.<br>Escolha um produto para começar.</p>`;
   $("#dcPe").hidden=!its.length;
-  $("#linDesc").hidden=!(des>0); $("#vDesc").textContent="− "+brl(des); $("#vTot").textContent=brl(tot-des);
+  const fr=freteAtual(tot-des);
+  $("#linDesc").hidden=!(des>0); $("#vDesc").textContent="− "+brl(des);
+  $("#linFrete").hidden=ent.tipo!=="entrega"||!ent.achou; $("#vFrete").textContent=fr.txt;
+  $("#vTot").textContent=brl(tot-des+fr.valor);
   if(cupom) $("#cupMsg").textContent=des>0?`Cupom ${cupom.codigo} aplicado.`:`O cupom ${cupom.codigo} vale a partir de ${brl(cupom.minimo)}.`;
 }
 function abreCarrinho(){ if($("#dProd").open) $("#dProd").close(); renderCarrinho(); if(!$("#dCarr").open) $("#dCarr").showModal() }
@@ -167,21 +174,68 @@ async function aplicaCupom(){
   catch(err){ cupom=null; $("#cupMsg").textContent=err.message; renderCarrinho() }
 }
 
+/* entrega ou retirada */
+const opE=()=>dados?.entrega||{retirada:true,entrega:false};
+function freteAtual(sub){
+  if(ent.tipo!=="entrega"||!ent.achou) return {valor:0,txt:""};
+  if(ent.combinar) return {valor:0,txt:"a combinar"};
+  const g=opE().gratisAcima; if(g>0&&sub>=g) return {valor:0,txt:"Grátis"};
+  return {valor:Number(ent.valor)||0,txt:brl(ent.valor)};
+}
+function montaEntrega(){
+  const o=opE(); const ambos=o.retirada&&o.entrega;
+  $("#recBox").hidden=!o.entrega&&!o.retiradaTxt;
+  $("#recOpc").hidden=!ambos;
+  if(!o.entrega) ent.tipo="retirada"; else if(!o.retirada) ent.tipo="entrega";
+  $("#recRetTxt").textContent=o.retiradaTxt?"Sem frete · ver onde":"Sem frete";
+  document.querySelector(`input[name="rec"][value="${ent.tipo}"]`).checked=true;
+  $("#eCep").value=ent.cep?ent.cep.replace(/(\d{5})(\d{3})/,"$1-$2"):""; $("#eRua").value=ent.rua; $("#eNum").value=ent.numero; $("#eComp").value=ent.complemento; $("#eBairro").value=ent.bairro;
+  mostraEntrega(); if(ent.tipo==="entrega"&&ent.cep.length===8) buscaFrete();
+}
+function mostraEntrega(){
+  const o=opE(), e=ent.tipo==="entrega";
+  $("#endBox").hidden=!e; $("#endCampos").hidden=!e||!ent.achou;
+  if(!e){ $("#eMsg").className="nota"; $("#eMsg").textContent=""; const r=$("#recBox").querySelector(".rtxt")||Object.assign(document.createElement("p"),{className:"nota rtxt"}); r.textContent=o.retiradaTxt?"Retirada: "+o.retiradaTxt:""; r.hidden=!o.retiradaTxt; $("#recBox").appendChild(r) }
+  else $("#recBox").querySelector(".rtxt")?.remove();
+  if(o.gratisAcima>0&&e&&!ent.combinar) $("#eMsg").dataset.gratis=` Frete grátis a partir de ${brl(o.gratisAcima)}.`;
+  renderCarrinho();
+}
+const salvaEnt=()=>{ try{ const {achou,...x}=ent; localStorage.setItem("cat3d.entrega",JSON.stringify(x)) }catch(e){} };
+async function buscaFrete(){
+  const cep=ent.cep, m=$("#eMsg"); m.className="nota"; m.textContent="Buscando o CEP…"; ent.achou=false; mostraEntrega();
+  try{ const r=await fetch("/api/publico/frete?cep="+cep); const j=await r.json(); if(ent.cep!==cep) return; if(!r.ok) throw new Error(j.erro||"CEP não encontrado.");
+    ent={...ent,cidade:j.cidade,uf:j.uf,valor:j.valor,combinar:j.valor==null,achou:true};
+    if(!ent.rua||ent._cepRua!==cep){ ent.rua=j.rua; ent.bairro=j.bairro; ent._cepRua=cep; $("#eRua").value=j.rua; $("#eBairro").value=j.bairro }
+    m.className="nota "+(ent.combinar?"aviso":"bom");
+    m.textContent=`${j.cidade}/${j.uf} · ${ent.combinar?"Frete a combinar pelo WhatsApp depois do pedido.":"Frete "+brl(j.valor)+"."}${!ent.combinar&&opE().gratisAcima>0?" Grátis a partir de "+brl(opE().gratisAcima)+".":""}`;
+    salvaEnt(); mostraEntrega(); if(!$("#eNum").value) $("#eNum").focus();
+  }catch(err){ if(ent.cep!==cep) return; m.className="nota aviso"; m.textContent=err.message; ent.achou=false; mostraEntrega() }
+}
+$("#recOpc").addEventListener("change",e=>{ ent.tipo=e.target.value; salvaEnt(); mostraEntrega(); if(ent.tipo==="entrega"){ if(ent.cep.length===8&&!ent.achou) buscaFrete(); else $("#eCep").focus() } });
+$("#eCep").addEventListener("input",e=>{ const d=e.target.value.replace(/\D/g,"").slice(0,8); e.target.value=d.length>5?d.slice(0,5)+"-"+d.slice(5):d;
+  if(d!==ent.cep){ ent.cep=d; ent.achou=false; if(d.length===8) buscaFrete(); else { $("#eMsg").textContent=""; mostraEntrega() } } });
+for(const [id,k] of [["#eRua","rua"],["#eNum","numero"],["#eComp","complemento"],["#eBairro","bairro"]]) $(id).addEventListener("input",e=>{ ent[k]=e.target.value; salvaEnt() });
+
 /* pedido: cria no sistema e mostra o link para aprovar e pagar */
 $("#dcPe").addEventListener("submit",async e=>{
   e.preventDefault(); $("#cErro").textContent="";
   cli={nome:$("#cNome").value.trim(),whatsapp:$("#cWhats").value.trim()}; try{localStorage.setItem("cat3d.cliente",JSON.stringify(cli))}catch(err){}
   if(cli.nome.length<2){ $("#cErro").textContent="Digite seu nome."; return $("#cNome").focus() }
   if(cli.whatsapp.replace(/\D/g,"").length<10){ $("#cErro").textContent="Digite seu WhatsApp com DDD."; return $("#cWhats").focus() }
+  if(ent.tipo==="entrega"){
+    if(!ent.achou){ $("#cErro").textContent="Digite o CEP da entrega."; return $("#eCep").focus() }
+    if(!ent.rua.trim()){ $("#cErro").textContent="Digite a rua da entrega."; return $("#eRua").focus() }
+    if(!ent.numero.trim()){ $("#cErro").textContent="Digite o número do endereço."; return $("#eNum").focus() }
+  }
   const btn=$("#cEnviar"); btn.disabled=true; btn.textContent="Enviando…";
   try{
-    const corpo={nome:cli.nome,whatsapp:cli.whatsapp,cupom:cupom?cupom.codigo:"",itens:itens().map(x=>x.p.kit?{kit:x.p.kit,q:x.q,pers:x.pers||""}:{id:x.p.id,q:x.q,pers:x.pers||""})};
+    const corpo={nome:cli.nome,whatsapp:cli.whatsapp,cupom:cupom?cupom.codigo:"",entrega:ent.tipo==="entrega"?{tipo:"entrega",cep:ent.cep,rua:ent.rua,numero:ent.numero,complemento:ent.complemento,bairro:ent.bairro}:{tipo:"retirada"},itens:itens().map(x=>x.p.kit?{kit:x.p.kit,q:x.q,pers:x.pers||""}:{id:x.p.id,q:x.q,pers:x.pers||""})};
     const r=await fetch("/api/publico/pedido",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(corpo)});
     const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.erro||"Não deu para enviar o pedido. Tente de novo.");
     carrinho={}; salva(); render();
     const wa=waLoja(), msg=`Olá! Acabei de fazer o pedido #${j.numero} pelo catálogo.`;
     $("#dcCorpo").innerHTML=`<div class="ok"><div class="ic" aria-hidden="true">✓</div><h2 class="titulo">Pedido #${j.numero} recebido!</h2>
-      <p>Obrigado, ${esc(cli.nome.split(" ")[0])}! No link do pedido você confere os itens, aprova e paga${dados.loja.cartao?" por Pix ou cartão":" por Pix"}. Guarde o link para acompanhar.</p>
+      <p>Obrigado, ${esc(cli.nome.split(" ")[0])}! No link do pedido você confere os itens, aprova e paga${dados.loja.cartao?" por Pix ou cartão":" por Pix"}. Guarde o link para acompanhar.${ent.tipo==="entrega"&&ent.combinar?" O frete para a sua cidade a gente combina pelo WhatsApp.":""}</p>
       ${j.link?`<a class="grande" href="${esc(j.link)}">Ver meu pedido e pagar</a>`:""}
       ${wa?`<a class="sec" href="https://wa.me/${wa}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Falar com a loja no WhatsApp</a>`:""}</div>`;
     $("#dcPe").hidden=true;

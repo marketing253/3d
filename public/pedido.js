@@ -89,6 +89,10 @@ function pagoHtml(d){
     <a class="pk-btn" href="${esc(d.comprovante)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>Baixar comprovante</a>
   </section>`;
 }
+// retirada ou entrega, com o frete (pedidos do catálogo)
+function entHtml(d){ const e=d.entrega; if(!e) return d.frete>0?`<div class="ent"><span>Frete</span><b>${brl(d.frete)}</b></div>`:"";
+  if(e.tipo==="retirada") return `<div class="ent"><span>🏬 Retirada${e.retiradaTxt?`<small>${esc(e.retiradaTxt)}</small>`:""}</span><b>Sem frete</b></div>`;
+  return `<div class="ent"><span>🚚 Entrega<small>${esc(e.rua)}, ${esc(e.numero)}${e.complemento?" ("+esc(e.complemento)+")":""} · ${esc(e.bairro?e.bairro+", ":"")}${esc(e.cidade)}/${esc(e.uf)}</small></span><b>${d.frete>0?brl(d.frete):e.combinar?"A combinar":"Grátis"}</b></div>` }
 async function carrega(){
   let d;
   try{const r=await fetch("/api/publico/pedido/"+encodeURIComponent(token));if(!r.ok)throw new Error(r.status);d=await r.json()}
@@ -119,6 +123,7 @@ async function carrega(){
       <div class="pontos">${d.fotos.map((_,i)=>`<span class="${i?"":"on"}"></span>`).join("")}</div>`:""}
     </div>`:""}
     <ul class="lista">${d.itens.map(i=>`<li>${i.foto&&!i.personalizacao?`<button type="button" class="fotobig" data-a="zoom" data-src="${esc(i.foto)}" aria-label="Ver a foto de ${esc(i.descricao)} em tela cheia"><img src="${esc(i.foto)}" alt="${esc(i.descricao)}" loading="lazy"><span>Toque para ampliar</span></button>`:""}<span class="txt"><b>${esc(i.descricao)}</b>${i.personalizacao?`<span class="tag">${esc(i.personalizacao)}</span>`:""}<small>${Number(i.quantidade).toLocaleString("pt-BR")} × ${brl(i.preco)}</small></span><b>${brl(i.quantidade*i.preco)}</b></li>`).join("")}</ul>
+    ${entHtml(d)}
     <div class="tot"><span>Total</span><b>${brl(d.total)}</b></div>
     ${d.entrada>0&&restante>0
     ?`<p class="exp">Como você prefere pagar? O pagamento é por Pix, logo depois de aprovar.${d.prazo?` Prazo: pronto até <b>${dataBR(d.prazo)}</b>.`:""}</p>

@@ -762,6 +762,11 @@ function somPagamento(){
 }
 
 // Caixa "Pedido #N": resumo com o que importa (cliente, itens, valores, prazo) e os botões principais.
+// "Retirada" ou "Entrega: Rua X, 12 – Bairro, Cidade/UF · CEP" (pedidos do catálogo)
+function entregaTxt(p){ const e=p.entrega; if(!e) return "";
+  if(e.tipo==="retirada") return "Retirada na loja";
+  return `Entrega: ${e.rua}, ${e.numero}${e.complemento?" ("+e.complemento+")":""} – ${e.bairro?e.bairro+", ":""}${e.cidade}/${e.uf} · CEP ${String(e.cep).replace(/(\d{5})(\d{3})/,"$1-$2")}` }
+const freteTxt=p=>{ const e=p.entrega; if(!e||e.tipo!=="entrega") return ""; return e.combinar?"frete a combinar":e.gratis?"frete grátis":"frete "+brl(num(e.valor)) };
 function abreResumo(p,criado){
   let dlg=$("#pedResumo");
   if(!dlg){
@@ -802,6 +807,7 @@ function abreResumo(p,criado){
       ${pago>0&&!fim?`<div class="pagotx">✓ ${t.receber<=0.004?"Pagamento confirmado":`Entrada de ${brl(pago)} confirmada`}${formaPag(p)?` · ${formaPag(p)}`:""}</div>`:""}
       ${taxaMP(p)>0?`<div class="pcat">Taxa do Mercado Pago: ${brl(taxaMP(p))} (já descontada no lucro)</div>`:""}
       ${a&&!fim?`<div class="pcat">Arte ${VV(a.v)}: ${a.status==="aprovada"?"aprovada pelo cliente":a.status==="ajuste"?"cliente pediu ajuste":"com o cliente"}</div>`:""}
+      ${p.entrega?`<div class="pres-ent ${p.entrega.combinar?"warn":""}"><b>${p.entrega.tipo==="retirada"?"🏬":"🚚"} ${esc(entregaTxt(p))}</b>${freteTxt(p)?`<span>${esc(freteTxt(p))}${p.entrega.combinar?" · combine com o cliente e coloque o valor em Editar pedido":""}</span>`:""}</div>`:""}
       ${p.obs?`<div class="pres-obs">${esc(p.obs)}</div>`:""}
     </div>
     <div class="pres-acoes">
@@ -948,6 +954,7 @@ function textoMsg(p,tipo){
   if(tipo==="orcamento") return `Olá, ${nome}! Segue o seu orçamento da ${loja}:\n\n${linhas}${extras?"\n"+extras:""}\n\n*Total: ${brl(t.total)}*${p.prazo?`\nPronto até ${dataBRc(p.prazo)}`:""}\n\nComo funciona:\n1. Você aprova o orçamento pelo link\n2. Paga ${entradaPed(p)>0?`${brl(entradaPed(p))} (entrada)`:"o pedido"} por Pix ali mesmo\n${p.precisaArte?"3. Aprova a arte\n4. Produzimos":"3. Produzimos"} e avisamos quando ficar pronto`;
   if(tipo==="confirmado") return `Olá, ${nome}! Pedido #${p.numero} confirmado na ${loja}.\n\n${linhas}\n\n*Total: ${brl(t.total)}*${num(p.sinal)>0?`\nSinal recebido: ${brl(num(p.sinal))}\nRestante na entrega: ${brl(t.receber)}`:""}\n${p.prazo?`Previsão: ${dataBRc(p.prazo)}`:""}\n\nAviso assim que estiver pronto!`;
   if(tipo==="pronto") return `Olá, ${nome}! Seu pedido #${p.numero} da ${loja} está pronto.\n\n${resumoItens(p)}\n${t.receber>0?`\nValor a pagar: *${brl(t.receber)}*${pag}`:"\nJá está todo pago."}\n\nComo prefere receber: retirada ou entrega?`;
+  if(tipo==="lembrete") return `Oi, ${nome}! Tudo bem? Seu pedido #${p.numero} da ${loja} está reservado, só falta o pagamento de *${brl(Math.max(0,entradaPed(p)-num(p.sinal)))}* para começarmos a produzir.\n\nÉ rapidinho pelo link, no Pix ou no cartão.`;
   if(tipo==="cobranca") return `Olá, ${nome}! Passando para lembrar do pedido #${p.numero} da ${loja}.\nValor em aberto: *${brl(t.receber)}*${pag}\n\nQualquer dúvida, estou à disposição.`;
   return `Olá, ${nome}! Obrigado pela compra na ${loja}. Espero que goste das peças!${cfg.loja.instagram?`\nSe puder, marque a gente no Instagram: ${cfg.loja.instagram}`:""}\n\nPrecisando de mais alguma coisa, é só chamar.`;
 }
@@ -965,7 +972,7 @@ async function montaMsg(p,tipo){
   const [pix,link]=await Promise.all([usaPix?pixDe(p):null,linkDe(p)]);
   const ok=pix&&pix.payload?pix:null;
   let txt=textoMsg(p,tipo);
-  if(link&&tipo!=="obrigado") txt+=`\n\n${tipo==="orcamento"?"Aprove aqui":"Acompanhe seu pedido"}: ${link}`;
+  if(link&&tipo!=="obrigado") txt+=`\n\n${tipo==="orcamento"?"Aprove aqui":tipo==="lembrete"?"Pague aqui":"Acompanhe seu pedido"}: ${link}`;
   if(ok) txt+=`\n\nPix copia e cola (${brl(totPed(p).receber)}):\n${ok.payload}`;
   return {txt,pix,link};
 }
@@ -1375,6 +1382,36 @@ async function abrePedidoDaUrl(){
   setTab("pedidos"); await carregaPedidos(); const p=pedidos.find(x=>x.id===id); if(p) abreResumo(p);
 }
 
+/* ---------- entrega e retirada (catálogo) ---------- */
+function freteCfg(){ cfg.loja.frete=cfg.loja.frete||{retirada:true,retiradaTxt:"",entrega:false,regras:[],gratisAcima:0}; return cfg.loja.frete }
+function renderFrete(){
+  const el=$("#freteBox"); if(!el) return; const f=freteCfg(), ed=podeEditar();
+  el.innerHTML=`<label class="chk"><input type="checkbox" data-fr="retirada"${f.retirada!==false?" checked":""}> <b>Retirada</b>: o cliente busca com você (sem frete)</label>
+    <label class="f" style="max-width:640px">Onde e como retirar<input data-fr="retiradaTxt" maxlength="200" value="${esc(f.retiradaTxt||"")}" placeholder="Ex.: Bairro Xaxim, Curitiba. Combinamos o horário pelo WhatsApp"></label>
+    <label class="chk"><input type="checkbox" data-fr="entrega"${f.entrega?" checked":""}> <b>Entrega</b>: o cliente informa o CEP e paga o frete</label>
+    <div class="stack" style="gap:8px${f.entrega?"":";opacity:.5"}">
+      <div class="frregras">${(f.regras||[]).map((r,i)=>`<div class="frr" data-fi="${i}"><input data-frr="onde" maxlength="60" value="${esc(r.onde)}" placeholder="Cidade, UF ou *"><div class="unit"><span>R$</span><input data-frr="valor" type="number" min="0" step="0.5" value="${r.valor??""}"></div><button type="button" class="btn sm ghost edit-only" data-frx aria-label="Remover">✕</button></div>`).join("")}</div>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button type="button" class="btn sm edit-only" data-fradd>+ Regra de frete</button>
+        ${(f.regras||[]).length?"":'<button type="button" class="btn sm ghost edit-only" data-frex>Usar exemplo (Curitiba, PR, resto do Brasil)</button>'}</div>
+      <p class="note" style="margin:0">Vale a primeira que bater: <b>cidade</b> (ex.: Curitiba), depois o <b>estado</b> (ex.: PR) e por último <b>*</b> para o resto do Brasil. Sem regra para o CEP, o pedido entra com <b>frete a combinar</b>.</p>
+      <label class="f" style="max-width:260px">Frete grátis a partir de<div class="unit"><span>R$</span><input data-fr="gratisAcima" type="number" min="0" step="1" value="${num(f.gratisAcima)||""}" placeholder="0 = nunca"></div></label>
+    </div>`;
+  if(!ed) el.querySelectorAll("input,button").forEach(i=>i.disabled=true);
+}
+$("#freteBox")?.addEventListener("input",e=>{
+  const f=freteCfg(), k=e.target.dataset.fr, rr=e.target.dataset.frr;
+  if(k) f[k]=e.target.type==="checkbox"?e.target.checked:k==="gratisAcima"?num(e.target.value):e.target.value;
+  else if(rr){ const r=f.regras[Number(e.target.closest("[data-fi]").dataset.fi)]; r[rr]=rr==="valor"?(e.target.value===""?"":num(e.target.value)):e.target.value }
+  else return;
+  saveCfg(); if(e.target.type==="checkbox") renderFrete();
+});
+$("#freteBox")?.addEventListener("click",e=>{
+  const f=freteCfg();
+  if(e.target.closest("[data-fradd]")){ f.regras.push({onde:"",valor:""}); renderFrete(); $("#freteBox .frr:last-child input")?.focus(); return }
+  if(e.target.closest("[data-frex]")){ f.regras=[{onde:"Curitiba",valor:12},{onde:"PR",valor:25},{onde:"*",valor:40}]; f.entrega=true; saveCfg(); renderFrete(); toast("Exemplo colocado. Troque os valores pelos seus."); return }
+  const x=e.target.closest("[data-frx]"); if(x){ f.regras.splice(Number(x.closest("[data-fi]").dataset.fi),1); saveCfg(); renderFrete() }
+});
+
 /* ---------- banners rotativos do catálogo ---------- */
 function bnAlvos(){
   const cats=[...new Set(produtos.filter(p=>p.catalogo).map(p=>p.categoria).filter(Boolean))].sort();
@@ -1435,7 +1472,7 @@ function renderLoja(){
   $("#catLink").innerHTML=`<span class="num clip">${esc(url)}</span><button class="btn sm" id="copCat">Copiar link</button><a class="btn sm" href="/catalogo" target="_blank" rel="noopener">Abrir catálogo ↗</a>`;
   $("#copCat").addEventListener("click",async()=>{try{await navigator.clipboard.writeText(url);toast("Link copiado")}catch(e){toast(url)}});
   if(!podeEditar()) $("#cfgLoja").querySelectorAll("input").forEach(i=>i.disabled=true);
-  renderBanners(); renderApp();
+  renderBanners(); renderApp(); renderFrete();
 }
 $("#cfgLoja").addEventListener("change",async e=>{ if(e.target.id!=="lj-logo") return; const f=e.target.files[0]; e.target.value=""; if(!f) return;
   try{ const fd=new FormData(); fd.append("foto",f,f.name); cfg.loja.logo=(await api("POST","/api/fotos",fd)).id; saveCfg(); renderConfig(); toast("Logo salvo") }catch(err){ toast(err.message) } });
@@ -1899,6 +1936,10 @@ function topLucro(){
       const preco=num(p.precoCatalogo)>0?num(p.precoCatalogo):ch?.usado; const l=preco?lucroCanal(preco,r.custo,cd,cfg.impostoPct).lucro:null;
       return {p,lucro:l}}).filter(x=>x.lucro>0).sort((a,b)=>b.lucro-a.lucro).slice(0,3);
 }
+// aprovado há mais de 24 h, sem pagar e sem lembrete nos últimos 2 dias
+function pixParado(p){ const H=3600e3, agora=Date.now(), ult=(p.lembretesPix||[]).at(-1);
+  return agora-Date.parse(p.resposta.em)>24*H && (!ult||agora-Date.parse(ult)>48*H) }
+const haQuanto=iso=>{ const h=Math.floor((Date.now()-Date.parse(iso))/3600e3); return h<1?"agora há pouco":h<24?`há ${h} h`:`há ${Math.floor(h/24)} dia${h>=48?"s":""}` };
 function renderHoje(){
   const box=$("#hojeBox"); if(!box) return;
   if(!finHoje||!resumo){ box.innerHTML=`<p class="note">Carregando…</p>`; return }
@@ -1965,6 +2006,7 @@ function renderHoje(){
     if(e==="pagamento"&&p.pagInformado) tarefas.push([p,`avisou que pagou a entrada (${brl(Math.max(0,entradaPed(p)-num(p.sinal)))}) · ${quando2(p.pagInformado)}`,"entrada","Confirmar entrada"]);
     else if(e==="arte"&&(!a||a.status==="ajuste")) tarefas.push([p,a?`pediu ajuste na arte${a.comentario?`: “${a.comentario}”`:""}`:"entrada paga, falta mandar a arte","arte",a?"Enviar nova versão":"Enviar arte"]);
     else if(e==="recusado"&&p.resposta&&!p.resposta.visto) tarefas.push([p,`recusou o orçamento${p.resposta.motivo?`: “${p.resposta.motivo}”`:""}`,"ok","Ok, vi"]);
+    else if(e==="pagamento"&&p.resposta?.acao==="aprovado"&&pixParado(p)) tarefas.push([p,`aprovou ${haQuanto(p.resposta.em)} e ainda não pagou ${brl(Math.max(0,entradaPed(p)-num(p.sinal)))}${(p.lembretesPix||[]).length?` · lembrado ${haQuanto(p.lembretesPix.at(-1))}`:""}`,"lembrar","Lembrar no WhatsApp"]);
     else if(e==="pagamento"&&p.resposta?.acao==="aprovado"&&!p.resposta.visto) tarefas.push([p,`aprovou o orçamento · aguardando o Pix da entrada`,"ok","Ok, vi"]);
     else if(e==="producao"&&a&&a.status==="aprovada"&&!a.visto) tarefas.push([p,`aprovou a arte ${VV(a.v)} · já está na fila`,"okarte","Ok, vi"]);
   }
@@ -2004,6 +2046,8 @@ function gastosHtml(tot,pago,pend,cats){
 $("#hojeBox").addEventListener("click",async e=>{
   const v=e.target.closest("[data-hr]"); if(!v) return; const id=v.closest("[data-hp]").dataset.hp;
   if(v.dataset.hr==="arte"){ const p=pedidos.find(x=>x.id===id); setTab("pedidos"); if(p) setTimeout(()=>abreArte(p),50); return }
+  if(v.dataset.hr==="lembrar"){ const p=pedidos.find(x=>x.id===id); if(!p) return; const w=window.open("","_blank"); zapDireto(p,"lembrete",w);
+    try{ const r=await api("POST","/api/pedidos/"+encodeURIComponent(id)+"/lembrete-pix"); const i=pedidos.findIndex(x=>x.id===id); if(i>=0) pedidos[i]=r; renderHoje() }catch(err){ toast(err.message) } return }
   if(v.dataset.hr==="entrada"){ const p=pedidos.find(x=>x.id===id); if(!p) return; v.disabled=true;
     try{ const r=await api("POST","/api/pedidos/"+encodeURIComponent(id)+"/confirmar-entrada"); const i=pedidos.findIndex(x=>x.id===id); if(i>=0) pedidos[i]=r; toast("Entrada confirmada. Agora envie a arte."); renderHoje() }catch(err){ toast(err.message); v.disabled=false } return }
   v.disabled=true;
