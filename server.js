@@ -1542,11 +1542,11 @@ function notifica(msg, usuarioId) {
 function pushAviso(numero, pedidoId, a) {
   const extra = { aprovado: `✅ Pedido #${numero}: orçamento aprovado`, recusado: `❌ Pedido #${numero}: orçamento recusado`,
     "arte-ok": `🎨 Pedido #${numero}: arte aprovada`, "arte-ajuste": `✏️ Pedido #${numero}: cliente pediu ajuste na arte` }[a.tipo];
-  if (extra) return notifica({ titulo: extra, corpo: [a.texto, a.cliente].filter(Boolean).join(" · "), url: "/?pedido=" + encodeURIComponent(pedidoId), tag: a.tipo + "-" + pedidoId });
+  if (extra) return notifica({ titulo: extra, corpo: [a.texto, a.cliente].filter(Boolean).join(" · "), url: "/admin?pedido=" + encodeURIComponent(pedidoId), tag: a.tipo + "-" + pedidoId });
   const titulo = a.tipo === "novo" ? `🛒 Novo pedido #${numero} pelo catálogo` : a.tipo === "pago" ? `💰 Pedido #${numero} pago`
     : a.tipo === "contestado" ? `⚠️ Pedido #${numero}: pagamento contestado` : `↩️ Pedido #${numero}: pagamento estornado`;
   const corpo = [brlS(a.valor) + (a.forma ? " via " + a.forma : ""), a.cliente].filter(Boolean).join(" · ");
-  notifica({ titulo, corpo, url: "/?pedido=" + encodeURIComponent(pedidoId), tag: a.tipo + "-" + pedidoId });
+  notifica({ titulo, corpo, url: "/admin?pedido=" + encodeURIComponent(pedidoId), tag: a.tipo + "-" + pedidoId });
 }
 // Atrasados, que vencem hoje e Pix aprovado há mais de 24 h sem pagar. Só manda se tiver algo.
 function resumoPendencias() {
@@ -1565,7 +1565,7 @@ function enviaResumoManha(forcar) {
     r.hoje.length ? `${r.hoje.length} vence${r.hoje.length > 1 ? "m" : ""} hoje (${lista(r.hoje)})` : "",
     r.pix.length ? `${r.pix.length} Pix sem pagar há +24 h (${lista(r.pix)})` : ""].filter(Boolean);
   if (!partes.length && !forcar) return Promise.resolve([]);
-  return notifica({ titulo: partes.length ? "☀️ Bom dia! Pedidos para hoje" : "☀️ Bom dia! Nada pendente", corpo: partes.join(" · ") || "Nenhum pedido atrasado ou vencendo hoje.", url: "/", tag: "resumo-manha" });
+  return notifica({ titulo: partes.length ? "☀️ Bom dia! Pedidos para hoje" : "☀️ Bom dia! Nada pendente", corpo: partes.join(" · ") || "Nenhum pedido atrasado ou vencendo hoje.", url: "/admin", tag: "resumo-manha" });
 }
 const RESUMO_ARQ = path.join(DATA_DIR, "resumo-manha.txt");
 setInterval(() => {
@@ -1589,7 +1589,7 @@ app.post("/api/push/sair", exigeLogin, (req, res) => {
   res.json({ ok: true });
 });
 app.post("/api/push/teste", exigeLogin, async (req, res) => {
-  const st = await notifica({ titulo: "🔔 Notificações ligadas", corpo: "Você vai receber um aviso aqui a cada pedido novo e a cada pagamento.", url: "/", tag: "teste" }, req.usuario.id);
+  const st = await notifica({ titulo: "🔔 Notificações ligadas", corpo: "Você vai receber um aviso aqui a cada pedido novo e a cada pagamento.", url: "/admin", tag: "teste" }, req.usuario.id);
   res.json({ enviados: st.filter(x => x >= 200 && x < 300).length, total: st.length });
 });
 
@@ -2272,7 +2272,12 @@ app.get("/pedido/:token", limitePublico, (req, res) => {
   }));
 });
 
-app.get("/catalogo", (req, res) => {
+// catálogo na raiz do site; o endereço antigo /catalogo continua funcionando (redireciona com o ?p= / ?cupom=)
+app.get("/catalogo", (req, res) => { const q = req.originalUrl.indexOf("?"); res.redirect(301, "/" + (q >= 0 ? req.originalUrl.slice(q) : "")); });
+// painel (login) em /admin
+app.get(["/admin", "/admin/"], (req, res) => res.sendFile(path.join(__dirname, "public", "index.html"), { headers: { "Cache-Control": "no-cache" } }));
+
+app.get("/", (req, res) => {
   const id = String(req.query.p || "");
   const x = id ? produtosPublicos().find(y => y.id === id) : null;
   const L = lojaConfig(), loja = txt(L.nome, 80) || "Impressões 3D";
@@ -2283,7 +2288,7 @@ app.get("/catalogo", (req, res) => {
 
 // ---------- páginas ----------
 // sem cache longo: depois de um deploy o navegador sempre pega a versão nova (usa ETag para não baixar à toa)
-app.use(express.static(path.join(__dirname, "public"), { index: "index.html", setHeaders: res => res.setHeader("Cache-Control", "no-cache") }));
+app.use(express.static(path.join(__dirname, "public"), { index: false, setHeaders: res => res.setHeader("Cache-Control", "no-cache") }));
 app.use("/api", (req, res) => res.status(404).json({ erro: "Rota não encontrada." }));
 app.use((err, req, res, next) => {
   console.error(err);

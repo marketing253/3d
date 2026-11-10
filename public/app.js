@@ -205,7 +205,7 @@ $("#lista").addEventListener("click",async e=>{
   const id=b.closest("[data-id]")?.dataset.id; const p=produtos.find(x=>x.id===id); if(!p) return;
   if(act==="edit"){startForm(p);setTab("novo")}
   if(act==="vender"){setTab("financeiro");abreForm("venda",{produto_id:p.id});return}
-  if(act==="link"){const u=location.origin+"/catalogo?p="+encodeURIComponent(p.id);try{await navigator.clipboard.writeText(u);toast("Link do produto copiado. Cole no WhatsApp do cliente.")}catch(err){toast(u)}return}
+  if(act==="link"){const u=location.origin+"/?p="+encodeURIComponent(p.id);try{await navigator.clipboard.writeText(u);toast("Link do produto copiado. Cole no WhatsApp do cliente.")}catch(err){toast(u)}return}
   if(act==="dup"){const c=clone(p);delete c.id;c.nome=p.nome+" (cópia)";startForm(c);setTab("novo")}
   if(act==="del"){
     const td=b.closest("td");
@@ -1378,7 +1378,7 @@ $("#pushDesligar")?.addEventListener("click",async()=>{ try{ const s=await inscr
 // a notificação abre o painel com ?pedido=<id>: mostra o resumo desse pedido
 async function abrePedidoDaUrl(){
   const id=new URLSearchParams(location.search).get("pedido"); if(!id) return;
-  try{ history.replaceState(null,"","/") }catch(e){}
+  try{ history.replaceState(null,"","/admin") }catch(e){}
   setTab("pedidos"); await carregaPedidos(); const p=pedidos.find(x=>x.id===id); if(p) abreResumo(p);
 }
 
@@ -1506,8 +1506,8 @@ const LOJA=[["nome","Nome da loja","text","Ex.: Freire 3D"],["whatsapp","WhatsAp
 function renderLoja(){
   $("#cfgLoja").innerHTML=LOJA.map(([k,l,t,h])=>`<label class="f${k==="sobre"?" wide":""}">${l}<span class="hint">${h}</span><input id="lj-${k}" data-l="${k}" type="${t==="number"?"number":t}" ${t==="number"?'min="0" step="1"':""} value="${esc(k==="cor"?(cfg.loja.cor||"#1FBE8C"):k==="entradaPct"?(cfg.loja.entradaPct??50):cfg.loja[k]??"")}"></label>`).join("")
     +`<div class="f wide"><span>Logo (proposta em PDF)</span><div class="row" style="gap:10px">${cfg.loja.logo?`<img src="/fotos/${esc(cfg.loja.logo)}" alt="Logo" style="max-height:48px;max-width:160px;background:#0e1114;padding:6px;border-radius:6px">`:'<span class="note">Sem logo: a capa mostra o nome da loja.</span>'}<label class="btn sm" for="lj-logo">${cfg.loja.logo?"Trocar logo":"Enviar logo"}</label><input id="lj-logo" type="file" accept="image/png,image/jpeg,image/webp" hidden>${cfg.loja.logo?'<button type="button" class="btn sm ghost" id="lj-logo-rm">Remover</button>':""}</div><span class="hint">PNG com fundo transparente fica melhor; a capa é escura.</span></div>`;
-  const url=location.origin+"/catalogo";
-  $("#catLink").innerHTML=`<span class="num clip">${esc(url)}</span><button class="btn sm" id="copCat">Copiar link</button><a class="btn sm" href="/catalogo" target="_blank" rel="noopener">Abrir catálogo ↗</a>`;
+  const url=location.origin+"/";
+  $("#catLink").innerHTML=`<span class="num clip">${esc(url)}</span><button class="btn sm" id="copCat">Copiar link</button><a class="btn sm" href="/" target="_blank" rel="noopener">Abrir catálogo ↗</a>`;
   $("#copCat").addEventListener("click",async()=>{try{await navigator.clipboard.writeText(url);toast("Link copiado")}catch(e){toast(url)}});
   if(!podeEditar()) $("#cfgLoja").querySelectorAll("input").forEach(i=>i.disabled=true);
   renderBanners(); renderApp(); renderFrete();
@@ -2627,7 +2627,7 @@ $("#cupForm").addEventListener("click",e=>{const b=e.target.closest("[data-cf]")
 $("#btnNovoCupom").addEventListener("click",()=>abreCupom(null));
 $("#cupLista").addEventListener("click",e=>{const b=e.target.closest("[data-ca]"); if(!b) return; const i=+b.closest("[data-ci]").dataset.ci;
   if(b.dataset.ca==="edit") abreCupom(i);
-  if(b.dataset.ca==="link"){const u=location.origin+"/catalogo?cupom="+encodeURIComponent(cupsCfg()[i].codigo);navigator.clipboard.writeText(u).then(()=>toast("Link com cupom copiado"),()=>toast(u))}
+  if(b.dataset.ca==="link"){const u=location.origin+"/?cupom="+encodeURIComponent(cupsCfg()[i].codigo);navigator.clipboard.writeText(u).then(()=>toast("Link com cupom copiado"),()=>toast(u))}
   if(b.dataset.ca==="del") b.outerHTML=`<span class="confirm">Excluir? <button class="btn sm danger" data-ca="delok">Excluir</button></span>`;
   if(b.dataset.ca==="delok"){cupsCfg().splice(i,1);saveCfg();renderKits()}});
 
@@ -2644,7 +2644,7 @@ function lembretesHtml(){
     .filter(c=>c.dias>=30&&c.dias<=240&&!(dispensados[c.whatsapp]&&diasAte(dispensados[c.whatsapp])>-30)).sort((a,b)=>b.total-a.total).slice(0,5);
   if(volta.length) out.push(`<div class="card stack"><div class="row spread"><h3>Clientes para chamar de volta</h3><button class="btn sm" data-hg="clientes">Todos os clientes</button></div>
     <p class="note" style="margin:0">Compraram há mais de um mês. Uma mensagem com uma novidade costuma trazer uma compra nova.</p><ul class="hlist">
-    ${volta.map(c=>{const msg=`Olá, ${c.nome.split(" ")[0]}! Aqui é da ${loja}. Obrigado de novo pela última compra! Fizemos peças novas e lembrei de você. Quer que eu mande umas fotos?${location.origin?`\nCatálogo: ${location.origin}/catalogo`:""}`;
+    ${volta.map(c=>{const msg=`Olá, ${c.nome.split(" ")[0]}! Aqui é da ${loja}. Obrigado de novo pela última compra! Fizemos peças novas e lembrei de você. Quer que eu mande umas fotos?${location.origin?`\nCatálogo: ${location.origin}/`:""}`;
       return `<li data-vz="${esc(c.whatsapp)}"><span>${esc(c.nome)} <span class="pcat">· gastou ${brl(c.total)} · última compra há ${c.dias} dias</span></span><span class="row" style="gap:6px;flex-wrap:nowrap"><a class="btn sm" target="_blank" rel="noopener" data-hv="chamei" href="${esc(waLink(c.whatsapp,msg))}">Chamar</a><button class="btn sm ghost" data-hv="nao" type="button">Agora não</button></span></li>`}).join("")}</ul></div>`);
   const varias=impLista().length>1;
   const venc=manPronto()?impLista().flatMap(i=>manEstado(i).filter(t=>t.venc).map(t=>({...t,imp:i}))):[];

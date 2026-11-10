@@ -266,7 +266,7 @@ document.addEventListener("click",e=>{
   const v=e.target.closest("[data-ver]"); if(v&&!e.target.closest("input")) return abreProduto(v.dataset.ver);
 });
 for(const id of ["#dProd","#dCarr"]) $(id).addEventListener("click",e=>{ if(e.target===e.currentTarget) e.currentTarget.close() }); // clique fora fecha
-$("#dProd").addEventListener("close",()=>{ if(foco){ foco=null; try{history.replaceState(null,"","/catalogo")}catch(e){} } });
+$("#dProd").addEventListener("close",()=>{ if(foco){ foco=null; try{history.replaceState(null,"","/")}catch(e){} } });
 document.addEventListener("input",e=>{
   const p=e.target.closest("[data-pers]"); if(p){ const id=p.dataset.pers; if(carrinho[id]){ carrinho[id].pers=p.value; salva() } else if(item(id)) carrinho[id]={q:0,pers:p.value}; return }
 });
