@@ -69,7 +69,7 @@ function card(x){
   const q=carrinho[x.id]?.q||0;
   return `<article class="prod" data-ver="${esc(x.id)}">
     <div class="ph">${x.foto?`<img src="${esc(x.foto)}" alt="${esc(x.nome)}" loading="lazy">`:x.kit?"KIT":"3D"}
-      <div class="selos-ph">${x.prontaEntrega?'<span class="tag pe">Pronta entrega</span>':""}${x.personalizavel&&!x.kit?'<span class="tag">Personalizável</span>':""}</div></div>
+      <div class="selos-ph">${x.maisVendido?'<span class="tag mv">🔥 Mais vendido</span>':""}${x.prontaEntrega?'<span class="tag pe">Pronta entrega</span>':""}${x.personalizavel&&!x.kit?'<span class="tag">Personalizável</span>':""}</div></div>
     <div class="bd">${x.categoria?`<span class="cat">${esc(x.categoria)}</span>`:""}<h3>${esc(x.nome)}</h3>${x.descricao?`<p>${esc(x.descricao)}</p>`:""}
       <div class="ft"><span>${x.avulso>x.preco?`<span class="de">${brl(x.avulso)}</span>`:""}<span class="preco">${brl(x.preco)}</span></span>${qtdHtml(x.id,q)}</div></div>
   </article>`;

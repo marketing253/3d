@@ -1689,6 +1689,24 @@ app.get("/api/frete/simula", exigeLogin, async (req, res) => {
 
 // ---------- catálogo público (sem login) ----------
 const limitePublico = rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: "draft-7", legacyHeaders: false });
+// unidades vendidas por produto: vendas lançadas (inclui pedidos entregues) + pedidos aprovados ainda em andamento
+function vendidosPorProduto() {
+  const m = new Map(), soma = (id, q) => { if (id) m.set(String(id), (m.get(String(id)) || 0) + (Number(q) || 0)); };
+  for (const v of db.prepare("SELECT produto_id, SUM(quantidade) q FROM vendas WHERE produto_id IS NOT NULL GROUP BY produto_id").all()) soma(v.produto_id, v.q);
+  for (const r of db.prepare("SELECT dados FROM pedidos WHERE status NOT IN ('orcamento','cancelado','recusado','entregue')").all()) {
+    try { for (const i of JSON.parse(r.dados).itens || []) { soma(i.produto_id, i.quantidade); for (const c of i.componentes || []) soma(c.produto_id, (Number(c.q) || 0) * (Number(i.quantidade) || 0)); } } catch (e) {}
+  }
+  return m;
+}
+// catálogo: categoria que mais vende primeiro, e dentro dela o produto que mais vende (empate: ordem de cadastro)
+function ordenaPorVendas(lista) {
+  const vend = vendidosPorProduto(), q = x => vend.get(String(x.id)) || 0, cat = new Map();
+  for (const x of lista) { const c = x.p.categoria || ""; cat.set(c, (cat.get(c) || 0) + q(x)); }
+  const ordem = new Map(lista.map((x, i) => [x.id, i]));
+  const top = new Set(lista.filter(x => q(x) > 0).sort((a, b) => q(b) - q(a)).slice(0, 3).map(x => x.id));
+  return lista.sort((a, b) => (cat.get(b.p.categoria || "") - cat.get(a.p.categoria || "")) || (q(b) - q(a)) || (ordem.get(a.id) - ordem.get(b.id)))
+    .map(x => ({ ...x, maisVendido: top.has(x.id) }));
+}
 function produtosPublicos() {
   return db.prepare("SELECT id, dados, foto FROM produtos ORDER BY criado_em").all()
     .map(r => ({ id: r.id, p: JSON.parse(r.dados), foto: r.foto }))
@@ -1701,7 +1719,7 @@ app.get("/api/publico/catalogo", limitePublico, (req, res) => {
   res.json({
     loja: { nome: txt(loja.nome, 80) || "Impressões 3D", whatsapp: txt(loja.whatsapp, 30).replace(/\D/g, ""), instagram: txt(loja.instagram, 60), pagamento: txt(loja.pagamento, 200), prazoDias: Number(loja.prazoDias) || 0, sobre: txt(loja.sobre, 400),
       site: txt(loja.site, 80), logo: loja.logo && FOTO_RE.test(loja.logo) ? "/loja/logo" : "/logo-8on.png", cartao: !!(MP_TOKEN && MP_PUBLIC) },
-    produtos: produtosPublicos().map(({ id, p, foto }) => ({
+    produtos: ordenaPorVendas(produtosPublicos()).map(({ id, p, foto, maisVendido }) => ({ ...(maisVendido ? { maisVendido: true } : {}),
       id, nome: p.nome, categoria: p.categoria || "", descricao: txt(p.descricaoCatalogo, 400), preco: n(p.precoCatalogo),
       prontaEntrega: (Number(p.estoque) || 0) > 0, foto: foto ? "/fotos-publicas/" + foto : null, personalizavel: !!p.personalizavel,
     })),
