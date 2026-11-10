@@ -256,8 +256,17 @@ function limpaProduto(b) {
   p.nome = String(p.nome || "").trim().slice(0, 150);
   if (!p.nome) return null;
   p.fotoId = p.fotoId && FOTO_RE.test(p.fotoId) ? p.fotoId : "";
+  p.fotosExtra = [...new Set((Array.isArray(p.fotosExtra) ? p.fotosExtra : []).filter(f => typeof f === "string" && FOTO_RE.test(f) && f !== p.fotoId))].slice(0, FOTOS_EXTRA_MAX);
   if (p.linkModelo) { try { const u = new URL(p.linkModelo); p.linkModelo = /^https?:$/.test(u.protocol) ? u.href : ""; } catch { p.linkModelo = ""; } }
   return p;
+}
+const FOTOS_EXTRA_MAX = 7; // + a foto principal = 8 por produto
+const fotosDoProduto = d => { try { const p = typeof d === "string" ? JSON.parse(d) : d; return [p.fotoId, ...(p.fotosExtra || [])].filter(Boolean); } catch (e) { return []; } };
+// apaga só se nenhum outro produto usa a foto
+function apagaFotoSolta(nome, menosId) {
+  if (!nome || !FOTO_RE.test(nome)) return;
+  if (db.prepare("SELECT 1 FROM produtos WHERE id != ? AND (foto = ? OR dados LIKE ?)").get(menosId, nome, "%" + nome + "%")) return;
+  apagaFoto(nome);
 }
 function apagaFoto(nome) {
   if (nome && FOTO_RE.test(nome)) fs.promises.unlink(path.join(FOTOS_DIR, nome)).catch(() => {});
@@ -277,20 +286,21 @@ app.post("/api/produtos", exigeLogin, exigeEdicao, (req, res) => {
   res.json({ ...p, id });
 });
 app.put("/api/produtos/:id", exigeLogin, exigeEdicao, (req, res) => {
-  const atual = db.prepare("SELECT foto FROM produtos WHERE id = ?").get(req.params.id);
+  const atual = db.prepare("SELECT foto, dados FROM produtos WHERE id = ?").get(req.params.id);
   if (!atual) return res.status(404).json({ erro: "Produto não encontrado." });
   const p = limpaProduto(req.body);
   if (!p) return res.status(400).json({ erro: "Dê um nome ao produto." });
   db.prepare("UPDATE produtos SET dados = ?, foto = ?, atualizado_em = datetime('now'), atualizado_por = ? WHERE id = ?")
     .run(JSON.stringify(p), p.fotoId || null, req.usuario.id, req.params.id);
-  if (atual.foto && atual.foto !== p.fotoId) apagaFoto(atual.foto);
+  const ficam = new Set(fotosDoProduto(p));
+  for (const f of new Set([atual.foto, ...fotosDoProduto(atual.dados)])) if (f && !ficam.has(f)) apagaFotoSolta(f, req.params.id);
   res.json({ ...p, id: req.params.id });
 });
 app.delete("/api/produtos/:id", exigeLogin, exigeEdicao, (req, res) => {
-  const atual = db.prepare("SELECT foto FROM produtos WHERE id = ?").get(req.params.id);
+  const atual = db.prepare("SELECT foto, dados FROM produtos WHERE id = ?").get(req.params.id);
   if (!atual) return res.status(404).json({ erro: "Produto não encontrado." });
   db.prepare("DELETE FROM produtos WHERE id = ?").run(req.params.id);
-  apagaFoto(atual.foto);
+  for (const f of new Set([atual.foto, ...fotosDoProduto(atual.dados)])) apagaFotoSolta(f, req.params.id);
   res.json({ ok: true });
 });
 
@@ -454,7 +464,7 @@ app.get("/fotos/:nome", exigeLogin, (req, res) => {
   res.sendFile(path.join(FOTOS_DIR, req.params.nome), err => { if (err && !res.headersSent) res.status(404).end(); });
 });
 app.delete("/api/fotos/:nome", exigeLogin, exigeEdicao, (req, res) => {
-  const usada = db.prepare("SELECT 1 FROM produtos WHERE foto = ?").get(req.params.nome);
+  const usada = FOTO_RE.test(req.params.nome) && db.prepare("SELECT 1 FROM produtos WHERE foto = ? OR dados LIKE ?").get(req.params.nome, "%" + req.params.nome + "%");
   if (!usada) apagaFoto(req.params.nome);
   res.json({ ok: true });
 });
@@ -546,6 +556,7 @@ app.get("/api/modelo-imagem", exigeLogin, exigeEdicao, limiteModelo, async (req,
 // Remove fotos enviadas que nunca foram salvas em um produto (mais de 1 dia)
 function limpaFotosOrfas() {
   const usadas = new Set(db.prepare("SELECT foto FROM produtos WHERE foto IS NOT NULL").all().map(r => r.foto));
+  for (const r of db.prepare("SELECT dados FROM produtos WHERE dados LIKE '%fotosExtra%'").all()) for (const f of fotosDoProduto(r.dados)) usadas.add(f);
   for (const r of db.prepare("SELECT dados FROM pedidos WHERE dados LIKE '%\"proposta\"%'").all())
     for (const f of JSON.parse(r.dados).proposta?.fotos || []) usadas.add(f.id);
   for (const r of db.prepare("SELECT dados FROM pedidos WHERE dados LIKE '%\"artes\"%'").all())
@@ -1720,6 +1731,7 @@ app.get("/api/publico/catalogo", limitePublico, (req, res) => {
     loja: { nome: txt(loja.nome, 80) || "Impressões 3D", whatsapp: txt(loja.whatsapp, 30).replace(/\D/g, ""), instagram: txt(loja.instagram, 60), pagamento: txt(loja.pagamento, 200), prazoDias: Number(loja.prazoDias) || 0, sobre: txt(loja.sobre, 400),
       site: txt(loja.site, 80), logo: loja.logo && FOTO_RE.test(loja.logo) ? "/loja/logo" : "/logo-8on.png", cartao: !!(MP_TOKEN && MP_PUBLIC) },
     produtos: ordenaPorVendas(produtosPublicos()).map(({ id, p, foto, maisVendido }) => ({ ...(maisVendido ? { maisVendido: true } : {}),
+      ...(foto && p.fotosExtra?.length ? { fotos: [foto, ...p.fotosExtra].map(f => "/fotos-publicas/" + f) } : {}),
       id, nome: p.nome, categoria: p.categoria || "", descricao: txt(p.descricaoCatalogo, 400), preco: n(p.precoCatalogo),
       prontaEntrega: (Number(p.estoque) || 0) > 0, foto: foto ? "/fotos-publicas/" + foto : null, personalizavel: !!p.personalizavel,
     })),
@@ -1731,7 +1743,7 @@ app.get("/api/publico/catalogo", limitePublico, (req, res) => {
 });
 app.get("/fotos-publicas/:nome", limitePublico, (req, res) => {
   const nome = req.params.nome;
-  if (!FOTO_RE.test(nome) || !produtosPublicos().some(x => x.foto === nome)) return res.status(404).end();
+  if (!FOTO_RE.test(nome) || !produtosPublicos().some(x => x.foto === nome || (x.foto && (x.p.fotosExtra || []).includes(nome)))) return res.status(404).end();
   res.set("Cache-Control", "public, max-age=3600");
   res.sendFile(path.join(FOTOS_DIR, nome), err => { if (err && !res.headersSent) res.status(404).end(); });
 });

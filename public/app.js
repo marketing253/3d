@@ -242,6 +242,7 @@ function startForm(p){
   $("#f-catdesc").value=draft.descricaoCatalogo||""; $("#f-catpreco").value=draft.precoCatalogo??""; $("#f-estoque").value=draft.estoque||0;
   fotoOriginal=editingId?(draft.fotoId||null):null;
   if(!editingId&&draft.fotoId){draft.fotoId="";} /* cópia não compartilha a foto */
+  if(!editingId) draft.fotosExtra=[]; else draft.fotosExtra=[...(draft.fotosExtra||[])];
   renderFoto();
   $("#saveMsg").textContent="";
   renderFilLines(); renderFicha();
@@ -338,6 +339,7 @@ function renderFoto(){
   const src=fotoSrc(draft);
   $("#fotoPrev").innerHTML=src?`<img src="${esc(src)}" alt="Foto do produto">`:"<span>Sem foto</span>";
   $("#fotoRm").hidden=!src;
+  renderMaisFotos();
 
 }
 function discardUnsavedFoto(){
@@ -372,9 +374,41 @@ async function setFoto(file){
   }
   renderFoto(); renderFicha();
 }
+/* mais fotos do produto (galeria do catálogo) */
+const MF_MAX=7;
+function renderMaisFotos(){
+  const g=$("#mfGrade"); if(!g||!draft) return; const fs_=draft.fotosExtra||[], ed=podeEditar();
+  g.innerHTML=fs_.length?fs_.map((f,i)=>`<div class="mf" data-mi="${i}"><img src="/fotos/${esc(f)}" alt="Foto ${i+2}">
+    <div class="mfacoes edit-only">${i>0?'<button type="button" data-ma="esq" title="Mover para a esquerda" aria-label="Mover para a esquerda">◀</button>':""}<button type="button" data-ma="capa" title="Usar como foto principal">★</button><button type="button" data-ma="rm" title="Remover" aria-label="Remover">✕</button></div></div>`).join("")
+    :`<span class="note" style="margin:0">${draft.fotoId?"Coloque fotos de outros ângulos, cores ou a peça em uso.":"Primeiro escolha a foto principal acima, ou adicione aqui: a primeira vira a principal."}</span>`;
+  $("#fotosBtn").hidden=!ed||fs_.length>=MF_MAX;
+}
+async function addFotos(files){
+  if(!draft) return; draft.fotosExtra=draft.fotosExtra||[];
+  const lista=[...files].filter(f=>/^image\//.test(f.type)); if(!lista.length) return;
+  const msg=$("#fotoMsg"); let ok=0, sobra=0;
+  for(const [i,file] of lista.entries()){
+    if(draft.fotoId&&draft.fotosExtra.length>=MF_MAX){ sobra=lista.length-i; break }
+    msg.textContent=`Enviando foto ${i+1} de ${lista.length}…`;
+    try{ const blob=await shrink(file); const fd=new FormData(); fd.append("foto",blob,"foto.jpg"); const r=await api("POST","/api/fotos",fd);
+      if(!draft.fotoId) draft.fotoId=r.id; else draft.fotosExtra.push(r.id); ok++; renderFoto() }
+    catch(e){ msg.textContent=e&&e.status!==undefined?e.message:"Uma das imagens não abriu. Use JPG ou PNG." }
+  }
+  if(ok) msg.textContent=`${ok===1?"Foto adicionada":ok+" fotos adicionadas"}. Clique em Salvar para guardar.`+(sobra?` ${sobra} ficaram de fora (máximo de 8 por produto).`:"");
+  renderFoto(); renderFicha();
+}
+$("#f-fotos").addEventListener("change",e=>{const f=[...(e.target.files||[])];e.target.value="";addFotos(f)});
+$("#fotosBtn").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("#f-fotos").click()}});
+$("#mfGrade").addEventListener("click",e=>{
+  const b=e.target.closest("[data-ma]"); if(!b||!draft) return; const i=Number(b.closest("[data-mi]").dataset.mi), l=draft.fotosExtra;
+  if(b.dataset.ma==="esq"&&i>0) [l[i-1],l[i]]=[l[i],l[i-1]];
+  else if(b.dataset.ma==="capa"){ const antiga=draft.fotoId; draft.fotoId=l[i]; if(antiga) l[i]=antiga; else l.splice(i,1); $("#fotoMsg").textContent="Foto principal trocada. Clique em Salvar para guardar." }
+  else if(b.dataset.ma==="rm"){ l.splice(i,1); $("#fotoMsg").textContent="Foto removida. Clique em Salvar para confirmar." }
+  renderFoto(); renderFicha();
+});
 $("#f-foto").addEventListener("change",e=>{const f=e.target.files&&e.target.files[0];e.target.value="";setFoto(f)});
 $("#fotoBtn").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("#f-foto").click()}});
-$("#fotoRm").addEventListener("click",()=>{discardUnsavedFoto();draft.fotoId="";$("#fotoMsg").textContent="Foto removida. Clique em Salvar para confirmar.";renderFoto();renderFicha()});
+$("#fotoRm").addEventListener("click",()=>{discardUnsavedFoto();draft.fotoId=(draft.fotosExtra||[]).shift()||"";$("#fotoMsg").textContent="Foto removida. Clique em Salvar para confirmar.";renderFoto();renderFicha()});
 document.addEventListener("paste",e=>{
   if(tab!=="novo"||!draft) return;
   const it=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith("image/"));

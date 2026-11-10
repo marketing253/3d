@@ -80,7 +80,7 @@ function card(x){
   const q=carrinho[x.id]?.q||0;
   return `<article class="prod" data-ver="${esc(x.id)}">
     <div class="ph">${x.foto?`<img src="${esc(x.foto)}" alt="${esc(x.nome)}" loading="lazy">`:x.kit?"KIT":"3D"}
-      <div class="selos-ph">${x.maisVendido?'<span class="tag mv">🔥 Mais vendido</span>':""}${x.prontaEntrega?'<span class="tag pe">Pronta entrega</span>':""}${x.personalizavel&&!x.kit?'<span class="tag">Personalizável</span>':""}</div></div>
+      ${x.fotos?.length>1?`<span class="nfotos" aria-label="${x.fotos.length} fotos">📷 ${x.fotos.length}</span>`:""}<div class="selos-ph">${x.maisVendido?'<span class="tag mv">🔥 Mais vendido</span>':""}${x.prontaEntrega?'<span class="tag pe">Pronta entrega</span>':""}${x.personalizavel&&!x.kit?'<span class="tag">Personalizável</span>':""}</div></div>
     <div class="bd">${x.categoria?`<span class="cat">${esc(x.categoria)}</span>`:""}<h3>${esc(x.nome)}</h3>${x.descricao?`<p>${esc(x.descricao)}</p>`:""}
       <div class="ft"><span>${x.avulso>x.preco?`<span class="de">${brl(x.avulso)}</span>`:""}<span class="preco">${brl(x.preco)}</span></span>${qtdHtml(x.id,q)}</div></div>
   </article>`;
@@ -142,7 +142,7 @@ function bnAbre(alvo){
 function abreProduto(id){
   const x=item(id); if(!x) return; const q=carrinho[id]?.q||0;
   $("#dProd").innerHTML=`<button class="x" type="button" data-fecha aria-label="Fechar">✕</button><div class="dp">
-    <div class="ph">${x.foto?`<img src="${esc(x.foto)}" alt="${esc(x.nome)}">`:x.kit?"KIT":"3D"}</div>
+    <div class="ph">${galeria(x)}</div>
     <div class="info">${x.categoria?`<span class="cat" style="font-size:12px;color:var(--suave);font-weight:700;text-transform:uppercase;letter-spacing:.06em">${esc(x.categoria)}</span>`:""}
       <h2 class="titulo">${esc(x.nome)}</h2>
       <div>${x.avulso>x.preco?`<span class="de">${brl(x.avulso)}</span>`:""}<span class="preco" style="font-size:28px">${brl(x.preco)}</span></div>
@@ -152,6 +152,26 @@ function abreProduto(id){
       <div class="acoes">${q?qtdHtml(id,q)+`<button class="grande" type="button" data-abre-carr>Ver carrinho</button>`:`<button class="grande" type="button" data-id="${esc(id)}" data-d="1">Adicionar ao carrinho · ${brl(x.preco)}</button>`}</div>
     </div></div>`;
   if(!$("#dProd").open) $("#dProd").showModal();
+  ligaGaleria();
+}
+/* galeria de fotos do produto: arrasta para o lado, setas, bolinhas e miniaturas */
+function galeria(x){
+  const fs_=x.fotos||[]; if(fs_.length<2) return x.foto?`<img src="${esc(x.foto)}" alt="${esc(x.nome)}">`:x.kit?"KIT":"3D";
+  return `<div class="gal"><div class="galtr" id="galTr">${fs_.map((f,i)=>`<img src="${esc(f)}" alt="${esc(x.nome)} · foto ${i+1} de ${fs_.length}"${i?' loading="lazy"':""}>`).join("")}</div>
+    <button type="button" class="galseta e" data-gv="-1" aria-label="Foto anterior">‹</button><button type="button" class="galseta d" data-gv="1" aria-label="Próxima foto">›</button>
+    <span class="galnum" id="galNum">1/${fs_.length}</span>
+    <div class="galmin">${fs_.map((f,i)=>`<button type="button" data-gi="${i}" aria-label="Ver foto ${i+1}"${i?"":' class="on"'}><img src="${esc(f)}" alt=""></button>`).join("")}</div></div>`;
+}
+function ligaGaleria(){
+  const t=$("#galTr"); if(!t) return; const n=t.children.length, gal=t.closest(".gal");
+  const atual=()=>Math.round(t.scrollLeft/Math.max(1,t.clientWidth));
+  let alvo=null; // enquanto a rolagem suave anda, o contador já mostra a foto de destino
+  const marca=i=>{ $("#galNum").textContent=(i+1)+"/"+n; gal.querySelectorAll(".galmin button").forEach((b,k)=>b.classList.toggle("on",k===i)) };
+  const vai=i=>{ i=(i+n)%n; alvo=i; marca(i); t.scrollTo({left:i*t.clientWidth,behavior:"smooth"}) };
+  t.addEventListener("scroll",()=>{ const i=atual(); if(alvo!=null&&i!==alvo) return; alvo=null; marca(i) },{passive:true});
+  t.addEventListener("touchstart",()=>{ alvo=null },{passive:true});
+  gal.addEventListener("click",e=>{ const s=e.target.closest("[data-gv]"), m=e.target.closest("[data-gi]"); if(s) vai((alvo??atual())+Number(s.dataset.gv)); else if(m) vai(Number(m.dataset.gi)) });
+  gal.addEventListener("keydown",e=>{ if(e.key==="ArrowLeft"){ e.preventDefault(); vai(atual()-1) } else if(e.key==="ArrowRight"){ e.preventDefault(); vai(atual()+1) } });
 }
 
 /* carrinho */
