@@ -1005,10 +1005,37 @@ function textoMsg(p,tipo){
 }
 let msgPix=null, msgLink=null;
 async function linkDe(p){
+  const curto=c=>location.origin+"/p/"+c;
+  if(p.token&&p.curto){ await previaDoPedido(p); return curto(p.curto) }
   if(p.token) return location.origin+"/pedido/"+p.token;
   if(!podeEditar()) return null;
-  try{ const r=await api("POST","/api/pedidos/"+encodeURIComponent(p.id)+"/link"); p.token=r.token;
-    const x=pedidos.find(y=>y.id===p.id); if(x) x.token=r.token; return location.origin+"/pedido/"+r.token }catch(e){ return null }
+  try{ const r=await api("POST","/api/pedidos/"+encodeURIComponent(p.id)+"/link"); p.token=r.token; p.curto=r.curto;
+    const x=pedidos.find(y=>y.id===p.id); if(x){ x.token=r.token; x.curto=r.curto } await previaDoPedido(p); return curto(r.curto) }catch(e){ return null }
+}
+/* foto da prévia do link no WhatsApp: a foto do pedido com o número e o valor desenhados (1080×1080) */
+async function previaDoPedido(p){
+  if(!podeEditar()) return;
+  try{
+    const info=await api("GET","/api/pedidos/"+encodeURIComponent(p.id)+"/previa"); if(!info.chave||info.pronta) return;
+    const img=await new Promise((ok,erro)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=erro; i.src="/fotos/"+encodeURIComponent(info.foto) });
+    try{ await Promise.all(['64px "Archivo Black"','700 40px Inter','600 30px Inter'].map(f=>document.fonts.load(f))) }catch(e){}
+    const T=1080, c=document.createElement("canvas"); c.width=c.height=T; const g=c.getContext("2d");
+    const k=Math.max(T/img.width,T/img.height), w=img.width*k, h=img.height*k; g.drawImage(img,(T-w)/2,(T-h)/2,w,h); // foto preenchendo o quadrado
+    const gr=g.createLinearGradient(0,T*0.52,0,T); gr.addColorStop(0,"rgba(14,17,20,0)"); gr.addColorStop(0.45,"rgba(14,17,20,.78)"); gr.addColorStop(1,"rgba(14,17,20,.96)");
+    g.fillStyle=gr; g.fillRect(0,T*0.52,T,T*0.48);
+    const M=64;
+    g.fillStyle="#1FBE8C"; g.font='700 38px Inter'; g.textBaseline="alphabetic"; g.fillText(("PEDIDO #"+info.numero).toUpperCase(),M,T-214);
+    // valor: o maior que couber na largura
+    const valor=brl(info.total); let tam=150; g.font=`${tam}px "Archivo Black"`; while(g.measureText(valor).width>T-2*M&&tam>60){ tam-=6; g.font=`${tam}px "Archivo Black"` }
+    g.fillStyle="#fff"; g.fillText(valor,M,T-74);
+    // selo da loja no canto de cima
+    g.font='800 30px Inter'; const loja=String(info.loja||"").slice(0,32), lw=g.measureText(loja).width+48;
+    g.fillStyle="rgba(14,17,20,.82)"; g.beginPath(); g.roundRect?g.roundRect(M-8,48,lw,64,32):g.rect(M-8,48,lw,64); g.fill();
+    g.fillStyle="#fff"; g.fillText(loja,M+16,92);
+    const blob=await new Promise(ok=>c.toBlob(ok,"image/jpeg",0.86));
+    const fd=new FormData(); fd.append("foto",blob,"previa.jpg"); const up=await api("POST","/api/fotos",fd);
+    await api("POST","/api/pedidos/"+encodeURIComponent(p.id)+"/previa",{foto:up.id,chave:info.chave});
+  }catch(e){ /* sem a prévia desenhada, o link continua com a foto simples */ }
 }
 const tipoMsg=p=>({orcamento:"orcamento",aprovado:"confirmado",imprimindo:"confirmado",pronto:"pronto",entregue:"obrigado"}[p.status]||"orcamento");
 // Texto da mensagem da etapa com o link do pedido (e o Pix, no pronto e na cobrança).

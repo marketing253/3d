@@ -561,6 +561,7 @@ function limpaFotosOrfas() {
     for (const f of JSON.parse(r.dados).proposta?.fotos || []) usadas.add(f.id);
   for (const r of db.prepare("SELECT dados FROM pedidos WHERE dados LIKE '%\"artes\"%'").all())
     for (const a of JSON.parse(r.dados).artes || []) usadas.add(a.foto);
+  for (const r of db.prepare("SELECT dados FROM pedidos WHERE dados LIKE '%\"previa\"%'").all()) { const f = JSON.parse(r.dados).previa?.foto; if (f) usadas.add(f); }
   for (const r of db.prepare("SELECT dados FROM pedidos WHERE dados LIKE '%\"fotosOrc\"%'").all())
     for (const f of JSON.parse(r.dados).fotosOrc || []) usadas.add(f.id);
   const L0 = lojaConfig(); if (L0.logo) usadas.add(L0.logo);
@@ -721,7 +722,7 @@ function sincronizaSinal(pedidoId, uid) {
     }
   }
 }
-function linhaPedido(r) { const d = JSON.parse(r.dados); return { ...d, etapa: etapaDe(r.status, d), precisaArte: precisaArte(d), id: r.id, numero: r.numero, status: r.status, prazo: r.prazo, token: r.token || null, criadoEm: r.criado_em, atualizadoEm: r.atualizado_em }; }
+function linhaPedido(r) { const d = JSON.parse(r.dados); return { ...d, etapa: etapaDe(r.status, d), precisaArte: precisaArte(d), id: r.id, numero: r.numero, status: r.status, prazo: r.prazo, token: r.token || null, curto: r.token ? codigoCurto(r.token) : null, criadoEm: r.criado_em, atualizadoEm: r.atualizado_em }; }
 app.get("/api/pedidos", exigeLogin, (req, res) => {
   res.json(db.prepare("SELECT * FROM pedidos ORDER BY numero DESC LIMIT 1000").all().map(linhaPedido));
 });
@@ -747,7 +748,7 @@ app.put("/api/pedidos/:id", exigeLogin, exigeEdicao, (req, res) => {
   if (ant.artes) v.artes = ant.artes; // versões da arte enviadas para aprovação
   if (ant.pagInformado) v.pagInformado = ant.pagInformado; // cliente avisou que pagou a entrada
   if (ant.pagarTudo) v.pagarTudo = true; // cliente escolheu pagar 100% ao aprovar
-  for (const k of ["mp", "mpPagos", "mpPagamentos", "mpAbertos", "avisosPag", "entrega", "lembretesPix"]) if (ant[k]) v[k] = ant[k]; // cobrança, pagamentos e avisos do Mercado Pago
+  for (const k of ["mp", "mpPagos", "mpPagamentos", "mpAbertos", "avisosPag", "entrega", "lembretesPix", "previa"]) if (ant[k]) v[k] = ant[k]; // cobrança, pagamentos e avisos do Mercado Pago
   if (ant.fluxo) v.fluxo = ant.fluxo;
   db.transaction(() => {
     db.prepare("UPDATE pedidos SET dados = ?, prazo = ?, atualizado_em = datetime('now') WHERE id = ?").run(JSON.stringify(v), v.prazo, req.params.id);
@@ -1758,6 +1759,7 @@ function paginaComMeta(arquivo, meta) {
     `<meta property="og:title" content="${escH(meta.titulo)}">`,
     meta.descricao ? `<meta property="og:description" content="${escH(meta.descricao)}">` : "",
     meta.imagem ? `<meta property="og:image" content="${escH(meta.imagem)}">` : "",
+    meta.imagemTam ? `<meta property="og:image:width" content="${meta.imagemTam}"><meta property="og:image:height" content="${meta.imagemTam}"><meta property="og:image:type" content="image/jpeg">` : "",
   ].join("\n");
   return html.replace("</head>", tags + "\n</head>");
 }
@@ -1766,7 +1768,7 @@ app.post("/api/pedidos/:id/link", exigeLogin, exigeEdicao, (req, res) => {
   if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
   let token = r.token;
   if (!token) { token = crypto.randomBytes(16).toString("hex"); db.prepare("UPDATE pedidos SET token = ? WHERE id = ?").run(token, r.id); }
-  res.json({ token, url: origemUrl(req) + "/pedido/" + token });
+  res.json({ token, curto: codigoCurto(token), url: origemUrl(req) + "/p/" + codigoCurto(token) });
 });
 function pedidoPorToken(token) {
   if (!TOKEN_RE.test(token || "")) return null;
@@ -2274,17 +2276,66 @@ app.get("/pedido/:token/foto-orc/:i", limitePublico, (req, res) => {
   res.set("Cache-Control", "private, max-age=3600");
   res.sendFile(path.join(FOTOS_DIR, f.id), err => { if (err && !res.headersSent) res.status(404).end(); });
 });
+// ---------- link curto do pedido: /p/Ab3xK9Q (7 letras tiradas do token, sem guardar nada a mais) ----------
+const B62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+function codigoCurto(token) {
+  let x = BigInt("0x" + crypto.createHash("sha256").update("curto:" + token).digest("hex").slice(0, 16)), s = "";
+  for (let i = 0; i < 7; i++) { s += B62[Number(x % 62n)]; x /= 62n; }
+  return s;
+}
+const curtoCache = new Map();
+app.get("/p/:c", limitePublico, (req, res) => {
+  const c = String(req.params.c); if (!/^[0-9A-Za-z]{7}$/.test(c)) return res.status(404).send("Link não encontrado.");
+  let token = curtoCache.get(c);
+  if (!token) {
+    for (const r of db.prepare("SELECT token FROM pedidos WHERE token IS NOT NULL").all()) { const k = codigoCurto(r.token); curtoCache.set(k, r.token); if (k === c) token = r.token; }
+    if (curtoCache.size > 20000) curtoCache.clear();
+  }
+  if (!token || !pedidoPorToken(token)) return res.status(404).send("Pedido não encontrado. Peça um novo link para a loja.");
+  res.redirect(302, "/pedido/" + token);
+});
+// ---------- foto da prévia no WhatsApp (o painel desenha: foto + número + valor; o servidor só guarda) ----------
+function fotoBaseDoPedido(p) { // mesma ordem da prévia: foto do orçamento → foto do produto → última arte
+  const orc = (p.fotosOrc || []).find(f => FOTO_RE.test(f.id || "")); if (orc) return orc.id;
+  for (const i of p.itens || []) { const f = fotoDoItem(i); if (f) return f; }
+  const a = (p.artes || []).slice(-1)[0]; return a && FOTO_RE.test(a.foto || "") ? a.foto : null;
+}
+function totalDoPedido(p) { return n(p.itens.reduce((s, i) => s + i.quantidade * i.preco_unit, 0) - (p.desconto || 0) + (p.freteCliente || 0)); }
+const chavePrevia = (numero, p) => { const f = fotoBaseDoPedido(p); return f ? `v1|${numero}|${totalDoPedido(p).toFixed(2)}|${f}` : null; };
+app.get("/api/pedidos/:id/previa", exigeLogin, (req, res) => {
+  const r = db.prepare("SELECT numero, dados FROM pedidos WHERE id = ?").get(req.params.id); if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  const p = JSON.parse(r.dados), chave = chavePrevia(r.numero, p);
+  res.json({ chave, pronta: !!chave && p.previa?.chave === chave, foto: chave ? fotoBaseDoPedido(p) : null, numero: r.numero, total: totalDoPedido(p), loja: txt(lojaConfig().nome, 80) || "Impressões 3D" });
+});
+app.post("/api/pedidos/:id/previa", exigeLogin, exigeEdicao, (req, res) => {
+  const r = db.prepare("SELECT numero, dados FROM pedidos WHERE id = ?").get(req.params.id); if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  const p = JSON.parse(r.dados), { foto, chave } = req.body || {};
+  if (!FOTO_RE.test(foto || "") || chave !== chavePrevia(r.numero, p)) return res.status(409).json({ erro: "O pedido mudou. Tente de novo." });
+  const velha = p.previa?.foto; p.previa = { foto, chave };
+  db.prepare("UPDATE pedidos SET dados = ? WHERE id = ?").run(JSON.stringify(p), req.params.id);
+  if (velha && velha !== foto) apagaFoto(velha);
+  res.json({ ok: true });
+});
+app.get("/pedido/:token/previa.jpg", limitePublico, (req, res) => {
+  const r = pedidoPorToken(req.params.token); if (!r) return res.status(404).end();
+  const f = JSON.parse(r.dados).previa?.foto; if (!FOTO_RE.test(f || "")) return res.status(404).end();
+  res.set("Cache-Control", "public, max-age=300");
+  res.sendFile(path.join(FOTOS_DIR, f), err => { if (err && !res.headersSent) res.status(404).end(); });
+});
 app.get("/pedido/:token", limitePublico, (req, res) => {
   const r = pedidoPorToken(req.params.token);
   if (!r) return res.status(404).send("Pedido não encontrado. Peça um novo link para a loja.");
   const p = JSON.parse(r.dados), L = lojaConfig();
   const total = p.itens.reduce((s, i) => s + i.quantidade * i.preco_unit, 0) - (p.desconto || 0) + (p.freteCliente || 0);
   const k = p.itens.findIndex(i => fotoDoItem(i));
+  const previaOk = !!p.previa?.chave && p.previa.chave === chavePrevia(r.numero, p);
   res.set("Cache-Control", "no-store");
   res.type("html").send(paginaComMeta("pedido.html", {
+    ...(previaOk ? { imagemTam: 1080 } : {}),
     titulo: `Pedido #${r.numero} · ${brlS(total)}`, // o valor no título aparece em negrito na prévia do WhatsApp
     descricao: p.itens.map(i => `${i.quantidade}× ${i.descricao}`).join(", ").slice(0, 150) + ` · ${txt(L.nome, 80) || "Impressões 3D"}`,
-    imagem: (p.fotosOrc || []).length ? `${origemUrl(req)}/pedido/${r.token}/foto-orc/0` : k >= 0 ? `${origemUrl(req)}/pedido/${r.token}/foto/${k}`
+    imagem: previaOk ? `${origemUrl(req)}/pedido/${r.token}/previa.jpg?v=${p.previa.foto.slice(0, 8)}`
+      : (p.fotosOrc || []).length ? `${origemUrl(req)}/pedido/${r.token}/foto-orc/0` : k >= 0 ? `${origemUrl(req)}/pedido/${r.token}/foto/${k}`
       : (p.artes || []).length ? `${origemUrl(req)}/aprovacao/${r.token}/arte/${p.artes[p.artes.length - 1].v}` : null,
   }));
 });
