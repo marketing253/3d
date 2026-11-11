@@ -2085,7 +2085,7 @@ app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
     canal: txt(p.canal, 80),
     numero: r.numero, status: r.status, prazo: r.prazo, data: p.data, cliente: txt(p.cliente, 120),
     itens: p.itens.map((i, k) => ({ descricao: i.descricao, quantidade: i.quantidade, preco: i.preco_unit, personalizacao: i.personalizacao || "",
-      foto: fotoDoItem(i) ? `/pedido/${r.token}/foto/${k}` : null })),
+      foto: !(p.fotosOrc || []).length && fotoDoItem(i) ? `/pedido/${r.token}/foto/${k}` : null })), // com fotos suas no orçamento, a do cadastro do produto não aparece
     fotos: (p.fotosOrc || []).map((f, k) => `/pedido/${r.token}/foto-orc/${k}`),
     desconto: n(p.desconto), frete: n(p.freteCliente), total, sinal: n(p.sinal), receber,
     entrega: p.entrega ? { ...p.entrega, ...(p.entrega.tipo === "retirada" ? { retiradaTxt: freteConfig(L).retiradaTxt } : {}) } : null,
@@ -2280,7 +2280,7 @@ app.get("/pedido/:token", limitePublico, (req, res) => {
   res.type("html").send(paginaComMeta("pedido.html", {
     titulo: `Pedido #${r.numero} · ${txt(L.nome, 80) || "Impressões 3D"}`,
     descricao: p.itens.map(i => `${i.quantidade}× ${i.descricao}`).join(", ").slice(0, 180) + ` · Total ${brlS(total)}`,
-    imagem: k >= 0 ? `${origemUrl(req)}/pedido/${r.token}/foto/${k}` : null,
+    imagem: (p.fotosOrc || []).length ? `${origemUrl(req)}/pedido/${r.token}/foto-orc/0` : k >= 0 ? `${origemUrl(req)}/pedido/${r.token}/foto/${k}` : null,
   }));
 });
 
