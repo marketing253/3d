@@ -339,6 +339,7 @@ function renderFoto(){
   const src=fotoSrc(draft);
   $("#fotoPrev").innerHTML=src?`<img src="${esc(src)}" alt="Foto do produto">`:"<span>Sem foto</span>";
   $("#fotoRm").hidden=!src;
+  $("#fotoPrev").classList.toggle("domodelo",fotoDoModelo());
   renderMaisFotos();
 
 }
@@ -367,7 +368,7 @@ async function setFoto(file){
     const fd=new FormData(); fd.append("foto",blob,"foto.jpg");
     const r=await api("POST","/api/fotos",fd);
     if(draft.fotoId&&draft.fotoId!==fotoOriginal) api("DELETE","/api/fotos/"+encodeURIComponent(draft.fotoId)).catch(()=>{});
-    draft.fotoId=r.id;
+    draft.fotoId=r.id; draft.fotoModelo=null;
     msg.textContent="Foto adicionada. Clique em Salvar para guardar.";
   }catch(e){
     msg.textContent=e&&e.status!==undefined?e.message:"Não deu para ler essa imagem. Tente outra (JPG ou PNG).";
@@ -383,10 +384,15 @@ function renderMaisFotos(){
     :`<span class="note" style="margin:0">${draft.fotoId?"Coloque fotos de outros ângulos, cores ou a peça em uso.":"Primeiro escolha a foto principal acima, ou adicione aqui: a primeira vira a principal."}</span>`;
   $("#fotosBtn").hidden=!ed||fs_.length>=MF_MAX;
 }
+// a foto principal veio do MakerWorld/Thingiverse? (produtos antigos sem a marca: vale se tem link de modelo)
+function fotoDoModelo(){ return !!(draft&&draft.fotoId&&(draft.fotoModelo===draft.fotoId||(draft.fotoModelo===undefined&&LINK_PUXA.test(draft.linkModelo||$("#f-link")?.value||"")))) }
+let fotoModeloTirada=null;
 async function addFotos(files){
   if(!draft) return; draft.fotosExtra=draft.fotosExtra||[];
   const lista=[...files].filter(f=>/^image\//.test(f.type)); if(!lista.length) return;
   const msg=$("#fotoMsg"); let ok=0, sobra=0;
+  const tirar=fotoDoModelo()?draft.fotoId:null; // sua foto entra no lugar da do site do modelo
+  if(tirar){ fotoModeloTirada=tirar; draft.fotoId=""; draft.fotoModelo=null }
   for(const [i,file] of lista.entries()){
     if(draft.fotoId&&draft.fotosExtra.length>=MF_MAX){ sobra=lista.length-i; break }
     msg.textContent=`Enviando foto ${i+1} de ${lista.length}…`;
@@ -394,9 +400,14 @@ async function addFotos(files){
       if(!draft.fotoId) draft.fotoId=r.id; else draft.fotosExtra.push(r.id); ok++; renderFoto() }
     catch(e){ msg.textContent=e&&e.status!==undefined?e.message:"Uma das imagens não abriu. Use JPG ou PNG." }
   }
-  if(ok) msg.textContent=`${ok===1?"Foto adicionada":ok+" fotos adicionadas"}. Clique em Salvar para guardar.`+(sobra?` ${sobra} ficaram de fora (máximo de 8 por produto).`:"");
+  if(tirar&&!draft.fotoId){ draft.fotoId=tirar; draft.fotoModelo=tirar; fotoModeloTirada=null } // nada subiu: volta como estava
+  if(ok) msg.innerHTML=`${ok===1?"Foto adicionada":ok+" fotos adicionadas"}${tirar&&fotoModeloTirada?" no lugar da foto do "+(/thingiverse/i.test(draft.linkModelo||"")?"Thingiverse":"MakerWorld"):""}. Clique em Salvar para guardar.`+(sobra?` ${sobra} ficaram de fora (máximo de 8 por produto).`:"")
+    +(tirar&&fotoModeloTirada?' <button type="button" class="linkbtn" id="fotoVolta">Manter a do site também</button>':"");
   renderFoto(); renderFicha();
 }
+$("#fotoMsg").addEventListener("click",e=>{ if(e.target.id!=="fotoVolta"||!draft||!fotoModeloTirada) return;
+  draft.fotosExtra=draft.fotosExtra||[]; if(draft.fotosExtra.length<MF_MAX&&!draft.fotosExtra.includes(fotoModeloTirada)) draft.fotosExtra.push(fotoModeloTirada);
+  fotoModeloTirada=null; $("#fotoMsg").textContent="A foto do site ficou por último. Clique em Salvar para guardar."; renderFoto(); renderFicha() });
 $("#f-fotos").addEventListener("change",e=>{const f=[...(e.target.files||[])];e.target.value="";addFotos(f)});
 $("#fotosBtn").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("#f-fotos").click()}});
 $("#mfGrade").addEventListener("click",e=>{
@@ -439,7 +450,7 @@ async function puxaDoLink(forcar,manual){
       try{
         const r=await fetch(x.imagem,{credentials:"same-origin"}); if(!r.ok) throw new Error();
         const blob=await r.blob();
-        if(draft&&$("#f-link").value.trim()===url){ await setFoto(new File([blob],"modelo.jpg",{type:"image/jpeg"})); feito.unshift("foto") }
+        if(draft&&$("#f-link").value.trim()===url){ await setFoto(new File([blob],"modelo.jpg",{type:"image/jpeg"})); draft.fotoModelo=draft.fotoId||null; renderFoto(); feito.unshift("foto") }
       }catch(e){ $("#fotoMsg").textContent="Não deu para baixar a foto do modelo. Envie uma manualmente." }
     } else if(x.imagem) mantido.push("foto");
     m.innerHTML=(feito.length?`<b>Puxado do ${esc(x.site)}:</b> ${feito.join(", ")}.`:`Nada novo para puxar do ${esc(x.site)}.`)
