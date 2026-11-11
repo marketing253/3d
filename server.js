@@ -1373,7 +1373,8 @@ app.post("/api/publico/pedido", limitePedidoPublico, async (req, res) => {
   const hoje = new Date().toISOString().slice(0, 10);
   const prazoD = new Date(); prazoD.setDate(prazoD.getDate() + (Number(L.prazoDias) || 5));
   const bruto = itens.reduce((s, i) => s + i.quantidade * i.preco_unit, 0);
-  const cup = b.cupom ? cupomValido(b.cupom, bruto) : null;
+  const cup = b.cupom ? cupomValido(b.cupom, bruto, b.whatsapp) : null;
+  if (cup && cup.bloqueia) return res.status(400).json({ erro: cup.erro + " Tire o cupom para continuar." });
   const dados = { cliente: nome, whatsapp: txt(b.whatsapp, 30).replace(/[^\d+]/g, ""), canal, data: hoje, prazo: prazoD.toISOString().slice(0, 10),
     itens, desconto: cup && !cup.erro ? cup.desconto : 0, freteCliente: 0, freteVoce: 0, taxas: 0, sinal: 0, fluxo: 2,
     obs: "Pedido feito pelo catálogo do site" + (cup && !cup.erro ? ` · cupom ${cup.codigo}` : ""), origem: "catalogo",
@@ -1415,13 +1416,29 @@ function kitsPublicos(prods) {
         itens: itens.map(i => ({ produto_id: i.produto_id, nome: i.p.nome, q: i.q })) };
     }).filter(Boolean);
 }
-function cupomValido(codigo, total) {
+// quantas vezes o cupom já foi usado (pedidos não cancelados), no total e por este WhatsApp
+function usosCupom(cod, whats) {
+  const w = String(whats || "").replace(/\D/g, "").slice(-11); let total = 0, doCliente = 0;
+  for (const r of db.prepare("SELECT status, dados FROM pedidos WHERE dados LIKE ?").all('%"cupom":"' + cod + '"%')) {
+    if (["cancelado", "recusado"].includes(r.status)) continue;
+    const d = JSON.parse(r.dados); if (d.cupom !== cod) continue;
+    total++; if (w.length >= 10 && String(d.whatsapp || "").replace(/\D/g, "").slice(-11) === w) doCliente++;
+  }
+  return { total, doCliente };
+}
+function cupomValido(codigo, total, whats) {
   const cod = txt(codigo, 30).toUpperCase().replace(/\s+/g, "");
   const c = (configCompleta().cupons || []).find(x => x && x.ativo && String(x.codigo || "").toUpperCase() === cod);
   if (!c) return { erro: "Cupom não encontrado ou encerrado." };
   const hoje = new Date().toISOString().slice(0, 10);
   if (c.validade && DATA_RE.test(c.validade) && c.validade < hoje) return { erro: "Este cupom já venceu." };
   if (n(c.minimo) > 0 && total != null && total < n(c.minimo)) return { erro: `Este cupom vale para pedidos a partir de ${brlS(c.minimo)}.` };
+  const lim = Math.round(n(c.limite));
+  if (lim > 0 || c.umPorCliente) {
+    const u = usosCupom(cod, whats);
+    if (lim > 0 && u.total >= lim) return { erro: "Este cupom já esgotou.", bloqueia: true };
+    if (c.umPorCliente && u.doCliente > 0) return { erro: "Você já usou este cupom em outro pedido.", bloqueia: true };
+  }
   const desconto = total == null ? null : n(Math.min(total, c.tipo === "valor" ? n(c.valor) : total * n(c.valor) / 100));
   return { codigo: cod, tipo: c.tipo === "valor" ? "valor" : "pct", valor: n(c.valor), minimo: n(c.minimo), desconto };
 }

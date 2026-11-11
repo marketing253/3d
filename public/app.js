@@ -880,7 +880,8 @@ function abrePedido(p){
       <div class="pf-itens"><div class="row spread"><b>Itens</b><button type="button" class="btn sm ghost" data-pfa="addItem">+ Adicionar item</button></div><div id="pfItens"></div></div>
       <div class="pf-itens"><div class="row spread"><b>Fotos do orçamento <span class="pcat">aparecem para o cliente no link</span></b></div><div id="pfFotos" class="pf-fotos"></div><span class="note" id="pfFotoMsg"></span></div>
       <div class="pf-2">
-        <label class="f">Prazo de entrega<input type="date" id="pf-prazo" value="${esc(d.prazo||"")}"><span class="hint" id="pf-sugPrazo"></span></label>
+        <div class="stack" style="gap:10px"><label class="f">Prazo de entrega<input type="date" id="pf-prazo" value="${esc(d.prazo||"")}"><span class="hint" id="pf-sugPrazo"></span></label>
+          ${cuponsParaPedido(d.cupom).length?`<label class="f">Cupom de desconto<select id="pf-cupom"><option value="">Sem cupom</option>${cuponsParaPedido(d.cupom).map(c=>`<option value="${esc(c.codigo)}"${c.codigo===d.cupom?" selected":""}>${esc(c.codigo)} · ${c.tipo==="valor"?brl(num(c.valor)):num(c.valor)+"%"}${c.fora?" (encerrado)":""}</option>`).join("")}</select><span class="hint" id="pf-cupHint"></span></label>`:""}</div>
         <div class="pf-total" id="pfResumo"></div>
       </div>
       <details class="maisdet"><summary>Mais opções</summary><div class="fields">
@@ -929,15 +930,35 @@ function renderPfItens(){
       ${est>0||it.doEstoque?`<label class="chk"><input type="checkbox" data-if="doEstoque"${it.doEstoque?" checked":""}> Da pronta entrega</label>`:""}
     </div>`}).join("");
 }
+// cupons que dá para escolher no pedido: os ativos e no prazo, mais o que o pedido já usa (mesmo encerrado)
+function cuponsParaPedido(atual){
+  const l=cupsCfg().filter(c=>c.ativo&&!(c.validade&&c.validade<hojeISO()));
+  if(atual&&!l.some(c=>c.codigo===atual)) l.push({...(cupsCfg().find(c=>c.codigo===atual)||{codigo:atual,tipo:"valor",valor:0}),fora:true});
+  return l;
+}
 function lePf(){
   const d=pedForm.d;
   d.cliente=$("#pf-cliente").value.trim(); d.whatsapp=$("#pf-whats").value.trim(); d.canal=$("#pf-canal").value;
   d.data=$("#pf-data").value; d.prazo=$("#pf-prazo").value; d.desconto=num($("#pf-desc").value); d.freteCliente=num($("#pf-fc").value);
   d.freteVoce=num($("#pf-fv").value); d.taxas=num($("#pf-taxas").value); d.sinal=num($("#pf-sinal").value); d.entrada=$("#pf-entrada").value===""?"":num($("#pf-entrada").value); d.semArte=!$("#pf-arte").checked; d.comArte=$("#pf-arte").checked; d.obs=$("#pf-obs").value.trim();
   if($("#pf-status")) d.status=$("#pf-status").value;
+  if($("#pf-cupom")) d.cupom=$("#pf-cupom").value;
+}
+// com cupom escolhido, o desconto sai dele (refeito quando os itens mudam)
+function aplicaCupomPf(d){
+  const sel=$("#pf-cupom"), hint=$("#pf-cupHint"), cx=$("#pf-desc"); if(!sel) return;
+  const c=d.cupom&&cupsCfg().find(x=>x.codigo===d.cupom&&x.ativo);
+  if(!d.cupom){ if(cx.disabled){ d.desconto=0; cx.value="0" } cx.disabled=false; hint.textContent=""; return } // tirou o cupom: o desconto dele sai junto
+  cx.disabled=true;
+  if(!c){ hint.textContent="Cupom encerrado: o desconto do pedido ficou como estava."; return }
+  const bruto=d.itens.reduce((s,i)=>s+num(i.quantidade)*num(i.preco_unit),0), min=num(c.minimo);
+  const v=min>0&&bruto<min?0:Math.min(bruto,c.tipo==="valor"?num(c.valor):bruto*num(c.valor)/100);
+  d.desconto=+v.toFixed(2); cx.value=d.desconto.toFixed(2);
+  const usos=pedidos.filter(p=>p.cupom===c.codigo&&p.id!==pedForm.id&&!["cancelado","recusado"].includes(p.status)).length;
+  hint.textContent=(min>0&&bruto<min?`Vale a partir de ${brl(min)}: ainda sem desconto.`:`Desconto de ${brl(d.desconto)}`)+(num(c.limite)>0?` · ${usos} de ${Math.round(num(c.limite))} usos`:"");
 }
 function atualizaPf(){
-  if(!pedForm) return; lePf(); const d=pedForm.d;
+  if(!pedForm) return; lePf(); const d=pedForm.d; aplicaCupomPf(d);
   if(!pedForm.taxaManual){const c=cfg.canais.find(x=>x.nome===d.canal);let t=0;
     if(c) for(const i of d.itens){const pu=num(i.preco_unit),q=num(i.quantidade),lim=num(c.fixaAbaixoDe);t+=q*(pu*num(c.comissaoPct)/100+((lim>0&&pu>=lim)?0:num(c.tarifaFixa)))}
     t+=totPed({...d,taxas:0}).total*num(cfg.impostoPct)/100; d.taxas=+t.toFixed(2); $("#pf-taxas").value=d.taxas.toFixed(2)}
@@ -966,7 +987,7 @@ $("#pedForm").addEventListener("change",async e=>{
     try{ for(let i=0;i<fs.length;i++){ $("#pfFotoMsg").textContent=`Enviando foto ${i+1} de ${fs.length}…`; d.fotosOrc.push({id:await enviaImagem(fs[i])}); renderPfFotos() }
       $("#pfFotoMsg").textContent=todas.length>fs.length?"Cabem até 8 fotos; as demais ficaram de fora.":"" }
     catch(err){ $("#pfFotoMsg").textContent=err.message }
-    return } if(e.target.matches('select[data-if="produto_id"],#pf-canal,input[data-if="doEstoque"]')) $("#pedForm").dispatchEvent(new Event("input")) });
+    return } if(e.target.matches('select[data-if="produto_id"],#pf-canal,#pf-cupom,input[data-if="doEstoque"]')) $("#pedForm").dispatchEvent(new Event("input")) });
 $("#pedForm").addEventListener("click",async e=>{
   const b=e.target.closest("[data-pfa]"); if(!b||!pedForm) return; const a=b.dataset.pfa;
   if(a==="fechar") return fechaPf();
@@ -2635,13 +2656,14 @@ function renderKits(){
       <td>${!k.ativo?'<span class="pill">pausado</span>':c.fora?'<span class="pill warn" title="Algum produto do kit não está no catálogo com preço">fora do catálogo</span>':'<span class="pill good">no catálogo</span>'}</td>
       <td class="pact"><button class="btn sm ghost edit-only" data-ka="edit">Editar</button> <button class="btn sm ghost edit-only" data-ka="del">Excluir</button></td></tr>`}).join("")}</tbody></table></div>`
     :`<div class="card empty"><h2>Nenhum kit ainda</h2><p>Exemplos que vendem bem: kit de 3 chaveiros, kit organizador de mesa, kit presente com vaso + porta-retrato.</p></div>`;
-  const cs=cupsCfg(); const usos=cod=>pedidos.filter(p=>p.cupom===cod&&p.status!=="cancelado").length;
+  const cs=cupsCfg(); const usos=cod=>pedidos.filter(p=>p.cupom===cod&&!["cancelado","recusado"].includes(p.status)).length;
+  const esgotado=c=>num(c.limite)>0&&pedCarregado&&usos(c.codigo)>=num(c.limite);
   $("#cupLista").innerHTML=cs.length?`<div class="tablewrap"><table style="min-width:680px"><thead><tr><th>Código</th><th>Desconto</th><th>Regras</th><th class="n">Usos</th><th>Status</th><th></th></tr></thead><tbody>
     ${cs.map((c,i)=>{const venc=c.validade&&c.validade<hojeISO();
       return `<tr data-ci="${i}"><td class="num"><b>${esc(c.codigo)}</b></td><td>${c.tipo==="valor"?brl(num(c.valor)):num(c.valor)+"%"}</td>
-      <td class="pcat">${[num(c.minimo)>0?`a partir de ${brl(num(c.minimo))}`:"",c.validade?`até ${dataBRc(c.validade)}`:""].filter(Boolean).join(" · ")||"sem limite"}</td>
-      <td class="n num">${pedCarregado?usos(c.codigo):"—"}</td>
-      <td>${!c.ativo?'<span class="pill">pausado</span>':venc?'<span class="pill bad">vencido</span>':'<span class="pill good">ativo</span>'}</td>
+      <td class="pcat">${[num(c.minimo)>0?`a partir de ${brl(num(c.minimo))}`:"",c.validade?`até ${dataBRc(c.validade)}`:"",num(c.limite)>0?`até ${Math.round(num(c.limite))} usos`:"",c.umPorCliente?"1 por cliente":""].filter(Boolean).join(" · ")||"sem limite"}</td>
+      <td class="n num">${pedCarregado?usos(c.codigo)+(num(c.limite)>0?"/"+Math.round(num(c.limite)):""):"—"}</td>
+      <td>${!c.ativo?'<span class="pill">pausado</span>':venc?'<span class="pill bad">vencido</span>':esgotado(c)?'<span class="pill bad">esgotado</span>':'<span class="pill good">ativo</span>'}</td>
       <td class="pact"><button class="btn sm ghost" data-ca="link" title="Link do catálogo com o cupom já preenchido">Link</button> <button class="btn sm ghost edit-only" data-ca="edit">Editar</button> <button class="btn sm ghost edit-only" data-ca="del">Excluir</button></td></tr>`}).join("")}</tbody></table></div>`
     :`<div class="card empty"><h2>Nenhum cupom ainda</h2><p>Ex.: <b>BEMVINDO10</b> com 10% para a primeira compra, ou <b>FRETEGRATIS</b> com R$ 15 de desconto acima de R$ 100.</p></div>`;
 }
@@ -2692,14 +2714,16 @@ function abreCupom(i){
       <label class="f">Tipo<select id="cf-tipo"><option value="pct"${c.tipo!=="valor"?" selected":""}>Porcentagem (%)</option><option value="valor"${c.tipo==="valor"?" selected":""}>Valor fixo (R$)</option></select></label>
       <label class="f">Desconto<input id="cf-valor" type="number" min="0" step="0.01" value="${esc(c.valor)}"></label>
       <label class="f">Pedido mínimo<span class="hint">Opcional</span><div class="unit pre"><span>R$</span><input id="cf-min" type="number" min="0" step="0.01" value="${esc(c.minimo)}"></div></label>
-      <label class="f">Válido até<span class="hint">Opcional</span><input id="cf-val" type="date" value="${esc(c.validade)}"></label></div>
-    <div class="row"><label class="chk"><input type="checkbox" id="cf-ativo"${c.ativo?" checked":""}> Ativo</label><button class="btn primary" data-cf="salvar" type="button">Salvar cupom</button><span class="note" id="cfMsg"></span></div>`;
+      <label class="f">Válido até<span class="hint">Opcional</span><input id="cf-val" type="date" value="${esc(c.validade)}"></label>
+      <label class="f">Limite de usos<span class="hint">Opcional. Ex.: 20 primeiros pedidos</span><input id="cf-lim" type="number" min="0" step="1" value="${esc(c.limite||"")}"></label></div>
+    <div class="row"><label class="chk"><input type="checkbox" id="cf-ativo"${c.ativo?" checked":""}> Ativo</label><label class="chk"><input type="checkbox" id="cf-um"${c.umPorCliente?" checked":""}> Só 1 vez por cliente (pelo WhatsApp)</label><button class="btn primary" data-cf="salvar" type="button">Salvar cupom</button><span class="note" id="cfMsg"></span></div>`;
   cupForm.c=c;
 }
 $("#cupForm").addEventListener("click",e=>{const b=e.target.closest("[data-cf]"); if(!b||!cupForm) return;
   if(b.dataset.cf==="fechar"){cupForm=null;$("#cupForm").hidden=true;return}
   const c=cupForm.c; c.codigo=$("#cf-cod").value.toUpperCase().replace(/\s+/g,""); c.tipo=$("#cf-tipo").value; c.valor=num($("#cf-valor").value);
   c.minimo=$("#cf-min").value===""?"":num($("#cf-min").value); c.validade=$("#cf-val").value; c.ativo=$("#cf-ativo").checked;
+  c.limite=Math.max(0,Math.round(num($("#cf-lim").value)))||""; c.umPorCliente=$("#cf-um").checked;
   if(!/^[A-Z0-9_-]{3,30}$/.test(c.codigo)){$("#cfMsg").textContent="Use de 3 a 30 letras ou números, sem espaços.";return}
   if(cupsCfg().some((x,j)=>x.codigo===c.codigo&&j!==cupForm.i)){$("#cfMsg").textContent="Já existe um cupom com esse código.";return}
   if(!(c.valor>0)||(c.tipo==="pct"&&c.valor>90)){$("#cfMsg").textContent=c.tipo==="pct"?"Use um desconto entre 1% e 90%.":"Informe o valor do desconto.";return}
