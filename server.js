@@ -2282,8 +2282,8 @@ app.get("/pedido/:token", limitePublico, (req, res) => {
   const k = p.itens.findIndex(i => fotoDoItem(i));
   res.set("Cache-Control", "no-store");
   res.type("html").send(paginaComMeta("pedido.html", {
-    titulo: `Pedido #${r.numero} · ${txt(L.nome, 80) || "Impressões 3D"}`,
-    descricao: p.itens.map(i => `${i.quantidade}× ${i.descricao}`).join(", ").slice(0, 180) + ` · Total ${brlS(total)}`,
+    titulo: `Pedido #${r.numero} · ${brlS(total)}`, // o valor no título aparece em negrito na prévia do WhatsApp
+    descricao: p.itens.map(i => `${i.quantidade}× ${i.descricao}`).join(", ").slice(0, 150) + ` · ${txt(L.nome, 80) || "Impressões 3D"}`,
     imagem: (p.fotosOrc || []).length ? `${origemUrl(req)}/pedido/${r.token}/foto-orc/0` : k >= 0 ? `${origemUrl(req)}/pedido/${r.token}/foto/${k}`
       : (p.artes || []).length ? `${origemUrl(req)}/aprovacao/${r.token}/arte/${p.artes[p.artes.length - 1].v}` : null,
   }));
