@@ -1775,10 +1775,14 @@ function pedidoPorToken(token) {
   if (r.status === "cancelado" && JSON.parse(r.dados).resposta?.acao !== "recusado") return null;
   return r;
 }
+// foto de um item do pedido: do produto ligado; kit → a 1ª peça com foto; item digitado → produto com o mesmo nome
 function fotoDoItem(i) {
-  if (!i.produto_id) return null;
-  const pr = db.prepare("SELECT foto FROM produtos WHERE id = ?").get(i.produto_id);
-  return pr && pr.foto && FOTO_RE.test(pr.foto) ? pr.foto : null;
+  const doId = id => { if (!id) return null; const pr = db.prepare("SELECT foto FROM produtos WHERE id = ?").get(String(id)); return pr && pr.foto && FOTO_RE.test(pr.foto) ? pr.foto : null; };
+  const f = doId(i.produto_id) || (i.componentes || []).map(c => doId(c.produto_id)).find(Boolean);
+  if (f) return f;
+  const nome = chaveLugar(String(i.descricao || "").replace(/^kit\s+/i, "")); if (!nome) return null;
+  const pr = db.prepare("SELECT foto, dados FROM produtos WHERE foto IS NOT NULL").all().find(r => chaveLugar(JSON.parse(r.dados).nome) === nome);
+  return pr && FOTO_RE.test(pr.foto) ? pr.foto : null;
 }
 // ---------- Mercado Pago (Pix com confirmação automática, API de Orders) ----------
 // Com MP_ACCESS_TOKEN no .env, o Pix do link do cliente vira uma order do Mercado Pago. Quando ela é paga
@@ -2280,7 +2284,8 @@ app.get("/pedido/:token", limitePublico, (req, res) => {
   res.type("html").send(paginaComMeta("pedido.html", {
     titulo: `Pedido #${r.numero} · ${txt(L.nome, 80) || "Impressões 3D"}`,
     descricao: p.itens.map(i => `${i.quantidade}× ${i.descricao}`).join(", ").slice(0, 180) + ` · Total ${brlS(total)}`,
-    imagem: (p.fotosOrc || []).length ? `${origemUrl(req)}/pedido/${r.token}/foto-orc/0` : k >= 0 ? `${origemUrl(req)}/pedido/${r.token}/foto/${k}` : null,
+    imagem: (p.fotosOrc || []).length ? `${origemUrl(req)}/pedido/${r.token}/foto-orc/0` : k >= 0 ? `${origemUrl(req)}/pedido/${r.token}/foto/${k}`
+      : (p.artes || []).length ? `${origemUrl(req)}/aprovacao/${r.token}/arte/${p.artes[p.artes.length - 1].v}` : null,
   }));
 });
 

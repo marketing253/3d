@@ -142,7 +142,7 @@ document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("clic
   setTab(b.dataset.tab);
 }));
 
-function toast(msg){const t=$("#toast");t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,2600)}
+function toast(msg,ms){const t=$("#toast");t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,ms||2600)}
 const PAPEL_NOME={admin:"Administrador",editor:"Editor",leitura:"Só leitura"};
 function renderUserChip(){
   $("#userchip").innerHTML=me?`<span>Olá, <b>${esc(me.nome)}</b> · ${PAPEL_NOME[me.papel]||""}</span><button class="btn" id="btnSair" type="button">Sair</button>`:"";
@@ -1022,7 +1022,15 @@ async function montaMsg(p,tipo){
   return {txt,pix,link};
 }
 // Abre o WhatsApp do cliente já com a mensagem pronta. A aba abre antes do await para o navegador não bloquear.
+// o pedido tem alguma foto para a prévia do link no WhatsApp?
+function pedidoTemFoto(p){
+  if((p.fotosOrc||[]).length||(p.artes||[]).length) return true;
+  const chave=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toLowerCase();
+  const temId=id=>id&&produtos.some(x=>x.id===id&&x.fotoId);
+  return (p.itens||[]).some(i=>temId(i.produto_id)||(i.componentes||[]).some(c=>temId(c.produto_id))||produtos.some(x=>x.fotoId&&chave(x.nome)===chave(String(i.descricao||"").replace(/^kit\s+/i,""))));
+}
 async function zapDireto(p,tipo,aba){
+  if(!pedidoTemFoto(p)) toast("Esse pedido não tem foto, então o link no WhatsApp mostra só o logo. Para aparecer a peça, abra Editar pedido e coloque em Fotos do orçamento.",9000);
   const w=aba||window.open("","_blank");
   try{ const {txt}=await montaMsg(p,tipo||tipoMsg(p)); const url=waLink(p.whatsapp,txt); if(w) w.location=url; else location.href=url }
   catch(e){ w?.close(); toast("Não deu para abrir o WhatsApp.") }
@@ -1034,6 +1042,7 @@ async function abreMsg(p,tipo){
   const {txt,pix,link}=await montaMsg(p,tipo); if(msgPed!==p) return;
   msgPix=pix&&pix.payload?pix:null; msgLink=link;
   box.innerHTML=`<div class="row spread"><h2>Mensagem para ${esc(p.cliente)} · pedido #${p.numero}</h2><button class="btn ghost" data-ma="fechar">Fechar</button></div>
+    ${link&&!pedidoTemFoto(p)?`<div class="warnbox"><b>Esse pedido não tem foto.</b> No WhatsApp, o link mostra só o logo. Para aparecer a peça, abra <b>Editar pedido</b> e coloque em <b>Fotos do orçamento</b>.</div>`:""}
     ${cfg.loja.pixChave?"":`<div class="warnbox"><b>Sua chave Pix não está cadastrada.</b> Sem ela, o cliente não vê o Pix para pagar a entrada. Cadastre em <b>Ajustes → Custos e loja → Chave Pix</b> (com Nome e Cidade do Pix).</div>`}
     <div class="row">${[["orcamento","Orçamento"],["confirmado","Confirmação"],["pronto","Pedido pronto"],["cobranca","Cobrança"],["obrigado","Agradecimento"]].map(([k,n])=>`<button class="chip${k===tipo?" on":""}" data-mt="${k}">${n}</button>`).join("")}</div>
     <div class="msgwrap"><textarea id="msgTxt" rows="12">${esc(txt)}</textarea>
