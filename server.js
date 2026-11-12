@@ -666,6 +666,7 @@ function limpaPedido(b) {
     doEstoque: !!i.doEstoque,
     fil: (Array.isArray(i.fil) ? i.fil : []).slice(0, 8).map(f => ({ filId: txt(f.filId, 60), g: n(f.g) })),
     ...(i.recalc ? { recalc: true } : {}),
+    ...(Array.isArray(i.ads) && i.ads.length ? { ads: i.ads.slice(0, 10).map(a => ({ nome: txt(a?.nome, 60), preco: n(a?.preco) })).filter(a => a.nome) } : {}),
     ...(i.kit_id ? { kit_id: txt(i.kit_id, 60) } : {}),
     ...(Array.isArray(i.componentes) && i.componentes.length ? { componentes: i.componentes.slice(0, 20).map(c => ({ produto_id: txt(c.produto_id, 60), q: Math.max(0, n(c.q)) })) } : {}),
   })).filter(i => i.descricao && i.quantidade > 0);
@@ -1368,6 +1369,7 @@ app.post("/api/publico/pedido", limitePedidoPublico, async (req, res) => {
     const ads = [...new Set((Array.isArray(i.ad) ? i.ad : []).map(Number).filter(Number.isInteger))].map(k => (p.adicionais || [])[k]).filter(a => a && a.nome);
     return { produto_id: String(i.id), descricao: p.nome + (ads.length ? " + " + ads.map(a => a.nome).join(" + ") : ""), quantidade: q,
       preco_unit: n(n(p.precoCatalogo) + ads.reduce((s, a) => s + n(a.preco), 0)), custo_unit: 0, horas_unit: 0,
+      ...(ads.length ? { ads: ads.map(a => ({ nome: a.nome, preco: n(a.preco) })) } : {}),
       personalizacao: txt(i.pers, 200), doEstoque: false, fil: [], recalc: true };
   }).filter(Boolean);
   if (!itens.length) return res.status(400).json({ erro: "O carrinho está vazio." });

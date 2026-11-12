@@ -938,6 +938,7 @@ function renderPfItens(){
         ${outro?`<label>Tempo un.<div class="unit"><input data-if="horas_unit" type="number" min="0" step="0.05" value="${esc(it.horas_unit?+(+it.horas_unit).toFixed(2):"")}" placeholder="0"><span>h</span></div></label>`:""}
         <span class="pfi2-sub num">${brl(num(it.quantidade)*num(it.preco_unit))}</span>
       </div>
+      ${pr&&(pr.adicionais||[]).length?`<div class="pfi2-ads"><span class="pcat">Adicionais:</span>${pr.adicionais.map((a,k)=>`<label class="chk"><input type="checkbox" data-if="ad" data-k="${k}"${(it.ads||[]).some(x=>x.nome===a.nome)?" checked":""}> ${esc(a.nome)} <span class="pcat">${num(a.preco)>0?"+"+brl(num(a.preco)):"grátis"}</span></label>`).join("")}</div>`:""}
       <input data-if="personalizacao" maxlength="300" placeholder="Personalização (opcional): nomes, cores, texto…" value="${esc(it.personalizacao)}">
       ${est>0||it.doEstoque?`<label class="chk"><input type="checkbox" data-if="doEstoque"${it.doEstoque?" checked":""}> Da pronta entrega</label>`:""}
     </div>`}).join("");
@@ -988,6 +989,13 @@ $("#pedForm").addEventListener("input",e=>{
     if(k==="produto_id"&&el.value.startsWith("kit:")){ const kt=kitsCfg().find(x=>"kit:"+x.id===el.value); if(kt){ pedForm.d.itens[+row.dataset.ii]=itemDeKit(kt,pedForm.d.canal,num(it.quantidade)||1); renderPfItens() } }
     else if(k==="produto_id"){ const p=produtos.find(x=>x.id===el.value); pedForm.d.itens[+row.dataset.ii]=p?{...itemDeProduto(p,pedForm.d.canal,num(it.quantidade)||1),personalizacao:it.personalizacao}:{...it,produto_id:null,fil:[],custo_unit:0,horas_unit:0}; renderPfItens() }
     else if(k==="doEstoque") it.doEstoque=el.checked;
+    else if(k==="ad"){ // marca/desmarca um adicional: soma ou tira o preço dele e escreve na descrição
+      const pr=produtos.find(x=>x.id===it.produto_id), ad=pr?.adicionais?.[+el.dataset.k];
+      if(ad){ it.ads=it.ads||[]; const j=it.ads.findIndex(x=>x.nome===ad.nome);
+        if(el.checked&&j<0){ it.ads.push({nome:ad.nome,preco:num(ad.preco)}); it.preco_unit=+(num(it.preco_unit)+num(ad.preco)).toFixed(2) }
+        else if(!el.checked&&j>=0){ it.preco_unit=+Math.max(0,num(it.preco_unit)-num(it.ads[j].preco)).toFixed(2); it.ads.splice(j,1) }
+        it.descricao=pr.nome+(it.ads.length?" + "+it.ads.map(x=>x.nome).join(" + "):""); if(!it.ads.length) delete it.ads;
+        renderPfItens() } }
     else it[k]=["quantidade","preco_unit","horas_unit"].includes(k)?num(el.value):el.value;
   }
   if(el.id==="pf-canal") pedForm.taxaManual=false;
