@@ -74,6 +74,9 @@ function item(id){
   if(String(id).startsWith("kit:")){ const k=dados.kits.find(x=>"kit:"+x.id===id); return k&&{id,nome:"Kit "+k.nome,preco:k.preco,foto:k.foto,personalizavel:true,kit:k.id,descricao:k.descricao||k.itens.map(i=>`${i.q}× ${i.nome}`).join(" + "),avulso:k.avulso} }
   const p=dados.produtos.find(x=>x.id===id); return p&&{...p};
 }
+// adicionais marcados (só os que ainda existem) e o preço de uma unidade com eles
+const adEscolha=id=>{ const x=item(id), a=carrinho[id]?.ad||[]; return (x?.adicionais||[]).map((v,i)=>({...v,i})).filter(v=>a.includes(v.i)) };
+const precoUn=id=>{ const x=item(id); return x?x.preco+adEscolha(id).reduce((s,v)=>s+v.preco,0):0 };
 const qtdHtml=(id,q)=>q?`<span class="qtd" data-id="${esc(id)}"><button type="button" data-d="-1" aria-label="Menos">−</button><span>${q}</span><button type="button" data-d="1" aria-label="Mais">+</button></span>`
   :`<button class="add" type="button" data-id="${esc(id)}" data-d="1">Adicionar</button>`;
 function card(x){
@@ -149,7 +152,8 @@ function abreProduto(id){
       ${x.descricao?`<p>${esc(x.descricao)}</p>`:""}
       ${x.prontaEntrega?'<p><b style="color:var(--verde)">Pronta entrega</b> · sai mais rápido</p>':""}
       ${x.personalizavel?`<label>Personalização <span style="font-weight:400;color:var(--suave)">(opcional)</span><input class="campo" data-pers="${esc(id)}" maxlength="200" placeholder="Nome, cor, texto…" value="${esc(carrinho[id]?.pers||"")}"></label>`:""}
-      <div class="acoes">${q?qtdHtml(id,q)+`<button class="grande" type="button" data-abre-carr>Ver carrinho</button>`:`<button class="grande" type="button" data-id="${esc(id)}" data-d="1">Adicionar ao carrinho · ${brl(x.preco)}</button>`}</div>
+      ${x.adicionais?.length?`<fieldset class="adcs"><legend>Adicionais <span>(opcional)</span></legend>${x.adicionais.map((v,i)=>`<label class="adc"><input type="checkbox" data-ad="${esc(id)}" value="${i}"${(carrinho[id]?.ad||[]).includes(i)?" checked":""}><span>${esc(v.nome)}</span><b>${v.preco>0?"+ "+brl(v.preco):"grátis"}</b></label>`).join("")}</fieldset>`:""}
+      <div class="acoes">${q?qtdHtml(id,q)+`<button class="grande" type="button" data-abre-carr>Ver carrinho · ${brl(q*precoUn(id))}</button>`:`<button class="grande" type="button" data-id="${esc(id)}" data-d="1">Adicionar ao carrinho · ${brl(precoUn(id))}</button>`}</div>
     </div></div>`;
   if(!$("#dProd").open) $("#dProd").showModal();
   ligaGaleria();
@@ -175,18 +179,18 @@ function ligaGaleria(){
 }
 
 /* carrinho */
-function itens(){ return Object.entries(carrinho).map(([id,c])=>({p:item(id),...c})).filter(x=>x.p&&x.q>0) }
+function itens(){ return Object.entries(carrinho).map(([id,c])=>({p:item(id),...c,pu:precoUn(id),ads:adEscolha(id)})).filter(x=>x.p&&x.q>0) }
 function descontoCupom(tot){ if(!cupom) return 0; if(cupom.minimo>0&&tot<cupom.minimo) return 0; return Math.min(tot,cupom.tipo==="valor"?cupom.valor:tot*cupom.valor/100) }
 function renderCarrinho(){
   const its=itens(); salva();
-  const n=its.reduce((s,x)=>s+x.q,0), tot=its.reduce((s,x)=>s+x.q*x.p.preco,0), des=descontoCupom(tot);
+  const n=its.reduce((s,x)=>s+x.q,0), tot=its.reduce((s,x)=>s+x.q*x.pu,0), des=descontoCupom(tot);
   $("#nCarr").textContent=n; $("#flut").classList.toggle("tem",n>0);
   $("#flutTxt").textContent=`Ver carrinho · ${n} ${n===1?"item":"itens"}`; $("#flutTot").textContent=brl(tot-des);
   $("#dcTit").textContent=n?`Seu pedido (${n})`:"Seu pedido";
   $("#dcCorpo").innerHTML=its.length?its.map(x=>`<div class="it" data-id="${esc(x.p.id)}">
       <div class="mini">${x.p.foto?`<img src="${esc(x.p.foto)}" alt="">`:""}</div>
-      <div><b>${esc(x.p.nome)}</b><small>${brl(x.p.preco)} cada</small></div>
-      <div style="text-align:right">${qtdHtml(x.p.id,x.q)}<small style="margin-top:4px">${brl(x.q*x.p.preco)}</small></div>
+      <div><b>${esc(x.p.nome)}</b>${x.ads.length?`<small class="adtx">+ ${esc(x.ads.map(v=>v.nome).join(", "))}</small>`:""}<small>${brl(x.pu)} cada</small></div>
+      <div style="text-align:right">${qtdHtml(x.p.id,x.q)}<small style="margin-top:4px">${brl(x.q*x.pu)}</small></div>
       ${x.p.personalizavel?`<input class="campo" data-pers="${esc(x.p.id)}" maxlength="200" placeholder="Personalização: nome, cor, texto…" value="${esc(x.pers||"")}">`:""}
     </div>`).join(""):`<p class="vazio" style="padding:30px 0">Seu carrinho está vazio.<br>Escolha um produto para começar.</p>`;
   $("#dcPe").hidden=!its.length;
@@ -260,7 +264,7 @@ $("#dcPe").addEventListener("submit",async e=>{
   }
   const btn=$("#cEnviar"); btn.disabled=true; btn.textContent="Enviando…";
   try{
-    const corpo={nome:cli.nome,whatsapp:cli.whatsapp,cupom:cupom?cupom.codigo:"",entrega:ent.tipo==="entrega"?{tipo:"entrega",cep:ent.cep,rua:ent.rua,numero:ent.numero,complemento:ent.complemento,bairro:ent.bairro}:{tipo:"retirada"},itens:itens().map(x=>x.p.kit?{kit:x.p.kit,q:x.q,pers:x.pers||""}:{id:x.p.id,q:x.q,pers:x.pers||""})};
+    const corpo={nome:cli.nome,whatsapp:cli.whatsapp,cupom:cupom?cupom.codigo:"",entrega:ent.tipo==="entrega"?{tipo:"entrega",cep:ent.cep,rua:ent.rua,numero:ent.numero,complemento:ent.complemento,bairro:ent.bairro}:{tipo:"retirada"},itens:itens().map(x=>x.p.kit?{kit:x.p.kit,q:x.q,pers:x.pers||""}:{id:x.p.id,q:x.q,pers:x.pers||"",ad:x.ads.map(v=>v.i)})};
     const r=await fetch("/api/publico/pedido",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(corpo)});
     const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.erro||"Não deu para enviar o pedido. Tente de novo.");
     carrinho={}; salva(); render();
@@ -288,6 +292,8 @@ document.addEventListener("click",e=>{
 for(const id of ["#dProd","#dCarr"]) $(id).addEventListener("click",e=>{ if(e.target===e.currentTarget) e.currentTarget.close() }); // clique fora fecha
 $("#dProd").addEventListener("close",()=>{ if(foco){ foco=null; try{history.replaceState(null,"","/")}catch(e){} } });
 document.addEventListener("input",e=>{
+  const a=e.target.closest("[data-ad]"); if(a){ const id=a.dataset.ad; if(!item(id)) return; const c=carrinho[id]||(carrinho[id]={q:0,pers:""}), v=Number(a.value);
+    c.ad=(c.ad||[]).filter(k=>k!==v); if(a.checked) c.ad.push(v); c.ad.sort((x,y)=>x-y); salva(); renderCarrinho(); abreProduto(id); return }
   const p=e.target.closest("[data-pers]"); if(p){ const id=p.dataset.pers; if(carrinho[id]){ carrinho[id].pers=p.value; salva() } else if(item(id)) carrinho[id]={q:0,pers:p.value}; return }
 });
 $("#busca").addEventListener("input",e=>{ busca=e.target.value; render() });

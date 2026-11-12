@@ -257,6 +257,8 @@ function limpaProduto(b) {
   if (!p.nome) return null;
   p.fotoId = p.fotoId && FOTO_RE.test(p.fotoId) ? p.fotoId : "";
   p.fotosExtra = [...new Set((Array.isArray(p.fotosExtra) ? p.fotosExtra : []).filter(f => typeof f === "string" && FOTO_RE.test(f) && f !== p.fotoId))].slice(0, FOTOS_EXTRA_MAX);
+  // adicionais que o cliente marca no catálogo (ex.: cadeira, caixinha), até 10
+  p.adicionais = (Array.isArray(p.adicionais) ? p.adicionais : []).map(a => ({ nome: txt(a?.nome, 60), preco: Math.max(0, n(a?.preco)) })).filter(a => a.nome).slice(0, 10);
   if (p.linkModelo) { try { const u = new URL(p.linkModelo); p.linkModelo = /^https?:$/.test(u.protocol) ? u.href : ""; } catch { p.linkModelo = ""; } }
   return p;
 }
@@ -1363,7 +1365,9 @@ app.post("/api/publico/pedido", limitePedidoPublico, async (req, res) => {
     }
     const p = prods.get(String(i.id || ""));
     if (!p) return null;
-    return { produto_id: String(i.id), descricao: p.nome, quantidade: q, preco_unit: n(p.precoCatalogo), custo_unit: 0, horas_unit: 0,
+    const ads = [...new Set((Array.isArray(i.ad) ? i.ad : []).map(Number).filter(Number.isInteger))].map(k => (p.adicionais || [])[k]).filter(a => a && a.nome);
+    return { produto_id: String(i.id), descricao: p.nome + (ads.length ? " + " + ads.map(a => a.nome).join(" + ") : ""), quantidade: q,
+      preco_unit: n(n(p.precoCatalogo) + ads.reduce((s, a) => s + n(a.preco), 0)), custo_unit: 0, horas_unit: 0,
       personalizacao: txt(i.pers, 200), doEstoque: false, fil: [], recalc: true };
   }).filter(Boolean);
   if (!itens.length) return res.status(400).json({ erro: "O carrinho está vazio." });
@@ -1752,6 +1756,7 @@ app.get("/api/publico/catalogo", limitePublico, (req, res) => {
       ...(foto && p.fotosExtra?.length ? { fotos: [foto, ...p.fotosExtra].map(f => "/fotos-publicas/" + f) } : {}),
       id, nome: p.nome, categoria: p.categoria || "", descricao: txt(p.descricaoCatalogo, 400), preco: n(p.precoCatalogo),
       prontaEntrega: (Number(p.estoque) || 0) > 0, foto: foto ? "/fotos-publicas/" + foto : null, personalizavel: !!p.personalizavel,
+      ...(Array.isArray(p.adicionais) && p.adicionais.length ? { adicionais: p.adicionais.slice(0, 10).map(a => ({ nome: txt(a.nome, 60), preco: n(a.preco) })) } : {}),
     })),
     kits: kitsPublicos().map(({ itens, ...k }) => ({ ...k, itens: itens.map(i => ({ nome: i.nome, q: i.q })) })),
     temCupom: (configCompleta().cupons || []).some(c => c && c.ativo),

@@ -240,6 +240,7 @@ function startForm(p){
   $("#f-link").value=draft.linkModelo||"";
   $("#f-catshow").checked=!!draft.catalogo; $("#f-pers").checked=!!draft.personalizavel;
   $("#f-catdesc").value=draft.descricaoCatalogo||""; $("#f-catpreco").value=draft.precoCatalogo??""; $("#f-estoque").value=draft.estoque||0;
+  draft.adicionais=(draft.adicionais||[]).map(a=>({...a})); renderAdic();
   fotoOriginal=editingId?(draft.fotoId||null):null;
   if(!editingId&&draft.fotoId){draft.fotoId="";} /* cópia não compartilha a foto */
   if(!editingId) draft.fotosExtra=[]; else draft.fotosExtra=[...(draft.fotosExtra||[])];
@@ -248,6 +249,16 @@ function startForm(p){
   renderFilLines(); renderFicha();
   $("#cats").innerHTML=[...new Set(produtos.map(p=>p.categoria).filter(Boolean))].map(c=>`<option value="${esc(c)}">`).join("");
 }
+/* adicionais do produto (o cliente marca no catálogo) */
+function renderAdic(){
+  const l=draft?.adicionais||[];
+  $("#adLista").innerHTML=l.map((a,i)=>`<div class="fil-line" data-ai="${i}"><input data-ak="nome" maxlength="60" placeholder="Ex.: Cadeira" aria-label="Nome do adicional" value="${esc(a.nome)}">
+    <div class="unit pre"><span>+ R$</span><input data-ak="preco" type="number" min="0" step="0.01" placeholder="0,00" aria-label="Preço do adicional" value="${esc(a.preco)}"></div>
+    <button type="button" class="btn ghost" data-arm aria-label="Remover adicional">✕</button></div>`).join("");
+  $("#adMais").hidden=l.length>=10;
+}
+$("#adMais").addEventListener("click",()=>{ if(!draft) return; readForm(); draft.adicionais.push({nome:"",preco:""}); renderAdic(); $("#adLista").lastElementChild?.querySelector("input")?.focus() });
+$("#adLista").addEventListener("click",e=>{ const b=e.target.closest("[data-arm]"); if(!b||!draft) return; readForm(); draft.adicionais.splice(+b.closest("[data-ai]").dataset.ai,1); renderAdic(); renderFicha() });
 function readForm(){
   draft.nome=$("#f-nome").value.trim();
   draft.categoria=$("#f-cat").value.trim();
@@ -260,6 +271,7 @@ function readForm(){
   draft.catalogo=$("#f-catshow").checked; draft.personalizavel=$("#f-pers").checked;
   draft.descricaoCatalogo=$("#f-catdesc").value.trim(); draft.precoCatalogo=$("#f-catpreco").value===""?"":num($("#f-catpreco").value);
   draft.estoque=Math.max(0,Math.round(num($("#f-estoque").value)));
+  draft.adicionais=[...document.querySelectorAll("#adLista [data-ai]")].map(el=>{ const pr=el.querySelector('[data-ak="preco"]').value; return {nome:el.querySelector('[data-ak="nome"]').value.trim(),preco:pr===""?"":num(pr)} });
   draft.linkModelo=$("#f-link").value.trim();
   document.querySelectorAll("#filLines .fil-line").forEach((el,i)=>{
     draft.filamentos[i]={filId:el.querySelector("select").value,gramas:el.querySelector("input").value===""?"":num(el.querySelector("input").value)};
