@@ -119,6 +119,22 @@ a{color:inherit;text-decoration:none}
 @keyframes anda{from{left:0;opacity:0}15%{opacity:1}85%{opacity:1}to{left:100%;opacity:0}}
 .card:hover .no b{transform:translateY(-2px)}
 
+/* sistemas: mini painel com barras e linhas se montando */
+.painel{display:grid;grid-template-columns:44px 1fr;height:180px;border-bottom:1px solid var(--linha);background:#10161a;overflow:hidden}
+.pnav{display:flex;flex-direction:column;gap:9px;align-items:center;padding:16px 0;border-right:1px solid var(--linha);background:#0c1114}
+.pnav i{width:16px;height:16px;border-radius:5px;background:var(--linha2)}
+.pnav i:first-child{background:var(--menta)}
+.pcorpo{padding:14px 14px 0;display:flex;flex-direction:column;gap:10px}
+.pkpis{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.pkpis span{border:1px solid var(--linha);border-radius:9px;padding:7px 8px;font:700 10px/1.2 "Space Grotesk",sans-serif;color:var(--suave);letter-spacing:.04em}
+.pkpis b{display:block;font:400 15px/1.1 "Archivo Black",sans-serif;color:var(--texto);margin-top:3px}
+.pkpis span:first-child b{color:var(--menta)}
+.pgraf{flex:1;display:flex;align-items:flex-end;gap:6px;padding-bottom:0;border-bottom:1px solid var(--linha)}
+.pgraf i{flex:1;border-radius:4px 4px 0 0;background:linear-gradient(var(--menta2),var(--verde));transform-origin:bottom;animation:barra 3.2s ease-in-out infinite;animation-delay:calc(var(--d) * 120ms)}
+.pgraf i:nth-child(odd){background:rgba(31,190,140,.35)}
+@keyframes barra{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1)}}
+.cursor{display:inline-block;width:7px;height:15px;margin-left:3px;vertical-align:-2px;background:var(--menta);animation:pisca 1s steps(2,start) infinite}
+
 /* chamada final */
 .final{margin-top:12px;border-radius:24px;padding:24px 20px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;
   background:linear-gradient(160deg,rgba(31,190,140,.16),rgba(31,190,140,.04) 60%),var(--fundo2);border:1px solid rgba(31,190,140,.35)}
@@ -151,8 +167,8 @@ a{color:inherit;text-decoration:none}
   </header>
 
   <div class="faixa ent" style="--i:3" aria-hidden="true"><div>
-    <span>Sites</span><span>Landing pages</span><span>Impressão 3D</span><span>Vídeo</span><span>Marketing</span><span>Automação</span><span>Sob encomenda</span>
-    <span>Sites</span><span>Landing pages</span><span>Impressão 3D</span><span>Vídeo</span><span>Marketing</span><span>Automação</span><span>Sob encomenda</span>
+    <span>Sites</span><span>Landing pages</span><span>Impressão 3D</span><span>Vídeo</span><span>Marketing</span><span>Automação</span><span>Sistemas</span><span>Sob encomenda</span>
+    <span>Sites</span><span>Landing pages</span><span>Impressão 3D</span><span>Vídeo</span><span>Marketing</span><span>Automação</span><span>Sistemas</span><span>Sob encomenda</span>
   </div></div>
 
   <p class="sec ent" style="--i:4" data-n="01">Presença digital</p>
@@ -206,7 +222,24 @@ a{color:inherit;text-decoration:none}
     </div>
   </a>
 
-  <section class="final ent" style="--i:12">
+  <p class="sec ent" style="--i:12" data-n="05">Sistemas sob medida</p>
+  <a class="card ent" style="--i:13" id="lkSis" href="#" target="_blank" rel="noopener">
+    <div class="painel" aria-hidden="true">
+      <div class="pnav"><i></i><i></i><i></i><i></i></div>
+      <div class="pcorpo">
+        <div class="pkpis"><span>Pedidos<b>128</b></span><span>Produzindo<b>14</b></span><span>Atrasados<b>0</b></span></div>
+        <div class="pgraf"><i style="--d:0;height:55%"></i><i style="--d:1;height:80%"></i><i style="--d:2;height:45%"></i><i style="--d:3;height:95%"></i><i style="--d:4;height:65%"></i><i style="--d:5;height:85%"></i><i style="--d:6;height:50%"></i><i style="--d:7;height:100%"></i></div>
+      </div>
+    </div>
+    <div class="cbd">
+      <h2 class="ctit">Precisa de um <em>sistema?</em><span class="cursor" aria-hidden="true"></span></h2>
+      <p class="ctx">Criamos sistemas sob medida para os processos da sua empresa: pedidos, orçamentos, estoque, agenda, controles e painéis. Feitos rápido com IA e do jeito que você trabalha, como o sistema de pedidos que usamos na nossa própria loja.</p>
+      <div class="chips"><span class="chip">Controle de processos</span><span class="chip">Painéis</span><span class="chip">Feito com IA</span></div>
+      <span class="ir">Contar o meu processo <i>→</i></span>
+    </div>
+  </a>
+
+  <section class="final ent" style="--i:14">
     <p class="rot">Sob encomenda</p>
     <h2 class="ctit">Você é empresa e quer algo <em>personalizado?</em></h2>
     <p class="ctx">Brindes com a sua logo, peças exclusivas, displays e projetos sob medida. Também fazemos sob encomenda.</p>
