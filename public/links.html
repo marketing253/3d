@@ -28,8 +28,19 @@ a{color:inherit;text-decoration:none}
 
 /* topo */
 .topo{display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;padding-bottom:6px}
-.logo{width:184px;height:auto;filter:drop-shadow(0 10px 30px rgba(31,190,140,.18))}
-.logo.ent{transform:scale(.92)}
+/* logo: entra crescendo, flutua de leve, brilho verde respirando e um reflexo passando por dentro das letras */
+.logobox{position:relative;width:184px;aspect-ratio:460/272}
+.logobox.ent{transform:scale(.88)}
+.flutua{position:absolute;inset:0;animation:flutua 5s ease-in-out infinite}
+@keyframes flutua{50%{transform:translateY(-5px)}}
+.logo{width:100%;height:auto;display:block;animation:respira 3.6s ease-in-out infinite}
+@keyframes respira{0%,100%{filter:drop-shadow(0 8px 22px rgba(31,190,140,.12))}50%{filter:drop-shadow(0 8px 34px rgba(31,190,140,.45))}}
+.reflexo{position:absolute;inset:0;pointer-events:none;
+  -webkit-mask:url(/img-links/8on-logo.png) center/contain no-repeat;mask:url(/img-links/8on-logo.png) center/contain no-repeat;
+  background:linear-gradient(110deg,transparent 34%,rgba(69,214,140,.85) 44%,#fff 50%,rgba(69,214,140,.85) 56%,transparent 66%) no-repeat;background-size:260% 100%;
+  background-position:150% 0;animation:reflexo 4.5s linear 1.2s infinite}
+@keyframes reflexo{0%{background-position:150% 0}45%,100%{background-position:-50% 0}}
+.logobox:hover .logo{animation-duration:1.2s}
 .rot{font:700 11px/1 "Space Grotesk",sans-serif;letter-spacing:.32em;text-transform:uppercase;color:var(--suave)}
 .rot b{color:var(--menta);font-weight:700}
 .bio{color:var(--suave);font-size:14.5px;max-width:330px}
@@ -94,6 +105,20 @@ a{color:inherit;text-decoration:none}
 .play svg{margin-left:4px}
 .card:hover .play{transform:scale(1.08)}
 
+/* automação: fluxo com mensagens correndo entre as etapas */
+.fluxo{position:relative;display:flex;align-items:center;gap:0;padding:26px 16px;border-bottom:1px solid var(--linha);
+  background:radial-gradient(90% 120% at 50% 0%,rgba(31,190,140,.14),transparent 70%),#10161a}
+.no{flex:none;display:flex;flex-direction:column;align-items:center;gap:7px;width:76px;text-align:center;font:700 10.5px/1.15 "Space Grotesk",sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--suave)}
+.no b{display:grid;place-items:center;width:46px;height:46px;border-radius:14px;border:1px solid var(--linha2);background:var(--fundo2);color:var(--texto);transition:transform .25s ease}
+.no.on b{background:var(--menta);border-color:var(--menta);color:var(--fundo);box-shadow:0 0 0 6px rgba(31,190,140,.14);animation:gira 6s linear infinite}
+.no.on b svg{animation:gira 6s linear infinite reverse}
+@keyframes gira{to{transform:rotate(360deg)}}
+.fio{position:relative;flex:1;height:2px;margin-bottom:22px;background:repeating-linear-gradient(90deg,var(--linha2) 0 6px,transparent 6px 10px)}
+.fio i{position:absolute;top:50%;left:0;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;background:var(--menta);box-shadow:0 0 10px var(--menta);animation:anda 1.8s linear infinite}
+.fio:nth-of-type(4) i{animation-delay:.9s}
+@keyframes anda{from{left:0;opacity:0}15%{opacity:1}85%{opacity:1}to{left:100%;opacity:0}}
+.card:hover .no b{transform:translateY(-2px)}
+
 /* chamada final */
 .final{margin-top:12px;border-radius:24px;padding:24px 20px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;
   background:linear-gradient(160deg,rgba(31,190,140,.16),rgba(31,190,140,.04) 60%),var(--fundo2);border:1px solid rgba(31,190,140,.35)}
@@ -121,13 +146,13 @@ a{color:inherit;text-decoration:none}
 <body>
 <main class="pag">
   <header class="topo">
-    <img class="logo ent" style="--i:0" src="/img-links/8on-logo.png" alt="8ON — Sua empresa ON." width="460" height="272">
+    <div class="logobox ent" style="--i:0"><div class="flutua"><img class="logo" src="/img-links/8on-logo.png" alt="8ON — Sua empresa ON." width="460" height="272"><span class="reflexo" aria-hidden="true"></span></div></div>
     <p class="bio ent" style="--i:1">Sites, impressão 3D e vídeo para colocar o seu negócio em evidência. Escolha por onde começar 👇</p>
   </header>
 
   <div class="faixa ent" style="--i:3" aria-hidden="true"><div>
-    <span>Sites</span><span>Landing pages</span><span>Impressão 3D</span><span>Vídeo</span><span>Marketing</span><span>Sob encomenda</span>
-    <span>Sites</span><span>Landing pages</span><span>Impressão 3D</span><span>Vídeo</span><span>Marketing</span><span>Sob encomenda</span>
+    <span>Sites</span><span>Landing pages</span><span>Impressão 3D</span><span>Vídeo</span><span>Marketing</span><span>Automação</span><span>Sob encomenda</span>
+    <span>Sites</span><span>Landing pages</span><span>Impressão 3D</span><span>Vídeo</span><span>Marketing</span><span>Automação</span><span>Sob encomenda</span>
   </div></div>
 
   <p class="sec ent" style="--i:4" data-n="01">Presença digital</p>
@@ -164,7 +189,24 @@ a{color:inherit;text-decoration:none}
     </div>
   </a>
 
-  <section class="final ent" style="--i:10">
+  <p class="sec ent" style="--i:10" data-n="04">Automação</p>
+  <a class="card ent" style="--i:11" id="lkAuto" href="#" target="_blank" rel="noopener">
+    <div class="fluxo" aria-hidden="true">
+      <span class="no"><b><svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2Z"/></svg></b>Mensagem</span>
+      <span class="fio"><i></i></span>
+      <span class="no on"><b><svg width="20" height="20" viewBox="0 0 24 24"><path fill="currentColor" d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></b>Automação</span>
+      <span class="fio"><i></i></span>
+      <span class="no"><b><svg width="20" height="20" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="m5 12 5 5 9-10"/></svg></b>Resolvido</span>
+    </div>
+    <div class="cbd">
+      <h2 class="ctit">Automação para a <em>sua empresa</em></h2>
+      <p class="ctx">Atendimento automático no WhatsApp, respostas e lembretes, pedidos e cadastros caindo direto na planilha ou no sistema. Menos trabalho repetido, mais tempo para vender.</p>
+      <div class="chips"><span class="chip">Atendimento no WhatsApp</span><span class="chip">Integrações</span><span class="chip">Relatórios</span></div>
+      <span class="ir">Quero automatizar <i>→</i></span>
+    </div>
+  </a>
+
+  <section class="final ent" style="--i:12">
     <p class="rot">Sob encomenda</p>
     <h2 class="ctit">Você é empresa e quer algo <em>personalizado?</em></h2>
     <p class="ctx">Brindes com a sua logo, peças exclusivas, displays e projetos sob medida. Também fazemos sob encomenda.</p>
