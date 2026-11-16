@@ -1787,6 +1787,7 @@ function paginaComMeta(arquivo, meta) {
     meta.descricao ? `<meta name="description" content="${escH(meta.descricao)}">` : "",
     meta.preco != null ? `<meta property="product:price:amount" content="${Number(meta.preco).toFixed(2)}"><meta property="product:price:currency" content="BRL">` : "",
     // ficha do produto que Google, Mercado Livre e outros sites leem (dados, não roda nada)
+    meta.canonico ? `<link rel="canonical" href="${escH(meta.canonico)}">` : "",
     meta.ficha ? `<script type="application/ld+json">${JSON.stringify(meta.ficha).replace(/</g, "\\u003c")}</script>` : "",
   ].join("\n");
   let out = html.replace("</head>", tags + "\n</head>");
@@ -2375,19 +2376,24 @@ app.get("/catalogo", (req, res) => { const q = req.originalUrl.indexOf("?"); res
 // painel (login) em /admin
 app.get(["/admin", "/admin/"], (req, res) => res.sendFile(path.join(__dirname, "public", "index.html"), { headers: { "Cache-Control": "no-cache" } }));
 
-app.get("/", (req, res) => {
-  const id = String(req.query.p || "");
+// link do produto com cara de página (o Mercado Livre não aceita ?p=): /produto/<id>/<nome-do-produto>
+const slugNome = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70) || "produto";
+const linkProduto = (o, id, nome) => `${o}/produto/${encodeURIComponent(id)}/${slugNome(nome)}`;
+app.get(["/", "/produto/:id", "/produto/:id/:slug"], (req, res) => {
+  const id = String(req.params.id || req.query.p || "");
   const x = id ? produtosPublicos().find(y => y.id === id) : null;
+  if (req.params.id && !x) return res.redirect(302, "/"); // produto saiu do catálogo: mostra a vitrine
   const L = lojaConfig(), loja = txt(L.nome, 80) || "Impressões 3D";
   const o = origemUrl(req), fotos = x && x.foto ? [x.foto, ...(x.p.fotosExtra || [])].map(f => `${o}/fotos-publicas/${f}`) : [];
   const desc = x ? txt(x.p.descricaoCatalogo, 400) || `Peça impressa em 3D da ${loja}` : "";
   res.type("html").send(paginaComMeta("catalogo.html", x
     ? { titulo: `${x.p.nome} · ${brlS(x.p.precoCatalogo)}`, descricao: desc.slice(0, 180), imagem: fotos[0] || null,
-        tituloPagina: `${x.p.nome} · ${loja}`, preco: n(x.p.precoCatalogo),
+        tituloPagina: `${x.p.nome} · ${loja}`, preco: n(x.p.precoCatalogo), canonico: linkProduto(o, x.id, x.p.nome),
         ficha: { "@context": "https://schema.org", "@type": "Product", name: x.p.nome, description: desc, sku: x.id,
           ...(fotos.length ? { image: fotos } : {}), ...(x.p.categoria ? { category: txt(x.p.categoria, 80) } : {}),
           brand: { "@type": "Brand", name: loja }, material: "Impressão 3D",
-          offers: { "@type": "Offer", url: `${o}/?p=${encodeURIComponent(x.id)}`, price: n(x.p.precoCatalogo).toFixed(2), priceCurrency: "BRL",
+          url: linkProduto(o, x.id, x.p.nome),
+          offers: { "@type": "Offer", url: linkProduto(o, x.id, x.p.nome), price: n(x.p.precoCatalogo).toFixed(2), priceCurrency: "BRL",
             availability: "https://schema.org/InStock", itemCondition: "https://schema.org/NewCondition" } } }
     : { titulo: `${loja} · Catálogo`, descricao: txt(L.sobre, 180) || "Peças impressas em 3D sob encomenda e à pronta entrega." }));
 });

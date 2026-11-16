@@ -205,7 +205,7 @@ $("#lista").addEventListener("click",async e=>{
   const id=b.closest("[data-id]")?.dataset.id; const p=produtos.find(x=>x.id===id); if(!p) return;
   if(act==="edit"){startForm(p);setTab("novo")}
   if(act==="vender"){setTab("financeiro");abreForm("venda",{produto_id:p.id});return}
-  if(act==="link"){const u=location.origin+"/?p="+encodeURIComponent(p.id);try{await navigator.clipboard.writeText(u);toast("Link do produto copiado. Cole no WhatsApp do cliente.")}catch(err){toast(u)}return}
+  if(act==="link"){const u=linkProdutoCat(p);try{await navigator.clipboard.writeText(u);toast("Link do produto copiado. Cole no WhatsApp do cliente.")}catch(err){toast(u)}return}
   if(act==="dup"){const c=clone(p);delete c.id;c.nome=p.nome+" (cópia)";startForm(c);setTab("novo")}
   if(act==="del"){
     const td=b.closest("td");
@@ -219,11 +219,13 @@ $("#lista").addEventListener("click",async e=>{
 });
 $("#sortBy").addEventListener("change",()=>{try{localStorage.setItem("prec3d.sort",$("#sortBy").value)}catch(e){};renderLista()});
 $("#rankCanal").addEventListener("change",renderLista);
+// link do produto no catálogo com cara de página (/produto/<id>/<nome>), igual ao do servidor
+function linkProdutoCat(p){ const s=String(p.nome||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,70)||"produto"; return location.origin+"/produto/"+encodeURIComponent(p.id)+"/"+s }
 // todos os links do catálogo, um por linha (ex.: Mercado Livre → Anunciar em massa → links de produtos)
 $("#btnLinksCat").addEventListener("click",async()=>{
   const ps=produtos.filter(p=>p.catalogo&&num(p.precoCatalogo)>0);
   if(!ps.length){ toast("Nenhum produto no catálogo com preço ainda."); return }
-  const txt=ps.map(p=>location.origin+"/?p="+encodeURIComponent(p.id)).join("\n");
+  const txt=ps.map(linkProdutoCat).join("\n");
   try{ await navigator.clipboard.writeText(txt); toast(`${ps.length} ${ps.length===1?"link copiado":"links copiados"}, um por linha.`) }
   catch(e){ const w=window.open("","_blank"); if(w){ w.document.body.innerText=txt } else toast("Não deu para copiar.") }
 });

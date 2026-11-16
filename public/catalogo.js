@@ -8,7 +8,7 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const brl=v=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 const sem=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
 let dados=null, cat="Todos", busca="", carrinho={}, cupom=null;
-let foco=new URLSearchParams(location.search).get("p");
+let foco=new URLSearchParams(location.search).get("p")||(()=>{ const m=location.pathname.match(/^\/produto\/([^/]+)/); try{ return m?decodeURIComponent(m[1]):null }catch(e){ return null } })();
 let cli={nome:"",whatsapp:""};
 // entrega: tipo, cep e endereço; valor/combinar vêm do servidor pelo CEP (o servidor confere de novo no pedido)
 let ent={tipo:"retirada",cep:"",rua:"",numero:"",complemento:"",bairro:"",cidade:"",uf:"",valor:null,combinar:false,achou:false};
