@@ -219,6 +219,14 @@ $("#lista").addEventListener("click",async e=>{
 });
 $("#sortBy").addEventListener("change",()=>{try{localStorage.setItem("prec3d.sort",$("#sortBy").value)}catch(e){};renderLista()});
 $("#rankCanal").addEventListener("change",renderLista);
+// todos os links do catálogo, um por linha (ex.: Mercado Livre → Anunciar em massa → links de produtos)
+$("#btnLinksCat").addEventListener("click",async()=>{
+  const ps=produtos.filter(p=>p.catalogo&&num(p.precoCatalogo)>0);
+  if(!ps.length){ toast("Nenhum produto no catálogo com preço ainda."); return }
+  const txt=ps.map(p=>location.origin+"/?p="+encodeURIComponent(p.id)).join("\n");
+  try{ await navigator.clipboard.writeText(txt); toast(`${ps.length} ${ps.length===1?"link copiado":"links copiados"}, um por linha.`) }
+  catch(e){ const w=window.open("","_blank"); if(w){ w.document.body.innerText=txt } else toast("Não deu para copiar.") }
+});
 $("#btnNovo").addEventListener("click",()=>{startForm(null);setTab("novo")});
 
 /* ---------- formulário ---------- */

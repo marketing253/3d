@@ -1784,8 +1784,14 @@ function paginaComMeta(arquivo, meta) {
     meta.descricao ? `<meta property="og:description" content="${escH(meta.descricao)}">` : "",
     meta.imagem ? `<meta property="og:image" content="${escH(meta.imagem)}">` : "",
     meta.imagemTam ? `<meta property="og:image:width" content="${meta.imagemTam}"><meta property="og:image:height" content="${meta.imagemTam}"><meta property="og:image:type" content="image/jpeg">` : "",
+    meta.descricao ? `<meta name="description" content="${escH(meta.descricao)}">` : "",
+    meta.preco != null ? `<meta property="product:price:amount" content="${Number(meta.preco).toFixed(2)}"><meta property="product:price:currency" content="BRL">` : "",
+    // ficha do produto que Google, Mercado Livre e outros sites leem (dados, não roda nada)
+    meta.ficha ? `<script type="application/ld+json">${JSON.stringify(meta.ficha).replace(/</g, "\\u003c")}</script>` : "",
   ].join("\n");
-  return html.replace("</head>", tags + "\n</head>");
+  let out = html.replace("</head>", tags + "\n</head>");
+  if (meta.tituloPagina) out = out.replace(/<title>[^<]*<\/title>/, `<title>${escH(meta.tituloPagina)}</title>`);
+  return out;
 }
 app.post("/api/pedidos/:id/link", exigeLogin, exigeEdicao, (req, res) => {
   const r = db.prepare("SELECT id, token FROM pedidos WHERE id = ?").get(req.params.id);
@@ -2373,8 +2379,16 @@ app.get("/", (req, res) => {
   const id = String(req.query.p || "");
   const x = id ? produtosPublicos().find(y => y.id === id) : null;
   const L = lojaConfig(), loja = txt(L.nome, 80) || "Impressões 3D";
+  const o = origemUrl(req), fotos = x && x.foto ? [x.foto, ...(x.p.fotosExtra || [])].map(f => `${o}/fotos-publicas/${f}`) : [];
+  const desc = x ? txt(x.p.descricaoCatalogo, 400) || `Peça impressa em 3D da ${loja}` : "";
   res.type("html").send(paginaComMeta("catalogo.html", x
-    ? { titulo: `${x.p.nome} · ${brlS(x.p.precoCatalogo)}`, descricao: txt(x.p.descricaoCatalogo, 180) || `Peça impressa em 3D da ${loja}`, imagem: x.foto ? `${origemUrl(req)}/fotos-publicas/${x.foto}` : null }
+    ? { titulo: `${x.p.nome} · ${brlS(x.p.precoCatalogo)}`, descricao: desc.slice(0, 180), imagem: fotos[0] || null,
+        tituloPagina: `${x.p.nome} · ${loja}`, preco: n(x.p.precoCatalogo),
+        ficha: { "@context": "https://schema.org", "@type": "Product", name: x.p.nome, description: desc, sku: x.id,
+          ...(fotos.length ? { image: fotos } : {}), ...(x.p.categoria ? { category: txt(x.p.categoria, 80) } : {}),
+          brand: { "@type": "Brand", name: loja }, material: "Impressão 3D",
+          offers: { "@type": "Offer", url: `${o}/?p=${encodeURIComponent(x.id)}`, price: n(x.p.precoCatalogo).toFixed(2), priceCurrency: "BRL",
+            availability: "https://schema.org/InStock", itemCondition: "https://schema.org/NewCondition" } } }
     : { titulo: `${loja} · Catálogo`, descricao: txt(L.sobre, 180) || "Peças impressas em 3D sob encomenda e à pronta entrega." }));
 });
 
