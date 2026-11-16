@@ -2376,6 +2376,12 @@ app.get("/catalogo", (req, res) => { const q = req.originalUrl.indexOf("?"); res
 // painel (login) em /admin
 app.get(["/admin", "/admin/"], (req, res) => res.sendFile(path.join(__dirname, "public", "index.html"), { headers: { "Cache-Control": "no-cache" } }));
 
+// página de links do Instagram (bio): sites, impressão 3D, vídeo e WhatsApp
+app.get(["/links", "/links/"], (req, res) => {
+  res.type("html").send(paginaComMeta("links.html", { titulo: "8ON · Sites, impressão 3D e vídeo",
+    descricao: "Sites e landing pages, catálogo de impressão 3D, vídeo e marketing. Peças personalizadas sob encomenda para empresas.",
+    imagem: origemUrl(req) + "/img-links/8on-og.jpg" }));
+});
 // link do produto com cara de página (o Mercado Livre não aceita ?p=): /produto/<id>/<nome-do-produto>
 const slugNome = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70) || "produto";
 const linkProduto = (o, id, nome) => `${o}/produto/${encodeURIComponent(id)}/${slugNome(nome)}`;

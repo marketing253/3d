@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0E1114">
+<title>8ON · Sites, impressão 3D e vídeo</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+:root{
+  --fundo:#0E1114; --fundo2:#151A1E; --linha:rgba(241,246,244,.10); --linha2:rgba(241,246,244,.18);
+  --texto:#F1F6F4; --suave:#A7BCB4; --menta:#1FBE8C; --menta2:#45D68C; --verde:#12977A; --zap:#25D366;
+}
+*{box-sizing:border-box;margin:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--fundo);color:var(--texto);font:400 15px/1.5 Inter,system-ui,sans-serif;min-height:100vh;overflow-x:hidden;
+  background-image:radial-gradient(120% 60% at 50% -10%,rgba(31,190,140,.16),transparent 60%)}
+a{color:inherit;text-decoration:none}
+.pag{max-width:480px;margin:0 auto;padding:36px 16px 40px;display:flex;flex-direction:column;gap:14px}
+
+/* entrada em sequência */
+.ent{opacity:0;transform:translateY(14px);animation:sobe .7s cubic-bezier(.2,.7,.2,1) forwards;animation-delay:calc(var(--i,0) * 90ms + 120ms)}
+@keyframes sobe{to{opacity:1;transform:none}}
+
+/* topo */
+.topo{display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;padding-bottom:6px}
+.logo{width:184px;height:auto;filter:drop-shadow(0 10px 30px rgba(31,190,140,.18))}
+.logo.ent{transform:scale(.92)}
+.rot{font:700 11px/1 "Space Grotesk",sans-serif;letter-spacing:.32em;text-transform:uppercase;color:var(--suave)}
+.rot b{color:var(--menta);font-weight:700}
+.bio{color:var(--suave);font-size:14.5px;max-width:330px}
+
+/* faixa que corre */
+.faixa{overflow:hidden;border-block:1px solid var(--linha);margin:4px -16px 6px;padding:10px 0;mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent)}
+.faixa div{display:flex;gap:26px;width:max-content;animation:corre 26s linear infinite;font:700 12px/1 "Space Grotesk",sans-serif;letter-spacing:.2em;text-transform:uppercase;color:var(--suave)}
+.faixa span::after{content:"●";color:var(--menta);margin-left:26px;font-size:8px;vertical-align:2px}
+@keyframes corre{to{transform:translateX(-50%)}}
+
+/* blocos */
+.sec{font:700 11px/1 "Space Grotesk",sans-serif;letter-spacing:.24em;text-transform:uppercase;color:var(--suave);display:flex;align-items:center;gap:10px;margin-top:10px}
+.sec::before{content:attr(data-n);color:var(--menta)}
+.sec::after{content:"";flex:1;height:1px;background:var(--linha)}
+.card{position:relative;display:block;border:1px solid var(--linha);border-radius:20px;background:var(--fundo2);overflow:hidden;
+  transition:transform .25s ease,border-color .25s ease,box-shadow .25s ease}
+.card:hover,.card:focus-visible{transform:translateY(-3px);border-color:rgba(31,190,140,.55);box-shadow:0 18px 40px -18px rgba(31,190,140,.35)}
+.card:active{transform:translateY(-1px) scale(.995)}
+.card:focus-visible{outline:2px solid var(--menta);outline-offset:3px}
+.cbd{padding:18px 18px 18px;display:flex;flex-direction:column;gap:8px}
+.ctit{font:400 24px/1.05 "Archivo Black",sans-serif;letter-spacing:-.01em}
+.ctit em{font-style:normal;color:var(--menta)}
+.ctx{color:var(--suave);font-size:14px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+.chip{font:600 12px/1 Inter,sans-serif;border:1px solid var(--linha2);border-radius:99px;padding:6px 10px;color:var(--texto)}
+.ir{display:flex;align-items:center;justify-content:space-between;margin-top:6px;font:700 14px/1 Inter,sans-serif;color:var(--menta)}
+.ir i{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:rgba(31,190,140,.14);font-style:normal;transition:transform .25s ease,background .25s ease}
+.card:hover .ir i{transform:translateX(4px);background:var(--menta);color:var(--fundo)}
+
+/* sites: print do site */
+.tela{position:relative;height:190px;overflow:hidden;border-bottom:1px solid var(--linha);background:#e9f4ef}
+.tela img{width:100%;display:block;transition:transform 6s ease}
+.card:hover .tela img{transform:translateY(-34%)}
+.tela::after{content:"";position:absolute;inset:auto 0 0;height:60px;background:linear-gradient(transparent,rgba(21,26,30,.55))}
+.barra{position:absolute;top:10px;left:10px;z-index:1;display:flex;gap:5px;padding:6px 8px;border-radius:99px;background:rgba(14,17,20,.75)}
+.barra b{width:7px;height:7px;border-radius:50%;background:#59656b}.barra b:first-child{background:var(--menta)}
+
+/* impressão 3D: fotos do catálogo */
+.fotos{display:grid;grid-template-columns:1.3fr 1fr;grid-template-rows:repeat(2,minmax(0,1fr));gap:4px;height:200px;overflow:hidden;border-bottom:1px solid var(--linha);background:#1b2226}
+.fotos img{width:100%;height:100%;min-height:0;object-fit:cover;display:block;transition:transform .6s ease}
+.fotos img:first-child{grid-row:1/3}
+.card:hover .fotos img{transform:scale(1.05)}
+.fotos.vazio{display:grid;place-items:center;grid-template-columns:1fr;font:400 64px/1 "Archivo Black",sans-serif;color:var(--menta)}
+.selo{position:absolute;top:12px;right:12px;z-index:1;font:700 11px/1 "Space Grotesk",sans-serif;letter-spacing:.14em;text-transform:uppercase;background:var(--menta);color:var(--fundo);padding:7px 10px;border-radius:99px}
+
+/* vídeo */
+.video{position:relative;height:170px;border-bottom:1px solid var(--linha);overflow:hidden;
+  background:linear-gradient(135deg,#0f2a24 0%,#12977A 55%,#45D68C 100%)}
+.video .grao{position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,.08) 0 1px,transparent 1px 3px);mix-blend-mode:multiply}
+.rec{position:absolute;top:24px;left:26px;font:700 12px/1 "Space Grotesk",sans-serif;letter-spacing:.18em;color:#fff;display:flex;align-items:center;gap:7px}
+.rec::before{content:"";width:9px;height:9px;border-radius:50%;background:#ff4d4d;animation:pisca 1.2s steps(2,start) infinite}
+@keyframes pisca{to{visibility:hidden}}
+.tc{position:absolute;bottom:24px;left:26px;font:500 12px/1 "Space Grotesk",monospace;color:rgba(255,255,255,.85);letter-spacing:.08em}
+.cantos{position:absolute;inset:12px;border:0;pointer-events:none;
+  background:linear-gradient(#fff,#fff) 0 0/18px 2px no-repeat,linear-gradient(#fff,#fff) 0 0/2px 18px no-repeat,
+  linear-gradient(#fff,#fff) 100% 0/18px 2px no-repeat,linear-gradient(#fff,#fff) 100% 0/2px 18px no-repeat,
+  linear-gradient(#fff,#fff) 0 100%/18px 2px no-repeat,linear-gradient(#fff,#fff) 0 100%/2px 18px no-repeat,
+  linear-gradient(#fff,#fff) 100% 100%/18px 2px no-repeat,linear-gradient(#fff,#fff) 100% 100%/2px 18px no-repeat;opacity:.9}
+.play{position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px 0 0 -32px;border-radius:50%;background:rgba(14,17,20,.55);backdrop-filter:blur(4px);display:grid;place-items:center;transition:transform .25s ease}
+.play::before{content:"";position:absolute;inset:-8px;border-radius:50%;border:2px solid rgba(255,255,255,.5);animation:onda 2s ease-out infinite}
+@keyframes onda{from{transform:scale(.8);opacity:1}to{transform:scale(1.35);opacity:0}}
+.play svg{margin-left:4px}
+.card:hover .play{transform:scale(1.08)}
+
+/* chamada final */
+.final{margin-top:12px;border-radius:24px;padding:24px 20px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;
+  background:linear-gradient(160deg,rgba(31,190,140,.16),rgba(31,190,140,.04) 60%),var(--fundo2);border:1px solid rgba(31,190,140,.35)}
+.final .ctit{font-size:26px}
+.zap{position:relative;overflow:hidden;margin-top:6px;width:100%;display:flex;align-items:center;justify-content:center;gap:10px;
+  padding:16px 18px;border-radius:16px;background:linear-gradient(90deg,var(--menta2),var(--verde));color:#06130F;font:800 16px/1 Inter,sans-serif;
+  box-shadow:0 14px 34px -14px rgba(31,190,140,.7);transition:transform .2s ease}
+.zap::after{content:"";position:absolute;top:0;left:-60%;width:40%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.55),transparent);
+  transform:skewX(-18deg);animation:brilho 3.2s ease-in-out infinite}
+@keyframes brilho{0%,55%{left:-60%}100%{left:130%}}
+.zap:hover{transform:translateY(-2px)}
+.zap:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.sub{color:var(--suave);font-size:12.5px}
+
+.pe{margin-top:22px;text-align:center;color:var(--suave);font-size:12px;display:flex;flex-direction:column;gap:6px;align-items:center}
+.pe b{font:700 11px/1 "Space Grotesk",sans-serif;letter-spacing:.32em;color:var(--texto)}
+.pe b span{color:var(--menta)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  .ent{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+<main class="pag">
+  <header class="topo">
+    <img class="logo ent" style="--i:0" src="/img-links/8on-logo.png" alt="8ON — Sua empresa ON." width="460" height="272">
+    <p class="bio ent" style="--i:1">Sites, impressão 3D e vídeo para colocar o seu negócio em evidência. Escolha por onde começar 👇</p>
+  </header>
+
+  <div class="faixa ent" style="--i:3" aria-hidden="true"><div>
+    <span>Sites</span><span>Landing pages</span><span>Impressão 3D</span><span>Vídeo</span><span>Marketing</span><span>Sob encomenda</span>
+    <span>Sites</span><span>Landing pages</span><span>Impressão 3D</span><span>Vídeo</span><span>Marketing</span><span>Sob encomenda</span>
+  </div></div>
+
+  <p class="sec ent" style="--i:4" data-n="01">Presença digital</p>
+  <a class="card ent" style="--i:5" href="https://8ondigital.com.br" target="_blank" rel="noopener">
+    <div class="tela"><span class="barra"><b></b><b></b><b></b></span><img src="/img-links/site.jpg" alt="Site da 8ON Digital" loading="lazy" width="640" height="640"></div>
+    <div class="cbd">
+      <h2 class="ctit">Sites e <em>landing pages</em></h2>
+      <p class="ctx">Site profissional, rápido e pronto para o celular. Do institucional à página de vendas.</p>
+      <div class="chips"><span class="chip">Site institucional</span><span class="chip">Landing page</span><span class="chip">Google</span></div>
+      <span class="ir">Conhecer o site <i>→</i></span>
+    </div>
+  </a>
+
+  <p class="sec ent" style="--i:6" data-n="02">Impressão 3D</p>
+  <a class="card ent" style="--i:7" href="/">
+    <span class="selo">Catálogo</span>
+    <div class="fotos vazio" id="fotos3d">3D</div>
+    <div class="cbd">
+      <h2 class="ctit">Peças em <em>3D</em> prontas para pedir</h2>
+      <p class="ctx">Decoração, organizadores, Natal, presentes e muito mais. Escolha no catálogo e peça direto.</p>
+      <span class="ir">Ver o catálogo <i>→</i></span>
+    </div>
+  </a>
+
+  <p class="sec ent" style="--i:8" data-n="03">Vídeo e marketing</p>
+  <a class="card ent" style="--i:9" id="lkVideo" href="#" target="_blank" rel="noopener">
+    <div class="video"><span class="grao"></span><span class="cantos"></span><span class="rec">REC</span><span class="tc" id="tc">00:00:00:00</span>
+      <span class="play"><svg width="22" height="24" viewBox="0 0 22 24" aria-hidden="true"><path d="M0 0v24l22-12z" fill="#fff"/></svg></span></div>
+    <div class="cbd">
+      <h2 class="ctit">Video maker e <em>marketing</em></h2>
+      <p class="ctx">Produção de vídeo para Reels e anúncios, edição, motion e estratégia para as redes da sua empresa.</p>
+      <div class="chips"><span class="chip">Produção de vídeo</span><span class="chip">Reels</span><span class="chip">Marketing</span></div>
+      <span class="ir">Pedir orçamento <i>→</i></span>
+    </div>
+  </a>
+
+  <section class="final ent" style="--i:10">
+    <p class="rot">Sob encomenda</p>
+    <h2 class="ctit">Você é empresa e quer algo <em>personalizado?</em></h2>
+    <p class="ctx">Brindes com a sua logo, peças exclusivas, displays e projetos sob medida. Também fazemos sob encomenda.</p>
+    <a class="zap" id="lkZap" href="#" target="_blank" rel="noopener">
+      <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2c-1.5 0-3-.4-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.4.1-.6.3-.2.2-.8.8-.8 2s.8 2.3.9 2.5c.1.2 1.6 2.5 4 3.5 1.5.6 2 .7 2.8.6.4-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.1-1.2l-.5-.3Z"/></svg>
+      Falar no WhatsApp
+    </a>
+    <p class="sub">Resposta rápida em horário comercial</p>
+  </section>
+
+  <footer class="pe"><b>8<span>ON</span></b>Sua empresa ON.</footer>
+</main>
+<script src="/links.js"></script>
+</body>
+</html>
