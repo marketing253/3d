@@ -9,6 +9,7 @@ const session = require("express-session");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const multer = require("multer");
+const planilhas = require("./planilhas");
 const bcrypt = require("bcryptjs");
 const QRCode = require("qrcode");
 const { db, DATA_DIR } = require("./db");
@@ -258,6 +259,8 @@ function limpaProduto(b) {
   p.fotoId = p.fotoId && FOTO_RE.test(p.fotoId) ? p.fotoId : "";
   p.fotosExtra = [...new Set((Array.isArray(p.fotosExtra) ? p.fotosExtra : []).filter(f => typeof f === "string" && FOTO_RE.test(f) && f !== p.fotoId))].slice(0, FOTOS_EXTRA_MAX);
   // adicionais que o cliente marca no catálogo (ex.: cadeira, caixinha), até 10
+  // peso com embalagem (g) e medidas da embalagem (cm): vazio fica vazio
+  for (const k of ["pesoEmb", "embC", "embL", "embA"]) p[k] = p[k] === "" || p[k] == null || !Number.isFinite(Number(p[k])) ? "" : Math.max(0, Math.min(100000, Math.round(Number(p[k]))));
   p.adicionais = (Array.isArray(p.adicionais) ? p.adicionais : []).map(a => ({ nome: txt(a?.nome, 60), preco: Math.max(0, n(a?.preco)) })).filter(a => a.nome).slice(0, 10);
   if (p.linkModelo) { try { const u = new URL(p.linkModelo); p.linkModelo = /^https?:$/.test(u.protocol) ? u.href : ""; } catch { p.linkModelo = ""; } }
   return p;
@@ -604,6 +607,71 @@ function limpaRolo(b) {
   return { v: { filamento_id: txt(b.filamento_id, 60), cor, peso, restante, preco: n(b.preco), data_compra: DATA_RE.test(b.data_compra || "") ? b.data_compra : null, ativo: b.ativo === false || b.ativo === 0 ? 0 : 1 } };
 }
 const COLS_R = ["filamento_id", "cor", "peso", "restante", "preco", "data_compra", "ativo"];
+// ---------- exportar para Shopee / Mercado Livre: preenche o modelo que o vendedor baixou no marketplace ----------
+const uploadPlanilha = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }).single("arquivo");
+const recebePlanilha = (req, res, fn) => uploadPlanilha(req, res, err => {
+  if (err) return res.status(400).json({ erro: err.code === "LIMIT_FILE_SIZE" ? "Planilha grande demais (máximo 10 MB)." : "Não deu para receber a planilha." });
+  if (!req.file) return res.status(400).json({ erro: "Escolha a planilha .xlsx baixada no marketplace." });
+  try { fn(); } catch (e) { res.status(400).json({ erro: e.message || "Não deu para ler a planilha." }); }
+});
+app.post("/api/exportar/inspeciona", exigeLogin, (req, res) => recebePlanilha(req, res, () => res.json(planilhas.inspeciona(req.file.buffer))));
+app.post("/api/exportar/gera", exigeLogin, (req, res) => recebePlanilha(req, res, () => {
+  let op = {}; try { op = JSON.parse(req.body.opcoes || "{}"); } catch (e) {}
+  const pct = Math.max(-50, Math.min(300, Number(op.pct) || 0)), L = lojaConfig(), prazo = Number(L.prazoDias) || 5, origem = origemUrl(req);
+  const pub = new Map(produtosPublicos().map(x => [x.id, x])), lista = [];
+  for (const it of Array.isArray(op.itens) ? op.itens.slice(0, 500) : []) {
+    const x = pub.get(String(it.id || "")); if (!x) continue;
+    const p = x.p, gramas = (p.filamentos || []).reduce((s, f) => s + n(f.gramas), 0) / Math.max(1, Number(p.unidades) || 1);
+    const pesoG = n(p.pesoEmb) > 0 ? n(p.pesoEmb) : gramas > 0 ? Math.round(gramas + 40) : 0;
+    const ads = (p.adicionais || []).length ? "Adicionais disponíveis: " + p.adicionais.map(a => a.nome + (n(a.preco) > 0 ? " (+" + brlS(a.preco) + ")" : "")).join(", ") + ".\n\n" : "";
+    lista.push({ aba: txt(it.aba, 100), titulo: txt(p.nome, 120), sku: "8ON-" + x.id.slice(0, 8),
+      descricao: `${p.nome}.\n\n${p.descricaoCatalogo ? txt(p.descricaoCatalogo, 2000) + "\n\n" : ""}${ads}Peça feita em impressão 3D, sob encomenda. Produção em até ${prazo} dias úteis.\nCores e medidas: consulte nas fotos ou pergunte antes de comprar.`,
+      preco: n(n(p.precoCatalogo) * (1 + pct / 100)), estoque: Math.max(1, Number(p.estoque) || 10),
+      fotos: [x.foto, ...(p.fotosExtra || [])].filter(f => f && FOTO_RE.test(f)).slice(0, 9).map(f => origem + "/fotos-publicas/" + f),
+      pesoKg: pesoG ? Math.round(pesoG) / 1000 : 0, c: n(p.embC) || 0, l: n(p.embL) || 0, a: n(p.embA) || 0, marca: txt(L.nome, 60) || "8ON", prazo });
+  }
+  if (!lista.length) return res.status(400).json({ erro: "Escolha pelo menos um produto do catálogo." });
+  const nome = String(req.file.originalname || "planilha.xlsx").replace(/\.xlsx$/i, "").replace(/[^\w.-]+/g, "_").slice(0, 80) + "-preenchido.xlsx";
+  res.set({ "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": `attachment; filename="${nome}"`, "X-Produtos": String(lista.length) });
+  res.send(planilhas.preenche(req.file.buffer, lista));
+}));
+// ---------- aviso de filamento acabando ----------
+// Depois de mexer em pedidos ou rolos, confere o estoque de cada filamento: avisa no celular quando os rolos ativos
+// ficam abaixo de 150 g, ou quando os pedidos aprovados ainda não impressos precisam de mais do que tem.
+// Só avisa quando a situação muda (o estado fica em data/avisos-filamento.json).
+const FIL_LIMITE = 150, FIL_ARQ = path.join(DATA_DIR, "avisos-filamento.json");
+function situacaoFilamentos() {
+  const nomes = new Map((configCompleta().filamentos || []).map(f => [f.id, f.nome]));
+  const tem = new Map(), precisa = new Map();
+  for (const r of db.prepare("SELECT filamento_id, restante FROM rolos WHERE ativo = 1").all()) tem.set(r.filamento_id, (tem.get(r.filamento_id) || 0) + r.restante);
+  for (const r of db.prepare("SELECT dados FROM pedidos WHERE status IN ('aprovado','imprimindo') AND COALESCE(filamento_baixado, 0) = 0").all()) {
+    const p = JSON.parse(r.dados);
+    for (const it of p.itens || []) { if (it.doEstoque) continue; for (const f of it.fil || []) precisa.set(f.filId, (precisa.get(f.filId) || 0) + n(f.g) * n(it.quantidade)); }
+  }
+  return [...new Set([...tem.keys(), ...precisa.keys()])].filter(id => nomes.has(id))
+    .map(id => ({ id, nome: nomes.get(id), tem: Math.round(tem.get(id) || 0), precisa: Math.round(precisa.get(id) || 0) }));
+}
+function checaFilamentos() {
+  try {
+    let ja = {}; try { ja = JSON.parse(fs.readFileSync(FIL_ARQ, "utf8")); } catch (e) {}
+    const agora = {};
+    for (const s of situacaoFilamentos()) {
+      const estado = s.precisa > s.tem ? "falta" : s.tem < FIL_LIMITE && tem_rolo(s.id) ? "baixo" : "";
+      if (!estado) continue;
+      agora[s.id] = estado;
+      if (ja[s.id] !== estado) notifica(estado === "falta"
+        ? { titulo: `🧵 Falta ${s.nome} para os pedidos`, corpo: `Os pedidos aprovados precisam de ${s.precisa} g e os rolos ativos têm ${s.tem} g.`, url: "/admin", tag: "fil-" + s.id }
+        : { titulo: `🧵 ${s.nome} acabando`, corpo: `Restam ${s.tem} g nos rolos ativos. Hora de comprar mais.`, url: "/admin", tag: "fil-" + s.id });
+    }
+    if (JSON.stringify(agora) !== JSON.stringify(ja)) fs.writeFileSync(FIL_ARQ, JSON.stringify(agora));
+  } catch (e) { console.error("[filamento]", e.message); }
+}
+const tem_rolo = id => !!db.prepare("SELECT 1 FROM rolos WHERE ativo = 1 AND filamento_id = ?").get(id);
+app.use(["/api/rolos", "/api/pedidos", "/api/publico/pedido"], (req, res, next) => {
+  if (req.method !== "GET") res.on("finish", () => { if (res.statusCode < 400) setTimeout(checaFilamentos, 100); });
+  next();
+});
+app.get("/api/filamentos/situacao", exigeLogin, (req, res) => res.json(situacaoFilamentos()));
 app.get("/api/rolos", exigeLogin, (req, res) => {
   res.json(db.prepare("SELECT * FROM rolos ORDER BY ativo DESC, data_compra, criado_em").all());
 });
@@ -677,6 +745,7 @@ function limpaPedido(b) {
     prazo: DATA_RE.test(b.prazo || "") ? b.prazo : null, itens,
     desconto: n(b.desconto), freteCliente: n(b.freteCliente), freteVoce: n(b.freteVoce), taxas: n(b.taxas), sinal: n(b.sinal),
     obs: txt(b.obs, 1000), ...(b.origem === "catalogo" ? { origem: "catalogo" } : {}), ...(b.cupom ? { cupom: txt(b.cupom, 30).toUpperCase() } : {}),
+    ...(b.rastreio ? { rastreio: txt(b.rastreio, 40).toUpperCase().replace(/[^A-Z0-9-]/g, "") } : {}),
     ...(b.impressora ? { impressora: txt(b.impressora, 60) } : {}),
     ...(b.entrada !== "" && b.entrada != null && Number.isFinite(Number(b.entrada)) ? { entrada: Math.max(0, n(b.entrada)) } : {}),
     ...(b.semArte ? { semArte: true } : {}), ...(b.comArte ? { comArte: true } : {}),
@@ -751,7 +820,7 @@ app.put("/api/pedidos/:id", exigeLogin, exigeEdicao, (req, res) => {
   if (ant.artes) v.artes = ant.artes; // versões da arte enviadas para aprovação
   if (ant.pagInformado) v.pagInformado = ant.pagInformado; // cliente avisou que pagou a entrada
   if (ant.pagarTudo) v.pagarTudo = true; // cliente escolheu pagar 100% ao aprovar
-  for (const k of ["mp", "mpPagos", "mpPagamentos", "mpAbertos", "avisosPag", "entrega", "lembretesPix", "previa"]) if (ant[k]) v[k] = ant[k]; // cobrança, pagamentos e avisos do Mercado Pago
+  for (const k of ["mp", "mpPagos", "mpPagamentos", "mpAbertos", "avisosPag", "entrega", "lembretesPix", "previa", "avaliacao"]) if (ant[k]) v[k] = ant[k]; // cobrança, pagamentos e avisos do Mercado Pago
   if (ant.fluxo) v.fluxo = ant.fluxo;
   db.transaction(() => {
     db.prepare("UPDATE pedidos SET dados = ?, prazo = ?, atualizado_em = datetime('now') WHERE id = ?").run(JSON.stringify(v), v.prazo, req.params.id);
@@ -1762,6 +1831,7 @@ app.get("/api/publico/catalogo", limitePublico, (req, res) => {
     })),
     kits: kitsPublicos().map(({ itens, ...k }) => ({ ...k, itens: itens.map(i => ({ nome: i.nome, q: i.q })) })),
     temCupom: (configCompleta().cupons || []).some(c => c && c.ativo),
+    avaliacoes: avaliacoesPublicas(),
     entrega: (fc => ({ retirada: fc.retirada || !fc.entrega, retiradaTxt: fc.retiradaTxt, entrega: fc.entrega, gratisAcima: fc.gratisAcima }))(freteConfig(loja)),
     banners: bannersLoja(loja).map((b, i) => ({ img: "/loja/banner/" + i + "/d?v=" + b.foto.slice(0, 8), cel: b.cel ? "/loja/banner/" + i + "/c?v=" + b.cel.slice(0, 8) : "", titulo: b.titulo, alvo: b.alvo })),
   });
@@ -2127,6 +2197,7 @@ app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
     desconto: n(p.desconto), frete: n(p.freteCliente), total, sinal: n(p.sinal), receber,
     entrega: p.entrega ? { ...p.entrega, ...(p.entrega.tipo === "retirada" ? { retiradaTxt: freteConfig(L).retiradaTxt } : {}) } : null,
     entrada, faltaEntrada, resposta: p.resposta ? { acao: p.resposta.acao, em: p.resposta.em } : null,
+    rastreio: p.rastreio || null, avaliacao: p.avaliacao ? { nota: p.avaliacao.nota, texto: p.avaliacao.texto } : null,
     etapa: etapaDe(r.status, p), pagInformado: p.pagInformado || null, precisaArte: precisaArte(p),
     pagamentos: pagamentosDe(p).map(({ ref, ...x }) => x), comprovante: n(p.sinal) > 0 ? `/pedido/${r.token}/comprovante` : null,
     arte: p.artes && p.artes.length ? (a => ({ v: a.v, status: a.status, nota: a.nota || "", comentario: a.comentario || "", respondidoEm: a.respondidoEm || null, imagem: `/aprovacao/${r.token}/arte/${a.v}` }))(p.artes.at(-1)) : null,
@@ -2134,6 +2205,46 @@ app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
     pix: pix ? { payload: pix.payload, svg: pix.svg, tipo: pixTipo, valor: pixValor, auto: pixAuto, renova: pix.renova ?? null, chave: pixAuto ? "" : txt(L.pixChave, 77), nome: txt(L.pixNome || L.nome, 60) } : null,
   });
 });
+// ---------- pedir de novo: monta o carrinho do catálogo com os itens deste pedido que ainda estão à venda ----------
+app.get("/api/publico/pedido/:token/refazer", limitePublico, (req, res) => {
+  const r = pedidoPorToken(req.params.token); if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  const p = JSON.parse(r.dados), prods = new Map(produtosPublicos().map(x => [x.id, x.p])), kits = new Set(kitsPublicos().map(k => k.id));
+  const itens = []; let faltaram = 0;
+  for (const i of p.itens || []) {
+    const q = Math.max(1, Math.min(999, Math.round(Number(i.quantidade) || 1)));
+    if (i.kit_id && kits.has(i.kit_id)) { itens.push({ kit: i.kit_id, q }); continue; }
+    const pr = i.produto_id && prods.get(i.produto_id);
+    if (!pr) { faltaram++; continue; }
+    const nomes = (i.ads || []).map(a => a.nome);
+    const ad = (pr.adicionais || []).map((a, k) => nomes.includes(a.nome) ? k : -1).filter(k => k >= 0);
+    itens.push({ id: i.produto_id, q, pers: txt(i.personalizacao, 200), ad });
+  }
+  res.json({ numero: r.numero, itens, faltaram });
+});
+// ---------- avaliação depois da entrega (uma por pedido; a loja escolhe quais aparecem no catálogo) ----------
+app.post("/api/publico/pedido/:token/avaliacao", limiteResposta, (req, res) => {
+  const r = pedidoPorToken(req.params.token); if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  if (r.status !== "entregue") return res.status(400).json({ erro: "A avaliação abre depois da entrega." });
+  const p = JSON.parse(r.dados); if (p.avaliacao) return res.status(409).json({ erro: "Este pedido já foi avaliado. Obrigado!" });
+  const nota = Math.round(Number(req.body?.nota)); if (!(nota >= 1 && nota <= 5)) return res.status(400).json({ erro: "Escolha de 1 a 5 estrelas." });
+  p.avaliacao = { nota, texto: txt(req.body?.texto, 400), em: new Date().toISOString(), mostrar: false };
+  db.prepare("UPDATE pedidos SET dados = ? WHERE id = ?").run(JSON.stringify(p), r.id);
+  avisoPag(p, { tipo: "avaliacao", valor: 0, forma: "★".repeat(nota) }); db.prepare("UPDATE pedidos SET dados = ? WHERE id = ?").run(JSON.stringify(p), r.id);
+  res.json({ ok: true });
+});
+app.post("/api/pedidos/:id/avaliacao", exigeLogin, exigeEdicao, (req, res) => {
+  const r = db.prepare("SELECT dados FROM pedidos WHERE id = ?").get(req.params.id); if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  const p = JSON.parse(r.dados); if (!p.avaliacao) return res.status(404).json({ erro: "Sem avaliação." });
+  p.avaliacao.mostrar = !!req.body?.mostrar;
+  db.prepare("UPDATE pedidos SET dados = ? WHERE id = ?").run(JSON.stringify(p), req.params.id);
+  res.json({ ok: true, mostrar: p.avaliacao.mostrar });
+});
+function avaliacoesPublicas() {
+  return db.prepare("SELECT dados FROM pedidos WHERE dados LIKE '%\"avaliacao\"%'").all().map(r => JSON.parse(r.dados))
+    .filter(p => p.avaliacao?.mostrar).sort((a, b) => String(b.avaliacao.em).localeCompare(String(a.avaliacao.em))).slice(0, 12)
+    .map(p => { const nm = String(p.cliente || "").trim().split(/\s+/); return { nota: p.avaliacao.nota, texto: p.avaliacao.texto,
+      nome: nm[0] ? nm[0] + (nm.length > 1 ? " " + nm[nm.length - 1][0] + "." : "") : "Cliente", item: String(p.itens?.[0]?.descricao || "").split(" + ")[0].slice(0, 60) }; });
+}
 // ---------- aprovação da arte ----------
 // Cada imagem enviada vira uma versão (V01, V02…). O cliente aprova ou pede ajuste da versão mais nova
 // pela página /aprovacao/<token do pedido>.

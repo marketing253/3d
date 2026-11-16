@@ -129,7 +129,7 @@ function setTab(t){
   if(t==="compras") carregaCompras();
   if(t==="novo") renderFicha();
   if(t==="hoje"){ renderHoje(); carregaHoje(); carregaImpressoes() }
-  if(t==="clientes"){ renderClientes(); carregaClientes() }
+  if(t==="clientes"){ renderClientes(); carregaClientes(); if(pedCarregado) renderAvals(); else carregaPedidos().then(renderAvals).catch(()=>{}) }
   if(t==="conta") carregaBackups();
   if(t==="orcamento") renderQo();
   if(t==="manutencao"){ renderManutencao(); carregaPedidos(); carregaImpressoes() }
@@ -221,6 +221,57 @@ $("#sortBy").addEventListener("change",()=>{try{localStorage.setItem("prec3d.sor
 $("#rankCanal").addEventListener("change",renderLista);
 // link do produto no catálogo com cara de página (/produto/<id>/<nome>), igual ao do servidor
 function linkProdutoCat(p){ const s=String(p.nome||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,70)||"produto"; return location.origin+"/produto/"+encodeURIComponent(p.id)+"/"+s }
+/* ---------- exportar para Shopee / Mercado Livre ---------- */
+let exp=null;
+const expProds=()=>produtos.filter(p=>p.catalogo&&num(p.precoCatalogo)>0).sort((a,b)=>(a.categoria||"~").localeCompare(b.categoria||"~")||a.nome.localeCompare(b.nome));
+// aba do Mercado Livre que mais combina com o produto (palavras em comum entre o nome da aba e nome/categoria)
+function abaPara(p){ const abas=exp.info?.abas||[]; if(abas.length<2) return abas[0]||"";
+  const pal=new Set(semAc(p.nome+" "+(p.categoria||"")).split(/[^a-z0-9]+/).filter(w=>w.length>3).map(w=>w.slice(0,5)));
+  let melhor=abas[0],nota=0; for(const a of abas){ const n=semAc(a).split(/[^a-z0-9]+/).filter(w=>w.length>3).filter(w=>pal.has(w.slice(0,5))).length; if(n>nota){nota=n;melhor=a} } return melhor }
+function desenhaExp(){
+  const ps=expProds(), cats=[...new Set(ps.map(p=>p.categoria||"Sem categoria"))], ml=exp.info?.tipo==="ml", pct=num(exp.pct);
+  $("#expDlg").innerHTML=`<div class="pres-cab"><div><small>Anunciar em massa</small><b>Exportar para Shopee / Mercado Livre</b></div><button type="button" class="pres-x" data-ex="fechar" aria-label="Fechar">✕</button></div>
+  <div class="pres-corpo pf-corpo">
+    <p class="note" style="margin:0"><b>1.</b> Baixe o modelo no marketplace. <b>Shopee:</b> Meus Produtos › Adicionar em massa › Baixar modelo. <b>Mercado Livre:</b> Anunciar em massa › Busque por categorias (escolha as categorias dos produtos).</p>
+    <label class="f"><span><b>2.</b> Envie o modelo baixado, sem mudar nada nele</span><input type="file" id="exArq" accept=".xlsx"><span class="hint" id="exInfo">${exp.info?(exp.info.tipo==="ml"?`Mercado Livre · ${exp.info.abas.length} categoria${exp.info.abas.length>1?"s":""}: ${esc(exp.info.abas.join(", "))}`:"Shopee · modelo básico"):""}</span></label>
+    <label class="f"><span><b>3.</b> Preço no marketplace</span><div class="unit"><input id="exPct" type="number" step="1" value="${esc(exp.pct)}"><span>% acima do catálogo</span></div></label>
+    <div class="stack" style="gap:8px"><div class="row spread"><b>4. Produtos do catálogo</b><span class="note">${exp.sel.size} escolhido${exp.sel.size===1?"":"s"}</span></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">${cats.map(c=>`<button type="button" class="btn sm ghost" data-excat="${esc(c)}">${esc(c)}</button>`).join("")}<button type="button" class="btn sm ghost" data-ex="limpar">Limpar</button></div>
+      <div class="exlista">${ps.map(p=>{ const on=exp.sel.has(p.id), novo=num(p.precoCatalogo)*(1+pct/100), peso=num(p.pesoEmb)>0?`${num(p.pesoEmb)} g`:pesoSugerido(p)?`~${pesoSugerido(p)} g estimado`:"sem peso";
+        return `<label class="exi${on?" on":""}"><input type="checkbox" data-exp="${esc(p.id)}"${on?" checked":""}><span class="exn"><b>${esc(p.nome)}</b><small>${esc(p.categoria||"Sem categoria")} · ${brl(num(p.precoCatalogo))} → <b>${brl(novo)}</b> · ${peso}${p.embC&&p.embL&&p.embA?` · ${p.embC}×${p.embL}×${p.embA} cm`:""}</small></span>
+          ${ml&&on?`<select data-exaba="${esc(p.id)}" aria-label="Categoria do Mercado Livre">${exp.info.abas.map(a=>`<option${(exp.aba[p.id]||abaPara(p))===a?" selected":""}>${esc(a)}</option>`).join("")}</select>`:""}</label>`}).join("")||'<p class="note">Nenhum produto no catálogo com preço.</p>'}</div>
+    </div>
+  </div>
+  <div class="pres-acoes"><button class="btn primary" type="button" data-ex="gerar"${exp.info&&exp.sel.size?"":" disabled"}>Gerar planilha (${exp.sel.size})</button><span class="note" id="exMsg">${exp.info?"":"Envie o modelo para liberar."}</span></div>`;
+}
+$("#btnExport").addEventListener("click",()=>{ exp={arquivo:null,info:null,sel:new Set(),aba:{},pct:10}; desenhaExp(); $("#expDlg").showModal() });
+$("#expDlg").addEventListener("change",async e=>{
+  const t=e.target;
+  if(t.id==="exArq"){ const f=t.files[0]; if(!f) return; $("#exInfo").textContent="Lendo a planilha…";
+    const fd=new FormData(); fd.append("arquivo",f);
+    try{ const r=await fetch("/api/exportar/inspeciona",{method:"POST",body:fd,credentials:"same-origin"}); const j=await r.json(); if(!r.ok) throw new Error(j.erro);
+      exp.arquivo=f; exp.info=j; desenhaExp() }catch(err){ exp.arquivo=null; exp.info=null; $("#exInfo").textContent=err.message||"Não deu para ler a planilha." } return }
+  if(t.matches("[data-exp]")){ t.checked?exp.sel.add(t.dataset.exp):exp.sel.delete(t.dataset.exp); desenhaExp(); return }
+  if(t.matches("[data-exaba]")){ exp.aba[t.dataset.exaba]=t.value; return }
+});
+$("#expDlg").addEventListener("input",e=>{ if(e.target.id!=="exPct") return; exp.pct=e.target.value; const pos=e.target.selectionStart; desenhaExp(); const i=$("#exPct"); i.focus(); try{ i.setSelectionRange(pos,pos) }catch(x){} });
+$("#expDlg").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-ex],[data-excat]"); if(!b) return;
+  if(b.dataset.ex==="fechar"){ $("#expDlg").close(); return }
+  if(b.dataset.ex==="limpar"){ exp.sel.clear(); desenhaExp(); return }
+  if(b.dataset.excat!=null){ const ids=expProds().filter(p=>(p.categoria||"Sem categoria")===b.dataset.excat).map(p=>p.id); const todos=ids.every(id=>exp.sel.has(id)); ids.forEach(id=>todos?exp.sel.delete(id):exp.sel.add(id)); desenhaExp(); return }
+  if(b.dataset.ex==="gerar"){
+    if(!exp.arquivo||!exp.sel.size) return; b.disabled=true; $("#exMsg").textContent="Gerando…";
+    const itens=[...exp.sel].map(id=>{ const p=produtos.find(x=>x.id===id); return {id, aba:exp.info.tipo==="ml"?(exp.aba[id]||abaPara(p)):exp.info.abas[0]} });
+    const fd=new FormData(); fd.append("arquivo",exp.arquivo); fd.append("opcoes",JSON.stringify({pct:num(exp.pct),itens}));
+    try{ const r=await fetch("/api/exportar/gera",{method:"POST",body:fd,credentials:"same-origin"});
+      if(!r.ok){ const j=await r.json().catch(()=>({})); throw new Error(j.erro||"Não deu para gerar.") }
+      const blob=await r.blob(), nome=(r.headers.get("Content-Disposition")||"").match(/filename="([^"]+)"/)?.[1]||"planilha-preenchida.xlsx";
+      const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=nome; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);
+      $("#exMsg").textContent=`Pronto: ${r.headers.get("X-Produtos")} produtos em "${nome}". Confira e envie no marketplace.` }
+    catch(err){ $("#exMsg").textContent=err.message } finally{ b.disabled=false }
+  }
+});
 // todos os links do catálogo, um por linha (ex.: Mercado Livre → Anunciar em massa → links de produtos)
 $("#btnLinksCat").addEventListener("click",async()=>{
   const ps=produtos.filter(p=>p.catalogo&&num(p.precoCatalogo)>0);
@@ -250,6 +301,7 @@ function startForm(p){
   $("#f-link").value=draft.linkModelo||"";
   $("#f-catshow").checked=!!draft.catalogo; $("#f-pers").checked=!!draft.personalizavel;
   $("#f-catdesc").value=draft.descricaoCatalogo||""; $("#f-catpreco").value=draft.precoCatalogo??""; $("#f-estoque").value=draft.estoque||0;
+  $("#f-peso").value=draft.pesoEmb??""; $("#f-embC").value=draft.embC??""; $("#f-embL").value=draft.embL??""; $("#f-embA").value=draft.embA??"";
   draft.adicionais=(draft.adicionais||[]).map(a=>({...a})); renderAdic();
   fotoOriginal=editingId?(draft.fotoId||null):null;
   if(!editingId&&draft.fotoId){draft.fotoId="";} /* cópia não compartilha a foto */
@@ -281,6 +333,7 @@ function readForm(){
   draft.catalogo=$("#f-catshow").checked; draft.personalizavel=$("#f-pers").checked;
   draft.descricaoCatalogo=$("#f-catdesc").value.trim(); draft.precoCatalogo=$("#f-catpreco").value===""?"":num($("#f-catpreco").value);
   draft.estoque=Math.max(0,Math.round(num($("#f-estoque").value)));
+  for(const [k,id] of [["pesoEmb","#f-peso"],["embC","#f-embC"],["embL","#f-embL"],["embA","#f-embA"]]){ const v=$(id).value; draft[k]=v===""?"":Math.max(0,Math.round(num(v))) }
   draft.adicionais=[...document.querySelectorAll("#adLista [data-ai]")].map(el=>{ const pr=el.querySelector('[data-ak="preco"]').value; return {nome:el.querySelector('[data-ak="nome"]').value.trim(),preco:pr===""?"":num(pr)} });
   draft.linkModelo=$("#f-link").value.trim();
   document.querySelectorAll("#filLines .fil-line").forEach((el,i)=>{
@@ -320,7 +373,10 @@ $("#form").addEventListener("submit",async e=>{
   }finally{btn.disabled=false}
 });
 
+// sugestão de peso: filamento de uma peça + ~40 g de embalagem
+function pesoSugerido(p){ const r=calc(p); return r.gramasUnid>0?Math.round(r.gramasUnid+40):0 }
 function renderFicha(){
+  if(draft&&$("#f-peso")){ const s=pesoSugerido(draft); $("#f-peso").placeholder=s?String(s):"—"; $("#f-pesoHint").textContent=s?`Vazio usa ${s} g (peça + embalagem)`:"Para o frete e os marketplaces" }
   if(!draft) return;
   const r=calc(draft);
   {const ph=num(draft.precoVenda)>0?num(draft.precoVenda):r.canais[0]?.sugerido;$("#f-catpreco").placeholder=ph?ph.toFixed(2):"—";}
@@ -791,15 +847,15 @@ async function checaAvisos(forcar){
   if(novos.some(a=>["pago","novo"].includes(a.tipo))) somPagamento();
   renderAvisos(lista); await carregaPedidos(); if(tab==="hoje") renderHoje();
 }
-const tituloAviso=a=>a.tipo==="novo"?`Novo pedido #${a.numero} pelo catálogo`:a.tipo==="pago"?`Pedido #${a.numero} pago`:a.tipo==="contestado"?`Pedido #${a.numero}: pagamento contestado`:`Pedido #${a.numero}: pagamento estornado`;
+const tituloAviso=a=>a.tipo==="avaliacao"?`Pedido #${a.numero} avaliado: ${a.forma}`:a.tipo==="novo"?`Novo pedido #${a.numero} pelo catálogo`:a.tipo==="pago"?`Pedido #${a.numero} pago`:a.tipo==="contestado"?`Pedido #${a.numero}: pagamento contestado`:`Pedido #${a.numero}: pagamento estornado`;
 function renderAvisos(lista){
   const nPag=new Set(lista.filter(a=>a.tipo==="pago").map(a=>a.pedido)).size, bp=$("#badgePag");
   if(bp){ bp.hidden=!nPag; bp.textContent=nPag; bp.title=nPag+" pedido(s) pago(s) que você ainda não viu" }
   let box=$("#avisosPag"); if(!box){ box=document.createElement("div"); box.id="avisosPag"; document.body.appendChild(box) }
   const pode="Notification" in window&&Notification.permission==="default";
   box.innerHTML=lista.slice(0,4).map(a=>`<div class="avp ${["pago","novo"].includes(a.tipo)?"ok":"bad"}" data-ap="${esc(a.pedido)}">
-      <span class="avp-ic" aria-hidden="true">${a.tipo==="novo"?"★":a.tipo==="pago"?"✓":"↩"}</span>
-      <div><b>${esc(tituloAviso(a))}</b><small>${esc(a.cliente)} · ${brl(a.valor)} · ${esc(a.forma||"")}</small>${["estornado","contestado"].includes(a.tipo)?`<small>O pedido voltou a esperar o pagamento.</small>`:""}</div>
+      <span class="avp-ic" aria-hidden="true">${a.tipo==="avaliacao"?"☆":a.tipo==="novo"?"★":a.tipo==="pago"?"✓":"↩"}</span>
+      <div><b>${esc(tituloAviso(a))}</b><small>${esc(a.cliente)}${a.tipo==="avaliacao"?" · veja em Pedidos › Clientes":` · ${brl(a.valor)} · ${esc(a.forma||"")}`}</small>${["estornado","contestado"].includes(a.tipo)?`<small>O pedido voltou a esperar o pagamento.</small>`:""}</div>
       <button class="btn sm" data-av="ver">Ver</button><button class="avp-x" data-av="ok" aria-label="Dispensar">✕</button>
     </div>`).join("")+(lista.length&&pode?`<button class="avp-notif" data-av="notif">Avisar também no navegador</button>`:"");
 }
@@ -912,6 +968,7 @@ function abrePedido(p){
         ${novo?`<label class="f">Começa como<select id="pf-status"><option value="orcamento">Orçamento</option><option value="aprovado">Aprovado</option></select></label>`:""}
         <label class="f">Desconto<div class="unit pre"><span>R$</span><input id="pf-desc" type="number" min="0" step="0.01" value="${esc(d.desconto)}"></div></label>
         <label class="f">Frete cobrado do cliente<div class="unit pre"><span>R$</span><input id="pf-fc" type="number" min="0" step="0.01" value="${esc(d.freteCliente)}"></div></label>
+        <label class="f">Código de rastreio<span class="hint">Aparece para o cliente no link</span><input id="pf-rastreio" maxlength="40" placeholder="Ex.: AB123456789BR" value="${esc(d.rastreio||"")}"></label>
         <label class="f">Frete pago por você<div class="unit pre"><span>R$</span><input id="pf-fv" type="number" min="0" step="0.01" value="${esc(d.freteVoce)}"></div></label>
         <label class="f">Taxas do canal<span class="hint">Calculada; pode ajustar</span><div class="unit pre"><span>R$</span><input id="pf-taxas" type="number" min="0" step="0.01" value="${esc(d.taxas)}"></div></label>
         <label class="f">Entrada pedida<span class="hint">Vazio = ${entradaPct()}% do total</span><div class="unit pre"><span>R$</span><input id="pf-entrada" type="number" min="0" step="0.01" placeholder="${entradaPct()}%" value="${esc(d.entrada??"")}"></div></label>
@@ -963,7 +1020,7 @@ function lePf(){
   const d=pedForm.d;
   d.cliente=$("#pf-cliente").value.trim(); d.whatsapp=$("#pf-whats").value.trim(); d.canal=$("#pf-canal").value;
   d.data=$("#pf-data").value; d.prazo=$("#pf-prazo").value; d.desconto=num($("#pf-desc").value); d.freteCliente=num($("#pf-fc").value);
-  d.freteVoce=num($("#pf-fv").value); d.taxas=num($("#pf-taxas").value); d.sinal=num($("#pf-sinal").value); d.entrada=$("#pf-entrada").value===""?"":num($("#pf-entrada").value); d.semArte=!$("#pf-arte").checked; d.comArte=$("#pf-arte").checked; d.obs=$("#pf-obs").value.trim();
+  d.freteVoce=num($("#pf-fv").value); d.taxas=num($("#pf-taxas").value); d.sinal=num($("#pf-sinal").value); d.entrada=$("#pf-entrada").value===""?"":num($("#pf-entrada").value); d.semArte=!$("#pf-arte").checked; d.comArte=$("#pf-arte").checked; d.obs=$("#pf-obs").value.trim(); d.rastreio=$("#pf-rastreio").value.toUpperCase().replace(/[^A-Z0-9-]/g,"");
   if($("#pf-status")) d.status=$("#pf-status").value;
   if($("#pf-cupom")) d.cupom=$("#pf-cupom").value;
 }
@@ -1049,10 +1106,11 @@ function textoMsg(p,tipo){
   const pag=cfg.loja.pagamento?`\nPagamento: ${cfg.loja.pagamento}`:"";
   if(tipo==="orcamento") return `Olá, ${nome}! Segue o seu orçamento da ${loja}:\n\n${linhas}${extras?"\n"+extras:""}\n\n*Total: ${brl(t.total)}*${p.prazo?`\nPronto até ${dataBRc(p.prazo)}`:""}\n\nComo funciona:\n1. Você aprova o orçamento pelo link\n2. Paga ${entradaPed(p)>0?`${brl(entradaPed(p))} (entrada)`:"o pedido"} por Pix ali mesmo\n${p.precisaArte?"3. Aprova a arte\n4. Produzimos":"3. Produzimos"} e avisamos quando ficar pronto`;
   if(tipo==="confirmado") return `Olá, ${nome}! Pedido #${p.numero} confirmado na ${loja}.\n\n${linhas}\n\n*Total: ${brl(t.total)}*${num(p.sinal)>0?`\nSinal recebido: ${brl(num(p.sinal))}\nRestante na entrega: ${brl(t.receber)}`:""}\n${p.prazo?`Previsão: ${dataBRc(p.prazo)}`:""}\n\nAviso assim que estiver pronto!`;
-  if(tipo==="pronto") return `Olá, ${nome}! Seu pedido #${p.numero} da ${loja} está pronto.\n\n${resumoItens(p)}\n${t.receber>0?`\nValor a pagar: *${brl(t.receber)}*${pag}`:"\nJá está todo pago."}\n\nComo prefere receber: retirada ou entrega?`;
+  const rast=p.rastreio?`\n\n📦 Código de rastreio: *${p.rastreio}*\nAcompanhe em rastreamento.correios.com.br`:"";
+  if(tipo==="pronto") return `Olá, ${nome}! Seu pedido #${p.numero} da ${loja} está pronto.\n\n${resumoItens(p)}\n${t.receber>0?`\nValor a pagar: *${brl(t.receber)}*${pag}`:"\nJá está todo pago."}${rast||"\n\nComo prefere receber: retirada ou entrega?"}`;
   if(tipo==="lembrete") return `Oi, ${nome}! Tudo bem? Seu pedido #${p.numero} da ${loja} está reservado, só falta o pagamento de *${brl(Math.max(0,entradaPed(p)-num(p.sinal)))}* para começarmos a produzir.\n\nÉ rapidinho pelo link, no Pix ou no cartão.`;
   if(tipo==="cobranca") return `Olá, ${nome}! Passando para lembrar do pedido #${p.numero} da ${loja}.\nValor em aberto: *${brl(t.receber)}*${pag}\n\nQualquer dúvida, estou à disposição.`;
-  return `Olá, ${nome}! Obrigado pela compra na ${loja}. Espero que goste das peças!${cfg.loja.instagram?`\nSe puder, marque a gente no Instagram: ${cfg.loja.instagram}`:""}\n\nPrecisando de mais alguma coisa, é só chamar.`;
+  return `Olá, ${nome}! Obrigado pela compra na ${loja}. Espero que goste das peças!${rast}\n\nSe puder, deixe a sua avaliação no link do pedido. Lá também tem o botão para pedir de novo.${cfg.loja.instagram?`\nSe puder, marque a gente no Instagram: ${cfg.loja.instagram}`:""}\n\nPrecisando de mais alguma coisa, é só chamar.`;
 }
 let msgPix=null, msgLink=null;
 async function linkDe(p){
@@ -2127,6 +2185,8 @@ function renderHoje(){
   const prontos=pedidos.filter(p=>p.status==="pronto");
   const f=filaOrdenada(), horasFila=f.reduce((s,p)=>s+totPed(p).horas,0);
   const acabando=rolos.filter(r=>r.ativo&&r.restante<150);
+  const faltaFil=(renderHoje.fil||[]).filter(s=>s.precisa>s.tem);
+  if(!renderHoje.pedindo){ renderHoje.pedindo=true; api("GET","/api/filamentos/situacao").then(l=>{ const mudou=JSON.stringify(l)!==JSON.stringify(renderHoje.fil); renderHoje.fil=l; if(mudou&&$("#p-hoje")&&!$("#p-hoje").hidden) renderHoje() }).catch(()=>{}).finally(()=>setTimeout(()=>renderHoje.pedindo=false,60000)) }
   const L=cfg.loja, meta=num(L.metaLucro);
   const dt=new Date(hoje+"T12:00:00"), diaMes=dt.getDate(), diasNoMes=new Date(dt.getFullYear(),dt.getMonth()+1,0).getDate();
   const nomeDia=cap(dt.toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"}));
@@ -2186,6 +2246,7 @@ function renderHoje(){
   if(novosCat.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Pedidos novos do catálogo <span class="pill acc">${novosCat.length}</span></h3><button class="btn sm" data-hg="pedidos">Ver pedidos</button></div><ul class="hlist">${novosCat.map(p=>linhaPed(p,`<span class="num">${brl(totPed(p).total)}</span><button class="btn sm primary" data-hm="orcamento">Responder</button>`)).join("")}</ul></div>`);
   if(urgentes.length) avisos.push(`<div class="card stack"><h3>Prazo vencendo</h3><ul class="hlist">${urgentes.map(p=>linhaPed(p,`${prazoPill(p)}<span class="pill ${ST_CLS[p.status]}">${ST[p.status]}</span>`)).join("")}</ul></div>`);
   if(prontos.length) avisos.push(`<div class="card stack"><h3>Prontos para entregar</h3><ul class="hlist">${prontos.map(p=>linhaPed(p,`${totPed(p).receber>0?`<span class="num">falta ${brl(totPed(p).receber)}</span>`:""}<button class="btn sm" data-hm="pronto">Avisar cliente</button>`)).join("")}</ul></div>`);
+  if(faltaFil.length) avisos.push(`<div class="warnbox">Falta filamento para os pedidos aprovados: ${faltaFil.map(s=>`${esc(s.nome)} (precisa de ${s.precisa} g, tem ${s.tem} g)`).join(", ")}. Compre antes de imprimir.</div>`);
   if(acabando.length) avisos.push(`<div class="warnbox">Filamento acabando: ${acabando.map(r=>`${esc(nomeFil(r.filamento_id))} ${esc(r.cor)} (${Math.round(r.restante)} g)`).join(", ")}.</div>`);
   const lemb=lembretesHtml(); if(lemb) avisos.push(lemb);
   if(contas.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>A receber no mês</h3><button class="btn sm" data-hg="financeiro">Financeiro</button></div><ul class="hlist">${contas.sort((a,b)=>String(a[3]).localeCompare(String(b[3]))).map(c=>`<li><span>${esc(c[1])} <span class="pcat">· ${ddmm(c[3])}</span></span><span class="num ${c[0]==="pagar"?"neg":"pos"}">${c[0]==="pagar"?"pagar ":"receber "}${brl(c[2])}</span></li>`).join("")}</ul></div>`);
@@ -2242,6 +2303,19 @@ $("#hojeBox").addEventListener("click",e=>{
 /* ---------- clientes ---------- */
 let clientes=null, cliBusca="";
 async function carregaClientes(){ try{ clientes=await api("GET","/api/clientes"); renderClientes() }catch(e){ if(e.status!==401) toast(e.message) } }
+/* avaliações dos clientes: a loja escolhe quais aparecem no catálogo */
+function renderAvals(){
+  const box=$("#avalBox"); if(!box) return;
+  const l=pedidos.filter(p=>p.avaliacao).sort((a,b)=>String(b.avaliacao.em).localeCompare(String(a.avaliacao.em)));
+  box.hidden=!l.length; if(!l.length) return;
+  const media=l.reduce((s,p)=>s+p.avaliacao.nota,0)/l.length;
+  box.innerHTML=`<div class="row spread"><h3>Avaliações ${media.toFixed(1).replace(".",",")} ★ <span class="pcat">${l.length} no total</span></h3><span class="note">Marque as que aparecem no catálogo</span></div>
+    ${l.map(p=>`<div class="avalp" data-av="${esc(p.id)}"><div><span><b style="color:#f5b301">${"★".repeat(p.avaliacao.nota)}</b><span class="pcat">${"★".repeat(5-p.avaliacao.nota)}</span> · <b>${esc(p.cliente)}</b> <span class="pcat">#${p.numero} · ${dataBRc(String(p.avaliacao.em).slice(0,10))}</span></span>
+      ${p.avaliacao.texto?`<div>“${esc(p.avaliacao.texto)}”</div>`:""}</div>
+      <label class="chk edit-only"><input type="checkbox" data-avm${p.avaliacao.mostrar?" checked":""}> No catálogo</label></div>`).join("")}`;
+}
+$("#avalBox")?.addEventListener("change",async e=>{ if(!e.target.matches("[data-avm]")) return; const id=e.target.closest("[data-av]").dataset.av, p=pedidos.find(x=>x.id===id);
+  try{ const r=await api("POST","/api/pedidos/"+encodeURIComponent(id)+"/avaliacao",{mostrar:e.target.checked}); p.avaliacao.mostrar=r.mostrar; toast(r.mostrar?"Vai aparecer no catálogo":"Saiu do catálogo") }catch(err){ e.target.checked=!e.target.checked; toast(err.message) } });
 function renderClientes(){
   if(!clientes){ $("#cliLista").innerHTML=`<div class="card empty"><h2>Carregando…</h2></div>`; return }
   const b=cliBusca.trim().toLowerCase(), bd=soDig(cliBusca);

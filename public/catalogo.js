@@ -67,6 +67,25 @@ async function carrega(){
   banners();
   render();
   if(foco&&item(foco)) abreProduto(foco);
+  avaliacoes();
+  refazer();
+}
+// "Pedir de novo": o link do pedido entregue traz ?refazer=token; os itens que ainda existem vão para o carrinho
+async function refazer(){
+  let tk=null; try{ tk=new URLSearchParams(location.search).get("refazer") }catch(e){} if(!tk) return;
+  try{ history.replaceState(null,"","/") }catch(e){}
+  try{ const r=await fetch("/api/publico/pedido/"+encodeURIComponent(tk)+"/refazer"); if(!r.ok) throw 0; const j=await r.json();
+    for(const i of j.itens){ const id=i.kit?"kit:"+i.kit:i.id; if(!item(id)) continue; const c=carrinho[id]||{q:0,pers:""}; c.q=Math.min(999,c.q+i.q); if(i.pers) c.pers=i.pers; if(i.ad&&i.ad.length) c.ad=i.ad; carrinho[id]=c }
+    salva(); render(); if(itens().length) abreCarrinho();
+    toast(j.itens.length?`Os itens do pedido #${j.numero} estão no carrinho${j.faltaram?` (${j.faltaram} não está${j.faltaram>1?"ão":""} mais no catálogo)`:""}.`:"Os itens desse pedido não estão mais no catálogo.");
+  }catch(e){ toast("Não deu para refazer esse pedido.") }
+}
+// avaliações escolhidas pela loja
+function avaliacoes(){
+  const l=dados.avaliacoes||[]; $("#avals").hidden=!l.length; if(!l.length) return;
+  const media=l.reduce((s,a)=>s+a.nota,0)/l.length;
+  $("#nAval").textContent=`${media.toFixed(1).replace(".",",")} ★ · ${l.length} ${l.length===1?"avaliação":"avaliações"}`;
+  $("#avalGrid").innerHTML=l.map(a=>`<figure class="avalc"><div class="est">${"★".repeat(a.nota)}<i>${"★".repeat(5-a.nota)}</i></div>${a.texto?`<blockquote>“${esc(a.texto)}”</blockquote>`:""}<figcaption><b>${esc(a.nome)}</b>${a.item?` · ${esc(a.item)}`:""}</figcaption></figure>`).join("");
 }
 const waLoja=()=>{ const n=String(dados?.loja?.whatsapp||"").replace(/\D/g,""); return n?(n.length<=11?"55"+n:n):"" };
 // produto ou kit pelo id do carrinho ("kit:<id>" para kits)

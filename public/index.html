@@ -115,6 +115,7 @@
           <select id="rankCanal" style="width:auto"></select>
         </label>
       </div>
+      <button class="btn" id="btnExport" type="button" title="Preenche a planilha de anunciar em massa da Shopee ou do Mercado Livre">Exportar para Shopee / ML</button>
       <button class="btn" id="btnLinksCat" type="button" title="Um link por linha, para colar no Mercado Livre (Anunciar em massa → links) ou mandar para alguém">Copiar links do catálogo</button>
       <button class="btn primary edit-only" id="btnNovo">+ Novo produto</button>
     </div>
@@ -131,6 +132,7 @@
       </div>
       <div class="row chips" id="pedChips"></div>
       <dialog class="pres pform" id="pedForm"></dialog>
+      <dialog class="pres pform" id="expDlg"></dialog>
       <div class="card stack" id="pedMsgBox" hidden></div>
       <div class="card stack" id="pedArteBox" hidden></div>
       <div id="pedLista"></div>
@@ -166,6 +168,7 @@
   <!-- CLIENTES -->
   <section class="panel" id="p-clientes" hidden>
     <div class="stack">
+      <div class="card stack" id="avalBox" hidden></div>
       <div class="row spread"><input id="cliBusca" type="search" placeholder="Buscar nome ou WhatsApp" style="max-width:320px"><span class="note" id="cliResumo"></span></div>
       <div id="cliLista"></div>
       <p class="note">A lista é montada sozinha a partir dos pedidos e das vendas. O mesmo cliente é reconhecido pelo WhatsApp (ou pelo nome, se não tiver WhatsApp). Quem não compra há mais de 60 dias aparece destacado: é uma boa hora para mandar uma mensagem.</p>
@@ -328,6 +331,11 @@
             <label class="f wide">Descrição no catálogo<input id="f-catdesc" maxlength="400" placeholder="Ex.: Chaveiro com o nome que você quiser, em 2 cores"></label>
             <label class="f">Preço no catálogo<span class="hint">Vazio usa seu preço ou o sugerido</span><div class="unit pre"><span>R$</span><input id="f-catpreco" type="number" min="0" step="0.01"></div></label>
             <label class="f">Peças prontas em estoque<div class="unit"><input id="f-estoque" type="number" min="0" step="1" value="0"><span>un.</span></div></label>
+          </div>
+          <div class="fields">
+            <label class="f">Peso com embalagem<span class="hint" id="f-pesoHint">Para o frete e os marketplaces</span><div class="unit"><input id="f-peso" type="number" min="0" step="1" placeholder="—"><span>g</span></div></label>
+            <label class="f wide">Embalagem (comprimento × largura × altura)<span class="hint">Em cm. Correios aceita no mínimo 16 × 11 × 2</span>
+              <div class="medidas"><div class="unit"><input id="f-embC" type="number" min="0" step="1" placeholder="C" aria-label="Comprimento"><span>cm</span></div><b>×</b><div class="unit"><input id="f-embL" type="number" min="0" step="1" placeholder="L" aria-label="Largura"><span>cm</span></div><b>×</b><div class="unit"><input id="f-embA" type="number" min="0" step="1" placeholder="A" aria-label="Altura"><span>cm</span></div></div></label>
           </div>
           <div class="stack" style="gap:8px">
             <b>Adicionais <span class="pcat" style="font-weight:400">o cliente marca no catálogo e o valor soma no preço. Ex.: cadeira, caixinha</span></b>

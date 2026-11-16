@@ -89,6 +89,14 @@ function pagoHtml(d){
     <a class="pk-btn" href="${esc(d.comprovante)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>Baixar comprovante</a>
   </section>`;
 }
+// avaliação depois da entrega: estrelas + comentário (uma vez por pedido)
+let avalNota=0;
+function avalHtml(d){
+  if(d.avaliacao) return `<div class="aval feito"><b>Obrigado pela avaliação!</b><span class="estrelas">${"★".repeat(d.avaliacao.nota)}<i>${"★".repeat(5-d.avaliacao.nota)}</i></span></div>`;
+  return `<div class="aval" id="aval"><b>Como foi a sua experiência?</b><div class="estrelas sel">${[1,2,3,4,5].map(n=>`<button type="button" data-a="estrela" data-n="${n}" aria-label="${n} estrela${n>1?"s":""}">★</button>`).join("")}</div>
+    <textarea id="avalTxt" rows="3" maxlength="400" placeholder="Conte o que achou da peça (opcional)"></textarea>
+    <div class="acoes"><button class="btn pri" type="button" data-a="avaliar">Enviar avaliação</button><span class="exp" id="avalMsg"></span></div></div>`;
+}
 // retirada ou entrega, com o frete (pedidos do catálogo)
 function entHtml(d){ const e=d.entrega; if(!e) return d.frete>0?`<div class="ent"><span>Frete</span><b>${brl(d.frete)}</b></div>`:"";
   if(e.tipo==="retirada") return `<div class="ent"><span>🏬 Retirar pessoalmente${e.retiradaTxt?`<small>${esc(e.retiradaTxt)}</small>`:""}</span><b>Sem frete</b></div>`;
@@ -174,7 +182,8 @@ async function carrega(){
       <div class="num"><small>Pedido</small><b>#${d.numero}</b><span>${esc(d.cliente)}</span></div>
     </header>
     ${recusado?`<div class="aviso"><b>${et==="recusado"?"Você recusou este orçamento":"Pedido cancelado"}</b><span>Se mudar de ideia ou quiser outra opção, é só chamar a loja.</span></div>`
-    :et==="entregue"?`<div class="aviso ok"><b>Pedido entregue. Obrigado pela compra!</b><span>Volte sempre.</span></div>`:""}
+    :et==="entregue"?`<div class="aviso ok"><b>Pedido entregue. Obrigado pela compra!</b><span>Volte sempre.</span></div>${avalHtml(d)}<a class="btn pri refazer" href="/?refazer=${encodeURIComponent(token)}">🔁 Pedir de novo</a>`:""}
+    ${d.rastreio&&!recusado?`<div class="rastreio"><span>📦 Código de rastreio<b>${esc(d.rastreio)}</b></span><button class="btn" type="button" data-a="rastreio">Copiar e rastrear</button></div>`:""}
     ${recusado?"":`<ol class="passo">${passos.map(([k,t,feito],i)=>{
       const st=i<atual?"feito":i===atual?"agora":"depois";
       return `<li class="${st}"><div class="cab"><span class="n">${i<atual?"✓":i+1}</span><div><b>${esc(t)}</b>${st==="feito"?`<small>${esc(feito)}</small>`:""}</div></div>${st==="agora"?`<div class="corpo">${corpo[k]}</div>`:""}</li>`}).join("")}</ol>`}
@@ -188,6 +197,11 @@ async function carrega(){
 
   $("#ped").onclick=async e=>{
     const x=e.target.closest("[data-a]"); if(!x) return; const a=x.dataset.a;
+    if(a==="rastreio"){ try{ await navigator.clipboard.writeText(d.rastreio) }catch(err){} window.open("https://rastreamento.correios.com.br/app/index.php","_blank","noopener"); toast?.("Código copiado. Cole no site dos Correios."); return }
+    if(a==="estrela"){ avalNota=Number(x.dataset.n); document.querySelectorAll("#aval [data-a=estrela]").forEach(b=>b.classList.toggle("on",Number(b.dataset.n)<=avalNota)); return }
+    if(a==="avaliar"){ const msg=document.getElementById("avalMsg"); if(!avalNota){ msg.textContent="Escolha de 1 a 5 estrelas."; return }
+      x.disabled=true; try{ const r=await fetch("/api/publico/pedido/"+encodeURIComponent(token)+"/avaliacao",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nota:avalNota,texto:document.getElementById("avalTxt").value})});
+        const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.erro||"Não deu para enviar."); carrega() }catch(err){ msg.textContent=err.message; x.disabled=false } return }
     const grupo=x.closest("#resp,#respArte");
     const mostra=et2=>grupo.querySelectorAll("[data-etapa]").forEach(el=>el.hidden=el.dataset.etapa!==et2);
     if(a==="zoom"&&x.closest("#trilho")){ // foto do orçamento: tela cheia que também arrasta entre as fotos
