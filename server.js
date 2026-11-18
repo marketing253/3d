@@ -262,7 +262,7 @@ function limpaProduto(b) {
   // peso com embalagem (g) e medidas da embalagem (cm): vazio fica vazio
   // medidas da peça lidas do arquivo do Bambu Studio (mm)
   p.medidasPeca = p.medidasPeca && typeof p.medidasPeca === "object" ? Object.fromEntries(["x", "y", "z"].map(k => [k, Math.max(0, Math.min(5000, n(p.medidasPeca[k])))])) : undefined;
-  if (p.medidasPeca && !(p.medidasPeca.x > 0)) delete p.medidasPeca;
+  if (p.medidasPeca && !(p.medidasPeca.x > 0 || p.medidasPeca.y > 0 || p.medidasPeca.z > 0)) delete p.medidasPeca;
   for (const k of ["pesoEmb", "embC", "embL", "embA"]) p[k] = p[k] === "" || p[k] == null || !Number.isFinite(Number(p[k])) ? "" : Math.max(0, Math.min(100000, Math.round(Number(p[k]))));
   p.adicionais = (Array.isArray(p.adicionais) ? p.adicionais : []).map(a => ({ nome: txt(a?.nome, 60), preco: Math.max(0, n(a?.preco)) })).filter(a => a.nome).slice(0, 10);
   if (p.linkModelo) { try { const u = new URL(p.linkModelo); p.linkModelo = /^https?:$/.test(u.protocol) ? u.href : ""; } catch { p.linkModelo = ""; } }
@@ -610,6 +610,13 @@ function limpaRolo(b) {
   return { v: { filamento_id: txt(b.filamento_id, 60), cor, peso, restante, preco: n(b.preco), data_compra: DATA_RE.test(b.data_compra || "") ? b.data_compra : null, ativo: b.ativo === false || b.ativo === 0 ? 0 : 1 } };
 }
 const COLS_R = ["filamento_id", "cor", "peso", "restante", "preco", "data_compra", "ativo"];
+// embalagem do produto: a cadastrada ou, se vazia, a peça + 2 cm por lado (mínimo Correios 16 × 11 × 2)
+function embalagemProduto(p) {
+  if (n(p.embC) > 0 && n(p.embL) > 0 && n(p.embA) > 0) return { c: n(p.embC), l: n(p.embL), a: n(p.embA) };
+  const m = p.medidasPeca; if (!(m?.x > 0)) return { c: n(p.embC) || 0, l: n(p.embL) || 0, a: n(p.embA) || 0 };
+  const d = [m.x, m.y, m.z].map(v => Math.ceil(n(v) / 10 + 2)).sort((a, b) => b - a);
+  return { c: Math.max(16, d[0]), l: Math.max(11, d[1]), a: Math.max(2, d[2]) };
+}
 // ---------- exportar para Shopee / Mercado Livre: preenche o modelo que o vendedor baixou no marketplace ----------
 const uploadPlanilha = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }).single("arquivo");
 const recebePlanilha = (req, res, fn) => uploadPlanilha(req, res, err => {
@@ -632,7 +639,7 @@ app.post("/api/exportar/gera", exigeLogin, (req, res) => recebePlanilha(req, res
       preco: n(n(p.precoCatalogo) * (1 + pct / 100)), estoque: Math.max(1, Number(p.estoque) || 10),
       fotos: [x.foto, ...(p.fotosExtra || [])].filter(f => f && FOTO_RE.test(f)).slice(0, 9).map(f => origem + "/fotos-publicas/" + f),
       pesoKg: pesoG ? Math.round(pesoG) / 1000 : 0,
-      peca: p.medidasPeca?.x > 0 ? ["x", "y", "z"].map(k => Math.round(n(p.medidasPeca[k])) / 10) : null, c: n(p.embC) || 0, l: n(p.embL) || 0, a: n(p.embA) || 0, marca: txt(L.nome, 60) || "8ON", prazo });
+      peca: p.medidasPeca?.x > 0 ? ["x", "y", "z"].map(k => Math.round(n(p.medidasPeca[k])) / 10) : null, ...embalagemProduto(p), marca: txt(L.nome, 60) || "8ON", prazo });
   }
   if (!lista.length) return res.status(400).json({ erro: "Escolha pelo menos um produto do catálogo." });
   const nome = String(req.file.originalname || "planilha.xlsx").replace(/\.xlsx$/i, "").replace(/[^\w.-]+/g, "_").slice(0, 80) + "-preenchido.xlsx";

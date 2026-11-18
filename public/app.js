@@ -301,6 +301,7 @@ function startForm(p){
   $("#f-link").value=draft.linkModelo||"";
   $("#f-catshow").checked=!!draft.catalogo; $("#f-pers").checked=!!draft.personalizavel;
   $("#f-catdesc").value=draft.descricaoCatalogo||""; $("#f-catpreco").value=draft.precoCatalogo??""; $("#f-estoque").value=draft.estoque||0;
+  { const m=draft.medidasPeca||{}, cm=v=>num(v)>0?+(num(v)/10).toFixed(1):""; $("#f-pecaC").value=cm(m.x); $("#f-pecaL").value=cm(m.y); $("#f-pecaA").value=cm(m.z) }
   $("#f-peso").value=draft.pesoEmb??""; $("#f-embC").value=draft.embC??""; $("#f-embL").value=draft.embL??""; $("#f-embA").value=draft.embA??"";
   draft.adicionais=(draft.adicionais||[]).map(a=>({...a})); renderAdic();
   fotoOriginal=editingId?(draft.fotoId||null):null;
@@ -333,6 +334,7 @@ function readForm(){
   draft.catalogo=$("#f-catshow").checked; draft.personalizavel=$("#f-pers").checked;
   draft.descricaoCatalogo=$("#f-catdesc").value.trim(); draft.precoCatalogo=$("#f-catpreco").value===""?"":num($("#f-catpreco").value);
   draft.estoque=Math.max(0,Math.round(num($("#f-estoque").value)));
+  { const mm=id=>Math.max(0,Math.round(num($(id).value)*10)); const x=mm("#f-pecaC"),y=mm("#f-pecaL"),z=mm("#f-pecaA"); if(x>0||y>0||z>0) draft.medidasPeca={x,y,z}; else delete draft.medidasPeca }
   for(const [k,id] of [["pesoEmb","#f-peso"],["embC","#f-embC"],["embL","#f-embL"],["embA","#f-embA"]]){ const v=$(id).value; draft[k]=v===""?"":Math.max(0,Math.round(num(v))) }
   draft.adicionais=[...document.querySelectorAll("#adLista [data-ai]")].map(el=>{ const pr=el.querySelector('[data-ak="preco"]').value; return {nome:el.querySelector('[data-ak="nome"]').value.trim(),preco:pr===""?"":num(pr)} });
   draft.linkModelo=$("#f-link").value.trim();
@@ -376,7 +378,9 @@ $("#form").addEventListener("submit",async e=>{
 // sugestão de peso: filamento de uma peça + ~40 g de embalagem
 function pesoSugerido(p){ const r=calc(p); return r.gramasUnid>0?Math.round(r.gramasUnid+40):0 }
 function renderFicha(){
-  if(draft&&$("#f-embHint")) $("#f-embHint").textContent=draft.medidasPeca?.x>0?`Em cm. Peça: ${medTxt(draft.medidasPeca)} (do arquivo). Mínimo Correios 16 × 11 × 2`:"Em cm. Correios aceita no mínimo 16 × 11 × 2";
+  if(draft&&$("#f-embHint")){ const emb=draft.medidasPeca?.x>0?embalagemDe(draft.medidasPeca):null;
+    $("#f-embC").placeholder=emb?String(emb.c):"C"; $("#f-embL").placeholder=emb?String(emb.l):"L"; $("#f-embA").placeholder=emb?String(emb.a):"A";
+    $("#f-embHint").textContent=emb?`Em cm. Vazio usa ${emb.c} × ${emb.l} × ${emb.a} (peça + 2 cm por lado). Mínimo Correios 16 × 11 × 2`:"Em cm. Correios aceita no mínimo 16 × 11 × 2" }
   if(draft&&$("#f-peso")){ const s=pesoSugerido(draft); $("#f-peso").placeholder=s?String(s):"—"; $("#f-pesoHint").textContent=s?`Vazio usa ${s} g (peça + embalagem)`:"Para o frete e os marketplaces" }
   if(!draft) return;
   const r=calc(draft);
@@ -2431,7 +2435,7 @@ $("#f-fatiado").addEventListener("change",async e=>{
     if(x.horas||x.minutos){draft.horas=x.horas;draft.minutos=x.minutos;$("#f-h").value=x.horas;$("#f-m").value=x.minutos}
     if(!draft.nome&&x.nome){draft.nome=x.nome;$("#f-nome").value=x.nome}
     let medMsg="";
-    if(x.medidas){ draft.medidasPeca=x.medidas; const emb=embalagemDe(x.medidas);
+    if(x.medidas){ draft.medidasPeca=x.medidas; $("#f-pecaC").value=+(x.medidas.x/10).toFixed(1); $("#f-pecaL").value=+(x.medidas.y/10).toFixed(1); $("#f-pecaA").value=+(x.medidas.z/10).toFixed(1); const emb=embalagemDe(x.medidas);
       if(emb&&!draft.embC&&!draft.embL&&!draft.embA){ draft.embC=emb.c; draft.embL=emb.l; draft.embA=emb.a; $("#f-embC").value=emb.c; $("#f-embL").value=emb.l; $("#f-embA").value=emb.a; medMsg=` Embalagem sugerida: ${emb.c} × ${emb.l} × ${emb.a} cm.` }
       else if(emb) medMsg=` Sugestão de embalagem: ${emb.c} × ${emb.l} × ${emb.a} cm (mantive a que você já tinha).` }
     renderFilLines(); renderFicha();
