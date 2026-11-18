@@ -376,6 +376,7 @@ $("#form").addEventListener("submit",async e=>{
 // sugestão de peso: filamento de uma peça + ~40 g de embalagem
 function pesoSugerido(p){ const r=calc(p); return r.gramasUnid>0?Math.round(r.gramasUnid+40):0 }
 function renderFicha(){
+  if(draft&&$("#f-embHint")) $("#f-embHint").textContent=draft.medidasPeca?.x>0?`Em cm. Peça: ${medTxt(draft.medidasPeca)} (do arquivo). Mínimo Correios 16 × 11 × 2`:"Em cm. Correios aceita no mínimo 16 × 11 × 2";
   if(draft&&$("#f-peso")){ const s=pesoSugerido(draft); $("#f-peso").placeholder=s?String(s):"—"; $("#f-pesoHint").textContent=s?`Vazio usa ${s} g (peça + embalagem)`:"Para o frete e os marketplaces" }
   if(!draft) return;
   const r=calc(draft);
@@ -2360,7 +2361,12 @@ function filPorTipo(tipo){
   const f=cfg.filamentos.find(x=>semAc(x.nome).includes(t))||cfg.filamentos.find(x=>semAc(x.nome).includes(base));
   return (f||cfg.filamentos[0])?.id||"";
 }
+const cmTxt=mm=>(Math.round(mm/1)/10).toLocaleString("pt-BR",{maximumFractionDigits:1});
+const medTxt=m=>m?[m.x,m.y,m.z].filter(v=>v>0).map(cmTxt).join(" × ")+" cm":"";
+// embalagem a partir da peça: +2 cm em cada lado, maior medida no comprimento, mínimo dos Correios 16 × 11 × 2
+function embalagemDe(m){ if(!m) return null; const d=[m.x,m.y,m.z].map(v=>Math.ceil((num(v)/10)+2)).sort((a,b)=>b-a); return {c:Math.max(16,d[0]),l:Math.max(11,d[1]),a:Math.max(2,d[2])} }
 function resumoFatiado(r){
+  if(r.soMedidas) return `medidas da peça ${medTxt(r.medidas)} (o arquivo não tem tempo nem peso; para isso, envie o fatiado)`;
   const h=r.segundos/3600;
   return `${h>0?fmtH(h)+" de impressão":"sem tempo no arquivo"} · ${r.filamentos.map(f=>`${(+f.g).toLocaleString("pt-BR",{maximumFractionDigits:1})} g ${esc(f.tipo||"filamento")}${f.cor?` <span class="swatch" style="background:${/^#[0-9a-f]{3,8}$/i.test(f.cor)?f.cor:"transparent"}"></span>`:""}`).join(" + ")}${r.placas>1?` · ${r.placas} placas somadas`:""}`;
 }
@@ -2371,7 +2377,7 @@ async function importaFatiado(file){
   const nome=file.name.replace(/\.gcode\.3mf$|\.3mf$|\.gcode$/i,"").replace(/[_]+/g," ").trim();
   const filamentos=r.filamentos.map(f=>({filId:filPorTipo(f.tipo),gramas:+(+f.g).toFixed(1)}));
   const seg=Math.max(0,r.segundos);
-  return {r,nome,filamentos,horas:Math.floor(seg/3600),minutos:Math.round((seg%3600)/60)};
+  return {r,nome,filamentos,horas:Math.floor(seg/3600),minutos:Math.round((seg%3600)/60),medidas:r.medidas&&r.medidas.x>0?r.medidas:null};
 }
 $("#f-fatiado").addEventListener("change",async e=>{
   const f=e.target.files[0]; e.target.value=""; if(!f||!draft) return;
@@ -2381,8 +2387,13 @@ $("#f-fatiado").addEventListener("change",async e=>{
     if(x.filamentos.length) draft.filamentos=x.filamentos;
     if(x.horas||x.minutos){draft.horas=x.horas;draft.minutos=x.minutos;$("#f-h").value=x.horas;$("#f-m").value=x.minutos}
     if(!draft.nome&&x.nome){draft.nome=x.nome;$("#f-nome").value=x.nome}
+    let medMsg="";
+    if(x.medidas){ draft.medidasPeca=x.medidas; const emb=embalagemDe(x.medidas);
+      if(emb&&!draft.embC&&!draft.embL&&!draft.embA){ draft.embC=emb.c; draft.embL=emb.l; draft.embA=emb.a; $("#f-embC").value=emb.c; $("#f-embL").value=emb.l; $("#f-embA").value=emb.a; medMsg=` Embalagem sugerida: ${emb.c} × ${emb.l} × ${emb.a} cm.` }
+      else if(emb) medMsg=` Sugestão de embalagem: ${emb.c} × ${emb.l} × ${emb.a} cm (mantive a que você já tinha).` }
     renderFilLines(); renderFicha();
-    m.innerHTML=`<b>Importado:</b> ${resumoFatiado(x.r)}. Confira o filamento de cada linha e quantas peças saem por impressão.`;
+    m.innerHTML=x.r.soMedidas?`<b>Medidas da peça:</b> ${medTxt(x.medidas)}.${medMsg} Para o tempo e o peso, envie também o arquivo fatiado.`
+      :`<b>Importado:</b> ${resumoFatiado(x.r)}${x.medidas?` · peça ${medTxt(x.medidas)}`:""}.${medMsg} Confira o filamento de cada linha e quantas peças saem por impressão.`;
   }catch(err){ m.textContent=err.message }
 });
 
@@ -3000,6 +3011,6 @@ document.addEventListener("toggle",e=>{
 document.addEventListener("click",e=>{ if(!e.target.closest("details.mais")) document.querySelectorAll("details.mais[open]").forEach(x=>x.removeAttribute("open")) });
 window.addEventListener("scroll",()=>document.querySelectorAll("details.mais[open]").forEach(x=>x.removeAttribute("open")),true);
 
+$("#pedForm").addEventListener("close",()=>{ pedForm=null; $("#pedForm").innerHTML="" }); // Esc também fecha a caixa do pedido
 boot();
 })();
-$("#pedForm").addEventListener("close",()=>{ pedForm=null; $("#pedForm").innerHTML="" }); // Esc também fecha a caixa do pedido

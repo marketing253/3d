@@ -156,7 +156,10 @@ function preenche(buf, produtos) {
         [/^tipo de anuncio/, () => "Clássico"], [/^custo de envio/, () => "Por conta do comprador"], [/^retirar pessoalmente/, () => "Concordo"],
         [/^tipo de garantia/, () => "Garantia do vendedor"], [/^tempo de garantia/, () => 90], [/^unidade de tempo de garantia/, () => "dias"],
         [/^marca$/, p => p.marca], [/^fabricante/, p => p.marca], [/^modelo$/, p => p.titulo.replace(/\s*(impress[aã]o\s*)?3d\s*$/i, "").slice(0, 60)],
-        [/^prazo de disponibilidade/, p => p.prazo]];
+        [/^prazo de disponibilidade/, p => p.prazo],
+        // medidas da peça (sem embalagem), em cm: comprimento = maior, largura, altura
+        [/^comprimento/, p => p.peca ? [...p.peca].sort((a, b) => b - a)[0] : ""], [/^largura/, p => p.peca ? [...p.peca].sort((a, b) => b - a)[1] : ""], [/^altura/, p => p.peca ? p.peca[2] : ""],
+        [/^unidade de (comprimento|largura|altura)/, p => p.peca ? "cm" : ""]];
       for (const p of lista) {
         const v = {};
         for (const [c, cab] of Object.entries(l3)) { const h = sem(cab.val); const m = mapa.find(([re]) => re.test(h)); if (m) { const val = m[1](p); if (val !== "" && val != null) v[c] = val; } }

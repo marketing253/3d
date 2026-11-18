@@ -298,8 +298,8 @@
 
         <div class="card stack">
           <div class="row spread"><h3>Filamento usado (por impressão)</h3><button type="button" class="btn ghost" id="btnAddFil">+ Cor / material</button></div>
-          <div class="importbox"><label class="btn" for="f-fatiado">Importar do Bambu Studio</label><input id="f-fatiado" type="file" accept=".3mf,.gcode" hidden>
-            <span class="note" id="impMsg">Envie o arquivo fatiado (.gcode.3mf ou .gcode) e o peso de cada cor e o tempo são preenchidos sozinhos.</span></div>
+          <div class="importbox"><label class="btn" for="f-fatiado">Importar do Bambu Studio</label><input id="f-fatiado" type="file" accept=".3mf,.gcode,.stl" hidden>
+            <span class="note" id="impMsg">Envie o arquivo fatiado (.gcode.3mf) e o peso de cada cor, o tempo e as medidas da peça são preenchidos sozinhos. Também aceita o projeto .3mf ou o .stl, só para as medidas.</span></div>
           <p class="note" style="margin:0">Ou digite os gramas do Bambu Studio depois de fatiar. Em impressão colorida, use o total de cada cor, que já inclui a purga na troca de cor.</p>
           <div class="stack" id="filLines" style="gap:8px"></div>
         </div>
@@ -334,7 +334,7 @@
           </div>
           <div class="fields">
             <label class="f">Peso com embalagem<span class="hint" id="f-pesoHint">Para o frete e os marketplaces</span><div class="unit"><input id="f-peso" type="number" min="0" step="1" placeholder="—"><span>g</span></div></label>
-            <label class="f wide">Embalagem (comprimento × largura × altura)<span class="hint">Em cm. Correios aceita no mínimo 16 × 11 × 2</span>
+            <label class="f wide">Embalagem (comprimento × largura × altura)<span class="hint" id="f-embHint">Em cm. Correios aceita no mínimo 16 × 11 × 2</span>
               <div class="medidas"><div class="unit"><input id="f-embC" type="number" min="0" step="1" placeholder="C" aria-label="Comprimento"><span>cm</span></div><b>×</b><div class="unit"><input id="f-embL" type="number" min="0" step="1" placeholder="L" aria-label="Largura"><span>cm</span></div><b>×</b><div class="unit"><input id="f-embA" type="number" min="0" step="1" placeholder="A" aria-label="Altura"><span>cm</span></div></div></label>
           </div>
           <div class="stack" style="gap:8px">

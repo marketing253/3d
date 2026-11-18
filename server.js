@@ -260,6 +260,9 @@ function limpaProduto(b) {
   p.fotosExtra = [...new Set((Array.isArray(p.fotosExtra) ? p.fotosExtra : []).filter(f => typeof f === "string" && FOTO_RE.test(f) && f !== p.fotoId))].slice(0, FOTOS_EXTRA_MAX);
   // adicionais que o cliente marca no catálogo (ex.: cadeira, caixinha), até 10
   // peso com embalagem (g) e medidas da embalagem (cm): vazio fica vazio
+  // medidas da peça lidas do arquivo do Bambu Studio (mm)
+  p.medidasPeca = p.medidasPeca && typeof p.medidasPeca === "object" ? Object.fromEntries(["x", "y", "z"].map(k => [k, Math.max(0, Math.min(5000, n(p.medidasPeca[k])))])) : undefined;
+  if (p.medidasPeca && !(p.medidasPeca.x > 0)) delete p.medidasPeca;
   for (const k of ["pesoEmb", "embC", "embL", "embA"]) p[k] = p[k] === "" || p[k] == null || !Number.isFinite(Number(p[k])) ? "" : Math.max(0, Math.min(100000, Math.round(Number(p[k]))));
   p.adicionais = (Array.isArray(p.adicionais) ? p.adicionais : []).map(a => ({ nome: txt(a?.nome, 60), preco: Math.max(0, n(a?.preco)) })).filter(a => a.nome).slice(0, 10);
   if (p.linkModelo) { try { const u = new URL(p.linkModelo); p.linkModelo = /^https?:$/.test(u.protocol) ? u.href : ""; } catch { p.linkModelo = ""; } }
@@ -628,7 +631,8 @@ app.post("/api/exportar/gera", exigeLogin, (req, res) => recebePlanilha(req, res
       descricao: `${p.nome}.\n\n${p.descricaoCatalogo ? txt(p.descricaoCatalogo, 2000) + "\n\n" : ""}${ads}Peça feita em impressão 3D, sob encomenda. Produção em até ${prazo} dias úteis.\nCores e medidas: consulte nas fotos ou pergunte antes de comprar.`,
       preco: n(n(p.precoCatalogo) * (1 + pct / 100)), estoque: Math.max(1, Number(p.estoque) || 10),
       fotos: [x.foto, ...(p.fotosExtra || [])].filter(f => f && FOTO_RE.test(f)).slice(0, 9).map(f => origem + "/fotos-publicas/" + f),
-      pesoKg: pesoG ? Math.round(pesoG) / 1000 : 0, c: n(p.embC) || 0, l: n(p.embL) || 0, a: n(p.embA) || 0, marca: txt(L.nome, 60) || "8ON", prazo });
+      pesoKg: pesoG ? Math.round(pesoG) / 1000 : 0,
+      peca: p.medidasPeca?.x > 0 ? ["x", "y", "z"].map(k => Math.round(n(p.medidasPeca[k])) / 10) : null, c: n(p.embC) || 0, l: n(p.embL) || 0, a: n(p.embA) || 0, marca: txt(L.nome, 60) || "8ON", prazo });
   }
   if (!lista.length) return res.status(400).json({ erro: "Escolha pelo menos um produto do catálogo." });
   const nome = String(req.file.originalname || "planilha.xlsx").replace(/\.xlsx$/i, "").replace(/[^\w.-]+/g, "_").slice(0, 80) + "-preenchido.xlsx";
