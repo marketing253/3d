@@ -136,7 +136,7 @@
     const d = ed, ds = d.design;
     if (aba === "logo") return `<div class="lp-box lp-pn">
       <div class="lp-logo-l"><div class="lp-logoprev f-${d.logoForma} t-${d.logoTam}${d.logoBorda ? " borda" : ""}${d.logoFundo ? " fundo" : ""}">${d.logo ? `<img src="${imgUrl(d.logo)}" alt="" style="object-position:${d.logoX}% ${d.logoY}%;transform:scale(${d.logoZoom / 100});transform-origin:${d.logoX}% ${d.logoY}%">` : "<span>Sem logo</span>"}</div>
-        <div class="lp-row"><label class="lp-bt pri">${svg("foto")} ${d.logo ? "Trocar logo" : "Enviar logo"}<input type="file" id="lkLogoArq" accept="image/*" hidden></label>${d.logo ? `<button class="lp-bt" type="button" data-lk="tiralogo">${svg("lixo")} Tirar</button>` : ""}</div></div>
+        <div class="lp-row"><label class="lp-bt pri">${svg("foto")} ${d.logo ? "Trocar logo" : "Enviar logo"}<input type="file" id="lkLogoArq" accept="image/*" hidden></label>${d.logo ? `<button class="lp-bt" type="button" data-lk="tirafundo">${svg("design")} Tirar fundo</button><button class="lp-bt" type="button" data-lk="tiralogo">${svg("lixo")} Tirar</button>` : ""}</div></div>
       <div class="lp-grupo"><span>Formato</span>${chips("logoForma", d.logoForma, [["redondo", "Redonda"], ["arredondado", "Arredondada"], ["quadrado", "Quadrada"], ["inteira", "Inteira, sem corte"]])}</div>
       <div class="lp-grupo"><span>Tamanho</span>${chips("logoTam", d.logoTam, [["p", "Pequena"], ["m", "Média"], ["g", "Grande"]])}</div>
       ${d.logoForma !== "inteira" ? `<div class="lp-grupo"><span>Enquadrar</span>${faixa("logoZoom", "Zoom", d.logoZoom, 100, 300, "%")}${faixa("logoX", "Mover para os lados", d.logoX, 0, 100)}${faixa("logoY", "Mover para cima/baixo", d.logoY, 0, 100)}</div>
@@ -246,7 +246,7 @@
   pag.addEventListener("change", async e => {
     const t = e.target; if (!ed) return;
     const sobe = async f => { try { return await P().enviaImagem(f); } catch (err) { P().toast(err.message); return null; } };
-    if (t.id === "lkLogoArq" && t.files[0]) { const id = await sobe(t.files[0]); if (id) { ed.logo = id; ed.logoZoom = 100; ed.logoX = 50; ed.logoY = 50; redesenhaAba(); agenda(true); } return; }
+    if (t.id === "lkLogoArq" && t.files[0]) { let id = null; try { id = await P().enviaBlob(await paraPng(t.files[0]), "logo.png"); } catch (err) { P().toast(err.message); } if (id) { ed.logo = id; ed.logoZoom = 100; ed.logoX = 50; ed.logoY = 50; redesenhaAba(); agenda(true); } return; }
     if (t.id === "lkFundoArq" && t.files[0]) { const id = await sobe(t.files[0]); if (id) { ed.design.fundoImagem = id; redesenhaAba(); agenda(true); } return; }
     if (t.id === "lkOgArq" && t.files[0]) { const id = await sobe(t.files[0]); if (id) { ed.ogImagem = id; redesenhaAba(); agenda(true); } return; }
     const box = t.closest(".lp-item"); if (!box) return; const i = ed.itens[+box.dataset.k];
@@ -264,6 +264,8 @@
       try { await P().api("DELETE", "/api/lk/paginas/" + encodeURIComponent(ed.id)); paginas = paginas.filter(x => x.id !== ed.id); ed = null; lista(); P().toast("Página excluída"); } catch (err) { P().toast(err.message); } return; }
     if (a === "grade") { gradeAberta = !gradeAberta; desenhaManter(); return; }
     if (a === "rodape") { ed.rodape = ed.rodape || ""; desenha.rodape = true; desenhaManter(); setTimeout(() => document.querySelector('[data-k="rodape"]')?.focus(), 30); return; }
+    if (a === "tirafundo") { const bl = await tiraFundo(imgUrl(ed.logo)); if (!bl) return;
+      try { ed.logo = await P().enviaBlob(bl, "logo.png"); ed.logoFundo = false; redesenhaAba(); agenda(true); P().toast(ed.logoForma === "inteira" ? "Fundo removido ✓" : "Fundo removido ✓ Dica: o formato \"Inteira, sem corte\" mostra a logo solta, sem círculo."); } catch (err) { P().toast(err.message); } return; }
     if (a === "tiralogo") { ed.logo = ""; redesenhaAba(); agenda(true); return; }
     if (a === "tiraog") { ed.ogImagem = ""; redesenhaAba(); agenda(true); return; }
     if (a === "coresTema") { ed.design.corBotao = ""; ed.design.corTexto = ""; ed.design.corBotao2 = ""; redesenhaAba(); agenda(true); return; }
@@ -302,6 +304,128 @@
   pag.addEventListener("touchstart", e => { const h = e.target.closest(".lp-arr"); if (!h) return; const it = h.closest(".lp-item"); toque = { de: +it.dataset.k }; it.classList.add("arr"); }, { passive: true });
   pag.addEventListener("touchmove", e => { if (!toque) return; e.preventDefault(); const p = e.touches[0], el = document.elementFromPoint(p.clientX, p.clientY)?.closest(".lp-item"); document.querySelectorAll(".lp-item.sobre").forEach(x => x.classList.remove("sobre")); if (el) { el.classList.add("sobre"); toque.para = +el.dataset.k; } }, { passive: false });
   pag.addEventListener("touchend", () => { if (!toque) return; const t = toque; toque = null; document.querySelectorAll(".lp-item.arr,.lp-item.sobre").forEach(x => x.classList.remove("arr", "sobre")); if (t.para != null) move(t.de, t.para); });
+
+  // ================= TIRAR FUNDO DA LOGO =================
+  const carregaImg = src => new Promise((ok, erro) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => erro(new Error("Não deu para abrir a imagem")); im.src = src; });
+  // PNG reduzido que mantém a transparência (o envio normal do painel vira JPG com fundo branco)
+  async function paraPng(arquivo, max = 1200) {
+    const u = URL.createObjectURL(arquivo); let im;
+    try { im = await carregaImg(u); } finally { URL.revokeObjectURL(u); }
+    const k = Math.min(1, max / Math.max(im.width, im.height)), c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(im.width * k)); c.height = Math.max(1, Math.round(im.height * k)); c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+    return new Promise((ok, erro) => c.toBlob(b => b ? ok(b) : erro(new Error("Não deu para converter a imagem")), "image/png"));
+  }
+  const hex = c => "#" + c.map(v => v.toString(16).padStart(2, "0")).join("");
+  function tiraFundo(src) {
+    return new Promise(async fim => {
+      let im; try { im = await carregaImg(src); } catch (e) { P().toast(e.message); return fim(null); }
+      const k = Math.min(1, 1200 / Math.max(im.width, im.height)), W = Math.max(1, Math.round(im.width * k)), H = Math.max(1, Math.round(im.height * k)), N = W * H;
+      const cv0 = document.createElement("canvas"); cv0.width = W; cv0.height = H; const g0 = cv0.getContext("2d", { willReadFrequently: true }); g0.drawImage(im, 0, 0, W, H);
+      const orig = g0.getImageData(0, 0, W, H).data;
+      // cor de fundo mais comum na borda da imagem
+      function corDaBorda() {
+        const cont = new Map(), soma = new Map();
+        const conta = i => { if (orig[i + 3] < 128) return; const r = orig[i], g = orig[i + 1], b = orig[i + 2], ch = (r >> 4) << 8 | (g >> 4) << 4 | b >> 4; cont.set(ch, (cont.get(ch) || 0) + 1); const s = soma.get(ch) || [0, 0, 0]; s[0] += r; s[1] += g; s[2] += b; soma.set(ch, s); };
+        for (let x = 0; x < W; x++) { conta(x * 4); conta(((H - 1) * W + x) * 4); }
+        for (let y = 0; y < H; y++) { conta(y * W * 4); conta((y * W + W - 1) * 4); }
+        let melhor = null, mx = 0; for (const [ch, n] of cont) if (n > mx) { mx = n; melhor = ch; }
+        if (melhor == null) return null; const s = soma.get(melhor); return s.map(v => Math.round(v / mx));
+      }
+      const c0 = corDaBorda();
+      const st = { modo: "bordas", tol: 22, suave: true, cortar: true, cores: c0 ? [c0] : [], pontos: [], antes: false, ver: "xadrez" };
+      const ov = document.createElement("div"); ov.className = "lp-modal"; ov.innerHTML = `<div class="lp-mbox" role="dialog" aria-label="Tirar fundo da logo">
+        <div class="lp-mcab"><b>Tirar fundo da logo</b><button type="button" class="lp-mx" data-tf="cancelar" aria-label="Fechar">✕</button></div>
+        <p class="lp-sub">Já tiramos a cor da borda. Se sobrar fundo (como o miolo de um "O" ou "A"), <b>toque nele na imagem</b>. Sobrou dentro de várias letras? Use "Essa cor na imagem toda".</p>
+        <div class="lp-tfarea xadrez"><canvas></canvas></div>
+        <div class="lp-row lp-tfver"><span class="lp-sub">Ver sobre:</span>${[["xadrez", "Xadrez"], ["escuro", "Escuro"], ["claro", "Claro"]].map(([v, t]) => `<button type="button" class="lp-chip${v === "xadrez" ? " on" : ""}" data-tfver="${v}">${t}</button>`).join("")}<button type="button" class="lp-chip" data-tf="antes">Segure p/ ver o original</button></div>
+        <div class="lp-grupo"><span>O que apagar</span><div class="lp-chips"><button type="button" class="lp-chip on" data-tfm="bordas">Fundo em volta da logo</button><button type="button" class="lp-chip" data-tfm="global">Essa cor na imagem toda</button></div></div>
+        <label class="lp-faixa"><span>Quanto apagar (tolerância)<b>${st.tol}</b></span><input type="range" min="1" max="70" value="${st.tol}" data-tf="tol"></label>
+        <div class="lp-row"><label class="lp-sw"><input type="checkbox" data-tf="suave" checked><i></i> Bordas suaves</label><label class="lp-sw"><input type="checkbox" data-tf="cortar" checked><i></i> Cortar sobras em volta</label></div>
+        <div class="lp-row"><span class="lp-sub">Cores apagadas:</span><span class="lp-tfcores"></span><button type="button" class="lp-link" data-tf="desfaz">Desfazer último toque</button><button type="button" class="lp-link" data-tf="recomeca">Recomeçar</button></div>
+        <div class="lp-row" style="justify-content:flex-end"><button type="button" class="lp-bt" data-tf="cancelar">Cancelar</button><button type="button" class="lp-bt pri" data-tf="usar">Usar esta logo</button></div></div>`;
+      document.body.appendChild(ov);
+      const cv = ov.querySelector("canvas"); cv.width = W; cv.height = H; const g = cv.getContext("2d");
+      let saida = null, caixa = null, quadro = 0;
+      function processa() {
+        const out = new Uint8ClampedArray(orig), dist = new Float32Array(N), cores = st.cores, T = st.tol, T2 = st.suave ? T + Math.max(6, T * 0.7) : T;
+        for (let p = 0, i = 0; p < N; p++, i += 4) {
+          if (orig[i + 3] < 10) { dist[p] = 0; continue; }
+          let m = 1e9; for (const c of cores) { const dr = orig[i] - c[0], dg = orig[i + 1] - c[1], db = orig[i + 2] - c[2]; const d = dr * dr * 0.3 + dg * dg * 0.59 + db * db * 0.11; if (d < m) m = d; }
+          dist[p] = cores.length ? Math.sqrt(m) / 2.55 : 1e9; // 0–100
+        }
+        const fundo = new Uint8Array(N);
+        if (st.modo === "global") { for (let p = 0; p < N; p++) if (dist[p] <= T) fundo[p] = 1; }
+        else {
+          const fila = new Int32Array(N); let a = 0, z = 0;
+          const semente = p => { if (!fundo[p] && dist[p] <= T) { fundo[p] = 1; fila[z++] = p; } };
+          for (let x = 0; x < W; x++) { semente(x); semente((H - 1) * W + x); }
+          for (let y = 0; y < H; y++) { semente(y * W); semente(y * W + W - 1); }
+          for (const p of st.pontos) semente(p);
+          while (a < z) { const p = fila[a++], x = p % W; if (x > 0) semente(p - 1); if (x < W - 1) semente(p + 1); if (p >= W) semente(p - W); if (p < N - W) semente(p + W); }
+        }
+        for (let p = 0; p < N; p++) if (fundo[p]) out[p * 4 + 3] = 0;
+        if (st.suave && cores.length) {
+          // borda suave: pixels perto do fundo e com cor parecida ficam meio transparentes, e tiramos o "halo" da cor de fundo
+          const fila = new Int32Array(N), visto = new Uint8Array(N); let a = 0, z = 0;
+          for (let p = 0; p < N; p++) if (fundo[p]) { const x = p % W; if ((x > 0 && !fundo[p - 1]) || (x < W - 1 && !fundo[p + 1]) || (p >= W && !fundo[p - W]) || (p < N - W && !fundo[p + W])) { visto[p] = 1; fila[z++] = p; } }
+          const c = cores[0];
+          const vizinho = q => { if (visto[q] || fundo[q] || dist[q] >= T2) return; visto[q] = 1; fila[z++] = q;
+            const al = Math.min(1, Math.max(0.04, (dist[q] - T) / (T2 - T))), i = q * 4;
+            for (let k2 = 0; k2 < 3; k2++) out[i + k2] = Math.max(0, Math.min(255, Math.round((orig[i + k2] - c[k2] * (1 - al)) / al)));
+            out[i + 3] = Math.round(orig[i + 3] * al); };
+          while (a < z) { const p = fila[a++], x = p % W; if (x > 0) vizinho(p - 1); if (x < W - 1) vizinho(p + 1); if (p >= W) vizinho(p - W); if (p < N - W) vizinho(p + W); }
+        }
+        saida = out;
+        // área com conteúdo (para cortar as sobras)
+        let x0 = W, y0 = H, x1 = -1, y1 = -1;
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (out[(y * W + x) * 4 + 3] > 12) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        caixa = x1 < 0 ? null : [Math.max(0, x0 - 4), Math.max(0, y0 - 4), Math.min(W - 1, x1 + 4), Math.min(H - 1, y1 + 4)];
+        desenhaTf();
+      }
+      function desenhaTf() {
+        g.clearRect(0, 0, W, H); g.putImageData(new ImageData(st.antes ? new Uint8ClampedArray(orig) : saida, W, H), 0, 0);
+        if (st.cortar && caixa && !st.antes) { g.save(); g.strokeStyle = "rgba(37,99,235,.85)"; g.setLineDash([8, 6]); g.lineWidth = Math.max(2, W / 300); g.strokeRect(caixa[0] + .5, caixa[1] + .5, caixa[2] - caixa[0], caixa[3] - caixa[1]); g.restore(); }
+        ov.querySelector(".lp-tfcores").innerHTML = st.cores.length ? st.cores.map(c => `<i style="background:${hex(c)}" title="${hex(c)}"></i>`).join("") : "nenhuma";
+      }
+      const agendaTf = () => { cancelAnimationFrame(quadro); quadro = requestAnimationFrame(processa); };
+      const fecha = r => { ov.remove(); document.removeEventListener("keydown", tecla); fim(r); };
+      const tecla = e => { if (e.key === "Escape") fecha(null); };
+      document.addEventListener("keydown", tecla);
+      cv.addEventListener("click", e => {
+        const r = cv.getBoundingClientRect(), x = Math.min(W - 1, Math.max(0, Math.floor((e.clientX - r.left) / r.width * W))), y = Math.min(H - 1, Math.max(0, Math.floor((e.clientY - r.top) / r.height * H))), p = y * W + x, i = p * 4;
+        if (orig[i + 3] < 10) return;
+        st.cores.push([orig[i], orig[i + 1], orig[i + 2]]); st.pontos.push(p); agendaTf();
+      });
+      ov.addEventListener("input", e => {
+        const t = e.target.dataset.tf; if (!t) return;
+        if (t === "tol") { st.tol = +e.target.value; e.target.closest(".lp-faixa").querySelector("b").textContent = st.tol; }
+        if (t === "suave") st.suave = e.target.checked; if (t === "cortar") st.cortar = e.target.checked;
+        t === "cortar" ? desenhaTf() : agendaTf();
+      });
+      const antes = v => { if (st.antes !== v) { st.antes = v; desenhaTf(); } };
+      const btAntes = ov.querySelector('[data-tf="antes"]');
+      btAntes.addEventListener("pointerdown", () => antes(true)); for (const ev of ["pointerup", "pointerleave", "pointercancel"]) btAntes.addEventListener(ev, () => antes(false));
+      ov.addEventListener("click", e => {
+        if (e.target === ov) return fecha(null);
+        const b = e.target.closest("[data-tf],[data-tfm],[data-tfver]"); if (!b) return;
+        if (b.dataset.tfver) { ov.querySelector(".lp-tfarea").className = "lp-tfarea " + b.dataset.tfver; ov.querySelectorAll("[data-tfver]").forEach(x => x.classList.toggle("on", x === b)); return; }
+        if (b.dataset.tfm) { st.modo = b.dataset.tfm; ov.querySelectorAll("[data-tfm]").forEach(x => x.classList.toggle("on", x === b)); agendaTf(); return; }
+        const a = b.dataset.tf;
+        if (a === "cancelar") return fecha(null);
+        if (a === "desfaz") { if (st.pontos.length) { st.pontos.pop(); st.cores.pop(); agendaTf(); } return; }
+        if (a === "recomeca") { st.cores = c0 ? [c0] : []; st.pontos = []; agendaTf(); return; }
+        if (a === "usar") {
+          if (!caixa) return P().toast("Apagou tudo. Diminua a tolerância.");
+          const [x0, y0, x1, y1] = st.cortar ? caixa : [0, 0, W - 1, H - 1], c = document.createElement("canvas"); c.width = x1 - x0 + 1; c.height = y1 - y0 + 1;
+          const t = document.createElement("canvas"); t.width = W; t.height = H; t.getContext("2d").putImageData(new ImageData(saida, W, H), 0, 0);
+          c.getContext("2d").drawImage(t, x0, y0, c.width, c.height, 0, 0, c.width, c.height);
+          b.disabled = true; b.textContent = "Salvando…";
+          c.toBlob(bl => fecha(bl), "image/png");
+        }
+      });
+      processa();
+    });
+  }
 
   // ================= QR CODES DINÂMICOS =================
   async function carregaQrs() { qrs = await P().api("GET", "/api/lk/qr"); }

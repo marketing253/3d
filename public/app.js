@@ -2629,6 +2629,8 @@ $("#pedArteBox").addEventListener("click",async e=>{
 
 /* ---------- proposta comercial em PDF ---------- */
 let prop=null; // {pedidoId, d}
+/* envia sem converter para JPG (mantém a transparência de PNG) */
+async function enviaBlob(blob,nome){ const fd=new FormData(); fd.append("foto",blob,nome||"imagem.png"); return (await api("POST","/api/fotos",fd)).id }
 async function enviaImagem(file){ const blob=await shrink(file); const fd=new FormData(); fd.append("foto",blob,"foto.jpg"); return (await api("POST","/api/fotos",fd)).id }
 function diasUteisTxt(horas){ const cap=impLista().reduce((s,i)=>s+impHorasDia(i),0)||16; const d=Math.max(1,Math.ceil(horas/cap))+1; return `${d} ${d===1?"dia útil":"dias úteis"}` }
 /* preço terminado em ,90, nunca abaixo do piso (custo + 25%) */
@@ -3063,6 +3065,6 @@ window.addEventListener("scroll",()=>document.querySelectorAll("details.mais[ope
 
 $("#pedForm").addEventListener("close",()=>{ pedForm=null; $("#pedForm").innerHTML="" }); // Esc também fecha a caixa do pedido
 // ferramentas do painel usadas pela área Links (links-painel.js), que fica em arquivo separado
-window.painel={api,toast,esc,brl,enviaImagem,podeEditar,abreTab:t=>setTab(t)};
+window.painel={api,toast,esc,brl,enviaImagem,enviaBlob,podeEditar,abreTab:t=>setTab(t)};
 boot();
 })();

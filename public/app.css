@@ -902,3 +902,14 @@ main,.main,.content{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
 .lp-qr-b .lp-sub{display:flex;align-items:center;gap:5px}.lp-qr-b .lp-sub svg{width:14px;height:14px}.lp-qr-b .lp-row{margin-top:6px;gap:6px}.lp-qr-b .lp-bt{padding:7px 11px;font-size:13px}
 .lp-pend{color:#b45309;font-weight:600;font-size:13px}
 @media (max-width:560px){.lp-qr{flex-direction:column}.lp-quatro .lp-bt{font-size:12px}}
+
+/* ferramenta tirar fundo */
+.lp-modal{position:fixed;inset:0;z-index:200;background:rgba(10,12,16,.6);display:grid;place-items:center;padding:16px;backdrop-filter:blur(3px)}
+.lp-mbox{width:min(620px,100%);max-height:calc(100vh - 32px);overflow:auto;background:var(--surface);color:var(--ink);border-radius:22px;padding:18px;display:flex;flex-direction:column;gap:12px;box-shadow:0 30px 80px -20px rgba(0,0,0,.6)}
+.lp-mcab{display:flex;justify-content:space-between;align-items:center}.lp-mcab b{font-size:18px}
+.lp-mx{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer;font-size:15px}
+.lp-tfarea{border-radius:16px;border:1px solid var(--line);padding:14px;display:grid;place-items:center;min-height:200px}
+.lp-tfarea canvas{max-width:100%;max-height:46vh;cursor:crosshair;display:block}
+.lp-tfarea.xadrez{background:repeating-conic-gradient(#e5e7eb 0 25%,#fff 0 50%) 0 0/18px 18px}.lp-tfarea.escuro{background:#111827}.lp-tfarea.claro{background:#fff}
+.lp-tfver{gap:6px}.lp-tfver .lp-chip{padding:6px 11px;font-size:12.5px}[data-tf="antes"]{user-select:none;touch-action:none}
+.lp-tfcores{display:inline-flex;gap:4px;align-items:center;font-size:13px;color:var(--muted)}.lp-tfcores i{width:20px;height:20px;border-radius:6px;border:1px solid var(--line);display:block}
