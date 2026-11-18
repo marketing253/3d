@@ -913,3 +913,16 @@ main,.main,.content{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
 .lp-tfarea.xadrez{background:repeating-conic-gradient(#e5e7eb 0 25%,#fff 0 50%) 0 0/18px 18px}.lp-tfarea.escuro{background:#111827}.lp-tfarea.claro{background:#fff}
 .lp-tfver{gap:6px}.lp-tfver .lp-chip{padding:6px 11px;font-size:12.5px}[data-tf="antes"]{user-select:none;touch-action:none}
 .lp-tfcores{display:inline-flex;gap:4px;align-items:center;font-size:13px;color:var(--muted)}.lp-tfcores i{width:20px;height:20px;border-radius:6px;border:1px solid var(--line);display:block}
+
+/* Links: horário, contatos, modelos, QR com visual */
+.lp-hor{gap:6px}.lp-hdia{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--line)}.lp-hdia .lp-sw{min-width:130px}.lp-hdia.off b{opacity:.6}
+.lp-hh{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;color:var(--muted)}.lp-hh input{border:1px solid var(--line);border-radius:8px;padding:5px 6px;font:14px var(--body,inherit);background:var(--surface);color:var(--ink)}
+.lp-bolha{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;border-radius:99px;background:#dc2626;color:#fff;font:700 11.5px var(--body,inherit);vertical-align:middle}
+.lp-ct{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--line)}.lp-ct>div:first-child{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.lp-ct p{margin:4px 0 0;font-size:14px;white-space:pre-line}.lp-ct.novo b::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc2626;margin-right:6px;vertical-align:middle}
+.lp-mods{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.lp-mod{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:12px;cursor:pointer;color:var(--ink);font:inherit}
+.lp-mod svg{width:22px;height:22px;color:var(--accent)}.lp-mod b{font-size:14px}.lp-mod small{color:var(--muted);font-size:12px;line-height:1.3}.lp-mod.on{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.lp-qrvis{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}.lp-qrvis>img{width:170px;height:170px;border-radius:14px;border:1px solid var(--line);background:#fff}
+.lp-chip input[type=file]{display:none}
+.lp-hh input[type=time]{width:auto!important;min-width:0;flex:none;display:inline-block;margin:0;height:auto}

@@ -12,14 +12,20 @@ const TEMAS = {
 };
 const FONTES = { inter: ["Inter", "Inter:wght@400;600;700;800"], poppins: ["Poppins", "Poppins:wght@400;600;700"], montserrat: ["Montserrat", "Montserrat:wght@400;600;700;800"],
   nunito: ["Nunito", "Nunito:wght@400;700;800"], playfair: ["Playfair Display", "Playfair+Display:wght@500;700"], sistema: ["system-ui", null] };
-const TIPOS = ["link", "whatsapp", "instagram", "tiktok", "facebook", "youtube", "email", "telefone", "localizacao", "avaliacao", "pdf", "pix", "wifi", "contato", "texto", "produto", "imagem", "galeria", "espacador", "titulo"];
+const TIPOS = ["link", "whatsapp", "instagram", "tiktok", "facebook", "youtube", "email", "telefone", "localizacao", "avaliacao", "pdf", "pix", "wifi", "contato", "texto", "produto", "imagem", "galeria", "espacador", "titulo",
+  "horario", "video", "mapa", "formulario", "catalogo"];
+const MODELOS = require("./public/lk-modelos.js");
+const express = require("express");
+const fs = require("fs");
 const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?$/;
 const RESERVADOS = new Set(["admin", "api", "novo", "nova", "editar", "q", "l", "p"]);
 
-module.exports = function instalar({ app, db, exigeLogin, exigeEdicao, rateLimit, QRCode, FOTOS_DIR, FOTO_RE, pixPayload, origemUrl, path, lojaConfig }) {
+module.exports = function instalar({ app, db, exigeLogin, exigeEdicao, rateLimit, QRCode, FOTOS_DIR, FOTO_RE, pixPayload, origemUrl, path, lojaConfig, produtosPublicos, linkProduto }) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS lk_paginas (id TEXT PRIMARY KEY, slug TEXT UNIQUE NOT NULL, dados TEXT NOT NULL, criado_em TEXT NOT NULL DEFAULT (datetime('now')), atualizado_em TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE IF NOT EXISTS lk_qr (id TEXT PRIMARY KEY, codigo TEXT UNIQUE NOT NULL, dados TEXT NOT NULL, criado_em TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS lk_contatos (id TEXT PRIMARY KEY, pagina_id TEXT NOT NULL, item TEXT NOT NULL DEFAULT '', dados TEXT NOT NULL, lido INTEGER NOT NULL DEFAULT 0, criado_em TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS lk_meta (chave TEXT PRIMARY KEY, valor TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS lk_eventos (ref TEXT NOT NULL, item TEXT NOT NULL DEFAULT '', dia TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (ref, item, dia));
   `);
   const txt = (v, max = 200) => String(v ?? "").trim().slice(0, max);
@@ -51,13 +57,22 @@ module.exports = function instalar({ app, db, exigeLogin, exigeEdicao, rateLimit
     if (tipo === "localizacao") { o.url = urlOk(i.url); t("endereco", 200); }
     if (tipo === "avaliacao") { t("nomeLocal", 80); t("endereco", 200); }
     if (tipo === "pix") { t("chave", 77); o.tipoChave = um(i.tipoChave, ["auto", "cpf", "cnpj", "email", "telefone", "aleatoria"], "auto"); t("nome", 25); t("cidade", 15); }
-    if (tipo === "wifi") { t("rede", 32); t("senha", 63); o.seguranca = um(i.seguranca, ["WPA", "WEP", "nopass"], "WPA"); }
+    if (tipo === "wifi") { t("rede", 32); t("senha", 63); o.seguranca = um(i.seguranca, ["WPA", "WEP", "nopass"], "WPA"); o.ocultarSenha = !!i.ocultarSenha; }
     if (tipo === "contato") { t("nome", 80); t("telefone", 25); t("email", 120); t("empresa", 80); t("cargo", 60); o.site = urlOk(i.site); }
     if (tipo === "texto") t("texto", 1500);
     if (tipo === "produto") { o.preco = Math.max(0, Math.round(num(i.preco) * 100) / 100); o.foto = foto(i.foto); o.url = urlOk(i.url); t("descricao", 200); }
     if (tipo === "imagem") { o.foto = foto(i.foto); o.url = urlOk(i.url); }
     if (tipo === "galeria") o.fotos = (Array.isArray(i.fotos) ? i.fotos : []).map(foto).filter(Boolean).slice(0, 12);
     if (tipo === "espacador") o.altura = faixa(i.altura, 4, 120, 24);
+    if (tipo === "horario") {
+      const h = v => (/^([01]\d|2[0-3]):[0-5]\d$/.test(v || "") ? v : "");
+      o.dias = [0, 1, 2, 3, 4, 5, 6].map(k => { const x = (Array.isArray(i.dias) && i.dias[k]) || {}; return { aberto: !!x.aberto, abre: h(x.abre) || "08:00", fecha: h(x.fecha) || "18:00", abre2: h(x.abre2), fecha2: h(x.fecha2) }; });
+      t("obs", 160);
+    }
+    if (tipo === "video") o.url = urlOk(i.url);
+    if (tipo === "mapa") { t("endereco", 200); o.altura = faixa(i.altura, 160, 480, 240); }
+    if (tipo === "formulario") { o.pedeEmail = !!i.pedeEmail; o.pedeMensagem = i.pedeMensagem !== false; t("descricao", 200); t("textoBotao", 40); t("textoOk", 200); }
+    if (tipo === "catalogo") { t("categoria", 60); o.limite = faixa(i.limite, 1, 24, 6); o.estilo = um(i.estilo, ["grade", "lista"], "grade"); }
     return o;
   }
   function limpaPagina(b) {
@@ -75,6 +90,10 @@ module.exports = function instalar({ app, db, exigeLogin, exigeEdicao, rateLimit
         pixCor: cor(ds.pixCor), pixTexto: cor(ds.pixTexto),
       },
       rodape: txt(d.rodape, 300), compartilhar: d.compartilhar !== false,
+      metaPixel: /^\d{5,20}$/.test(String(d.metaPixel || "").trim()) ? String(d.metaPixel).trim() : "",
+      ga4: /^G-[A-Z0-9]{4,16}$/i.test(String(d.ga4 || "").trim()) ? String(d.ga4).trim().toUpperCase() : "",
+      relatorioEmail: /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(txt(d.relatorioEmail, 120)) ? txt(d.relatorioEmail, 120) : "",
+      relToken: /^[a-f0-9]{32}$/.test(d.relToken || "") ? d.relToken : "", origem: um(d.origem, ["", "ativacao", "multlinks"], ""),
       itens: (Array.isArray(d.itens) ? d.itens : []).slice(0, 60).map(limpaItem).filter(Boolean),
     };
   }
@@ -87,7 +106,24 @@ module.exports = function instalar({ app, db, exigeLogin, exigeEdicao, rateLimit
     const sempre = db.prepare("SELECT COALESCE(SUM(n), 0) t FROM lk_eventos WHERE ref = ? AND item = ''").get(ref).t;
     return { total, sempre, porItem, porDia };
   };
-  const linhaPag = r => ({ id: r.id, slug: r.slug, ...limpaPagina(JSON.parse(r.dados)), atualizadoEm: r.atualizado_em, acessos30: metr("p:" + r.id).total });
+  const metrPeriodo = (ref, ini, fim) => { // ini/fim: AAAA-MM-DD (inclusive)
+    const rows = db.prepare("SELECT item, dia, n FROM lk_eventos WHERE ref = ? AND dia >= ? AND dia <= ?").all(ref, ini, fim);
+    const porItem = {}, porDia = {}; let total = 0;
+    for (const r of rows) { if (r.item) porItem[r.item] = (porItem[r.item] || 0) + r.n; else { porDia[r.dia] = r.n; total += r.n; } }
+    return { total, porItem, porDia };
+  };
+  const contatosNovos = id => db.prepare("SELECT COUNT(*) n FROM lk_contatos WHERE pagina_id = ? AND lido = 0").get(id).n;
+  const linhaPag = r => ({ id: r.id, slug: r.slug, ...limpaPagina(JSON.parse(r.dados)), atualizadoEm: r.atualizado_em, acessos30: metr("p:" + r.id).total, contatosNovos: contatosNovos(r.id) });
+  const novoToken = () => crypto.randomBytes(16).toString("hex");
+  // cria a página (usado pelo painel, pela ativação do cliente e pela importação)
+  function criaPagina(dados, slugPedido) {
+    const d = limpaPagina(dados); d.relToken = novoToken(); let s = slugDe(slugPedido || d.titulo) || "pagina";
+    if (RESERVADOS.has(s) || !SLUG_RE.test(s)) s = (s.slice(0, 46) || "pagina") + "-1";
+    let k = 1; const base = s; while (db.prepare("SELECT 1 FROM lk_paginas WHERE slug = ?").get(s)) s = `${base}-${++k}`;
+    const id = crypto.randomUUID();
+    db.prepare("INSERT INTO lk_paginas (id, slug, dados) VALUES (?, ?, ?)").run(id, s, JSON.stringify(d));
+    return db.prepare("SELECT * FROM lk_paginas WHERE id = ?").get(id);
+  }
 
   // ---------- painel: páginas ----------
   app.get("/api/lk/paginas", exigeLogin, (req, res) => res.json(db.prepare("SELECT * FROM lk_paginas ORDER BY atualizado_em DESC").all().map(linhaPag)));
@@ -96,14 +132,7 @@ module.exports = function instalar({ app, db, exigeLogin, exigeEdicao, rateLimit
     const s = slugDe(req.query.s), r = s && db.prepare("SELECT id FROM lk_paginas WHERE slug = ?").get(s);
     res.json({ slug: s, livre: !!s && SLUG_RE.test(s) && !RESERVADOS.has(s) && (!r || r.id === req.query.id) });
   });
-  app.post("/api/lk/paginas", exigeLogin, exigeEdicao, (req, res) => {
-    const d = limpaPagina(req.body); let s = slugDe(req.body?.slug || d.titulo) || "pagina";
-    if (RESERVADOS.has(s)) s += "-1";
-    let k = 1; const base = s; while (db.prepare("SELECT 1 FROM lk_paginas WHERE slug = ?").get(s)) s = `${base}-${++k}`;
-    const id = crypto.randomUUID();
-    db.prepare("INSERT INTO lk_paginas (id, slug, dados) VALUES (?, ?, ?)").run(id, s, JSON.stringify(d));
-    res.json(linhaPag(db.prepare("SELECT * FROM lk_paginas WHERE id = ?").get(id)));
-  });
+  app.post("/api/lk/paginas", exigeLogin, exigeEdicao, (req, res) => res.json(linhaPag(criaPagina(req.body, req.body?.slug))));
   app.put("/api/lk/paginas/:id", exigeLogin, exigeEdicao, (req, res) => {
     const r = db.prepare("SELECT * FROM lk_paginas WHERE id = ?").get(req.params.id); if (!r) return res.status(404).json({ erro: "Página não encontrada." });
     let slug = r.slug;
@@ -112,21 +141,40 @@ module.exports = function instalar({ app, db, exigeLogin, exigeEdicao, rateLimit
       if (!SLUG_RE.test(slug) || RESERVADOS.has(slug)) return res.status(400).json({ erro: "Endereço inválido. Use letras, números e hífen." });
       if (db.prepare("SELECT 1 FROM lk_paginas WHERE slug = ? AND id != ?").get(slug, r.id)) return res.status(409).json({ erro: "Esse endereço já está em uso." });
     }
-    db.prepare("UPDATE lk_paginas SET slug = ?, dados = ?, atualizado_em = datetime('now') WHERE id = ?").run(slug, JSON.stringify(limpaPagina(req.body)), r.id);
+    const velho = JSON.parse(r.dados), novo = limpaPagina(req.body);
+    novo.relToken = /^[a-f0-9]{32}$/.test(velho.relToken || "") ? velho.relToken : novoToken(); novo.origem = velho.origem || "";
+    db.prepare("UPDATE lk_paginas SET slug = ?, dados = ?, atualizado_em = datetime('now') WHERE id = ?").run(slug, JSON.stringify(novo), r.id);
     res.json(linhaPag(db.prepare("SELECT * FROM lk_paginas WHERE id = ?").get(r.id)));
   });
   app.delete("/api/lk/paginas/:id", exigeLogin, exigeEdicao, (req, res) => {
     db.prepare("DELETE FROM lk_paginas WHERE id = ?").run(req.params.id);
     db.prepare("DELETE FROM lk_eventos WHERE ref = ?").run("p:" + req.params.id);
+    db.prepare("DELETE FROM lk_contatos WHERE pagina_id = ?").run(req.params.id);
     res.json({ ok: true });
   });
+
+  // ---------- painel: contatos do formulário ----------
+  const linhaContato = r => ({ id: r.id, paginaId: r.pagina_id, item: r.item, lido: !!r.lido, criadoEm: r.criado_em, ...JSON.parse(r.dados) });
+  app.get("/api/lk/contatos", exigeLogin, (req, res) => res.json(db.prepare("SELECT * FROM lk_contatos WHERE pagina_id = ? ORDER BY criado_em DESC LIMIT 500").all(txt(req.query.pagina, 60)).map(linhaContato)));
+  app.put("/api/lk/contatos/:id", exigeLogin, exigeEdicao, (req, res) => { db.prepare("UPDATE lk_contatos SET lido = ? WHERE id = ?").run(req.body?.lido === false ? 0 : 1, req.params.id); res.json({ ok: true }); });
+  app.delete("/api/lk/contatos/:id", exigeLogin, exigeEdicao, (req, res) => { db.prepare("DELETE FROM lk_contatos WHERE id = ?").run(req.params.id); res.json({ ok: true }); });
+  app.get("/api/lk/contatos.csv", exigeLogin, (req, res) => {
+    const c = v => `"${String(v ?? "").replace(/"/g, '""')}"`, l = db.prepare("SELECT * FROM lk_contatos WHERE pagina_id = ? ORDER BY criado_em DESC").all(txt(req.query.pagina, 60)).map(linhaContato);
+    const linhas = [["Data", "Nome", "WhatsApp", "E-mail", "Mensagem"].join(";"), ...l.map(x => [x.criadoEm, x.nome, x.whatsapp, x.email, x.mensagem].map(c).join(";"))];
+    res.set({ "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": 'attachment; filename="contatos.csv"' }).send("\ufeff" + linhas.join("\r\n"));
+  });
+  // categorias do catálogo (para o item "Catálogo")
+  app.get("/api/lk/categorias", exigeLogin, (req, res) => res.json([...new Set(produtosPublicos().map(x => x.p.categoria || "").filter(Boolean))].sort()));
 
   // ---------- painel: QR codes dinâmicos ----------
   const B32 = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"; // sem 0/O/1/I para não confundir
   const novoCodigo = () => { for (;;) { let c = ""; const b = crypto.randomBytes(6); for (const x of b) c += B32[x % 32]; if (!db.prepare("SELECT 1 FROM lk_qr WHERE codigo = ?").get(c)) return c; } };
   const CODIGO_RE = /^[A-Za-z0-9-]{3,32}$/;
+  const limpaVisual = v => { v = v && typeof v === "object" ? v : {};
+    return { cor: cor(v.cor) || "#000000", fundo: cor(v.fundo) || "#ffffff", corOlho: cor(v.corOlho), modulo: um(v.modulo, ["quadrado", "redondo", "pontos"], "quadrado"),
+      olho: v.olho === "redondo" ? "arredondado" : um(v.olho, ["quadrado", "arredondado"], "quadrado"), logo: um(v.logo, ["", "pagina", "foto"], ""), logoFoto: foto(v.logoFoto) }; };
   const limpaQr = b => ({ nome: txt(b?.nome, 80) || "QR code", destinoTipo: b?.destinoTipo === "pagina" ? "pagina" : b?.destinoTipo === "url" ? "url" : "nenhum",
-    url: urlOk(b?.url), paginaId: txt(b?.paginaId, 60), obs: txt(b?.obs, 200) });
+    url: urlOk(b?.url), paginaId: txt(b?.paginaId, 60), obs: txt(b?.obs, 200), ativavel: b?.ativavel !== false, visual: limpaVisual(b?.visual) });
   const linhaQr = r => ({ id: r.id, codigo: r.codigo, ...JSON.parse(r.dados), criadoEm: r.criado_em, ...(m => ({ scans30: m.total, scansSempre: m.sempre }))(metr("q:" + r.id)) });
   app.get("/api/lk/qr", exigeLogin, (req, res) => res.json(db.prepare("SELECT * FROM lk_qr ORDER BY criado_em DESC").all().map(linhaQr)));
   app.post("/api/lk/qr", exigeLogin, exigeEdicao, (req, res) => {
@@ -142,15 +190,52 @@ module.exports = function instalar({ app, db, exigeLogin, exigeEdicao, rateLimit
   });
   app.put("/api/lk/qr/:id", exigeLogin, exigeEdicao, (req, res) => {
     const r = db.prepare("SELECT * FROM lk_qr WHERE id = ?").get(req.params.id); if (!r) return res.status(404).json({ erro: "QR não encontrado." });
-    db.prepare("UPDATE lk_qr SET dados = ? WHERE id = ?").run(JSON.stringify(limpaQr(req.body)), r.id);
+    const velho = JSON.parse(r.dados), novo = limpaQr(req.body);
+    if (velho.ativadoEm) { novo.ativadoEm = velho.ativadoEm; novo.ativadoPor = velho.ativadoPor; }
+    db.prepare("UPDATE lk_qr SET dados = ? WHERE id = ?").run(JSON.stringify(novo), r.id);
     res.json(linhaQr(db.prepare("SELECT * FROM lk_qr WHERE id = ?").get(r.id)));
   });
   app.delete("/api/lk/qr/:id", exigeLogin, exigeEdicao, (req, res) => {
     db.prepare("DELETE FROM lk_qr WHERE id = ?").run(req.params.id); db.prepare("DELETE FROM lk_eventos WHERE ref = ?").run("q:" + req.params.id);
     res.json({ ok: true });
   });
+  // QR com visual próprio (cores, módulos redondos, cantos, logo no meio) em SVG
+  const rr = (x, y, w, h, r) => { r = Math.min(r, w / 2, h / 2); return r <= 0 ? `M${x} ${y}h${w}v${h}h${-w}z` : `M${x + r} ${y}h${w - 2 * r}a${r} ${r} 0 0 1 ${r} ${r}v${h - 2 * r}a${r} ${r} 0 0 1 ${-r} ${r}h${-(w - 2 * r)}a${r} ${r} 0 0 1 ${-r} ${-r}v${-(h - 2 * r)}a${r} ${r} 0 0 1 ${r} ${-r}z`; };
+  function logoDataUri(nome) {
+    if (!FOTO_RE.test(nome || "")) return "";
+    try { const ext = nome.split(".").pop(), mime = { jpg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" }[ext]; return `data:${mime};base64,${fs.readFileSync(path.join(FOTOS_DIR, nome)).toString("base64")}`; } catch (e) { return ""; }
+  }
+  function svgQr(texto, v, logo) {
+    v = limpaVisual(v);
+    const qr = QRCode.create(texto, { errorCorrectionLevel: logo ? "H" : "M" }), n = qr.modules.size, dados = qr.modules.data, M = 3, tot = n + M * 2;
+    const olhoEm = (x, y) => (x < 7 && y < 7) || (x >= n - 7 && y < 7) || (x < 7 && y >= n - 7);
+    let L = 0; if (logo) { L = Math.round(n * 0.26); if ((n - L) % 2) L++; }
+    const a0 = (n - L) / 2, noLogo = (x, y) => L && x >= a0 - 1 && x < a0 + L + 1 && y >= a0 - 1 && y < a0 + L + 1;
+    let mods = "";
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      if (!dados[y * n + x] || olhoEm(x, y) || noLogo(x, y)) continue;
+      const X = x + M, Y = y + M;
+      mods += v.modulo === "pontos" ? `M${X + 0.5} ${Y}a.5 .5 0 1 1 0 1a.5 .5 0 1 1 0-1z` : v.modulo === "redondo" ? rr(X + 0.04, Y + 0.04, 0.92, 0.92, 0.32) : `M${X} ${Y}h1v1h-1z`;
+    }
+    const co = v.corOlho || v.cor, R = { quadrado: [0, 0, 0], arredondado: [1, 0.6, 0.4] }[v.olho]; // testado: mais redondo que isso, os leitores deixam de achar os cantos
+    const olho = (x, y) => `<path fill-rule="evenodd" d="${rr(x, y, 7, 7, R[0])}${rr(x + 1, y + 1, 5, 5, R[1])}"/><path d="${rr(x + 2, y + 2, 3, 3, R[2])}"/>`;
+    const lg = logo ? `<path fill="${v.fundo}" d="${rr(a0 + M - 0.5, a0 + M - 0.5, L + 1, L + 1, 1.2)}"/><image href="${logo}" x="${a0 + M + 0.3}" y="${a0 + M + 0.3}" width="${L - 0.6}" height="${L - 0.6}" preserveAspectRatio="xMidYMid meet"/>` : "";
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${tot} ${tot}" width="1000" height="1000"${v.modulo === "quadrado" ? ' shape-rendering="crispEdges"' : ""}><rect width="${tot}" height="${tot}" fill="${v.fundo}"/><path fill="${v.cor}" d="${mods}"/><g fill="${co}">${olho(M, M)}${olho(M + n - 7, M)}${olho(M, M + n - 7)}</g>${lg}</svg>`;
+  }
+  const logoDoQr = (d, vis) => { const v = limpaVisual(vis); if (v.logo === "foto") return logoDataUri(v.logoFoto);
+    if (v.logo === "pagina" && d.destinoTipo === "pagina") { const p = db.prepare("SELECT dados FROM lk_paginas WHERE id = ?").get(d.paginaId); if (p) return logoDataUri(JSON.parse(p.dados).logo); } return ""; };
   // imagem do QR (qualquer texto/link) para baixar ou imprimir
   app.get("/api/lk/qrimg", exigeLogin, async (req, res) => {
+    const nomeArq = txt(req.query.n, 40).replace(/[^\w-]/g, "_") || "qrcode";
+    if (req.query.qr || req.query.v) { // QR com visual: ?qr=<id> (salvo) ou ?t=<texto>&v=<visual em JSON> (prévia do editor)
+      let texto = txt(req.query.t, 600), vis = {}, base = {};
+      try { vis = req.query.v ? JSON.parse(String(req.query.v)) : {}; } catch (e) {}
+      if (req.query.qr) { const r = db.prepare("SELECT * FROM lk_qr WHERE id = ?").get(String(req.query.qr)); if (!r) return res.status(404).end(); base = JSON.parse(r.dados); texto = origemUrl(req) + "/q/" + r.codigo; if (!req.query.v) vis = base.visual || {}; }
+      if (!texto) return res.status(400).end();
+      if (req.query.pg) base = { destinoTipo: "pagina", paginaId: String(req.query.pg) };
+      try { res.type("image/svg+xml").set("Cache-Control", "no-store").set(req.query.d ? { "Content-Disposition": `attachment; filename="${nomeArq}.svg"` } : {}).send(svgQr(texto, vis, logoDoQr(base, vis))); } catch (e) { res.status(400).end(); }
+      return;
+    }
     const t = txt(req.query.t, 600); if (!t) return res.status(400).end();
     const opt = { margin: 2, errorCorrectionLevel: "M", color: { dark: cor(req.query.c) || "#000000", light: "#ffffff" } };
     const nome = txt(req.query.n, 40).replace(/[^\w-]/g, "_") || "qrcode";
@@ -167,8 +252,189 @@ module.exports = function instalar({ app, db, exigeLogin, exigeEdicao, rateLimit
     const d = JSON.parse(r.dados); registra("q:" + r.id);
     if (d.destinoTipo === "url" && d.url) return res.redirect(302, d.url);
     if (d.destinoTipo === "pagina") { const p = db.prepare("SELECT slug FROM lk_paginas WHERE id = ?").get(d.paginaId); if (p) return res.redirect(302, "/l/" + p.slug); }
+    if (d.ativavel !== false) return res.send(paginaAtivar(r));
     const L = lojaConfig(), wa = String(L.whatsapp || "").replace(/\D/g, "");
     res.send(paginaAviso("Este código ainda não foi ativado", "O produto está pronto, só falta a loja ligar o código a uma página ou link." + (wa ? `<br><br><a class="b" href="https://wa.me/${wa.length <= 11 ? "55" + wa : wa}?text=${encodeURIComponent("Olá! Quero ativar o código " + r.codigo)}">Ativar pelo WhatsApp</a>` : "")));
+  });
+
+  // ---------- público: o cliente ativa o cartão/placa sozinho ----------
+  const limiteAtiva = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false });
+  app.post("/q/:codigo/ativar", limiteAtiva, express.urlencoded({ extended: false, limit: "10kb" }), (req, res) => {
+    const r = CODIGO_RE.test(req.params.codigo) && db.prepare("SELECT * FROM lk_qr WHERE codigo = ? COLLATE NOCASE").get(req.params.codigo);
+    if (!r) return res.status(404).send(paginaAviso("Código não encontrado", "Confira se o código foi digitado certo."));
+    const q = JSON.parse(r.dados);
+    if (q.destinoTipo !== "nenhum" || q.ativavel === false) return res.redirect(303, "/q/" + r.codigo);
+    const b = req.body || {};
+    if (b.site) return res.redirect(303, "/q/" + r.codigo); // robô (campo escondido preenchido)
+    const nome = txt(b.nome, 80), whats = txt(b.whatsapp, 30).replace(/\D/g, ""), insta = txt(b.instagram, 60).replace(/^.*instagram\.com\//i, "").replace(/^@/, "").replace(/[^\w.]/g, "").slice(0, 40);
+    const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(txt(b.email, 120)) ? txt(b.email, 120) : "", modelo = MODELOS[b.modelo] ? b.modelo : "branco";
+    if (nome.length < 2 || whats.length < 10 || whats.length > 13) return res.send(paginaAtivar(r, "Preencha o nome e um WhatsApp com DDD.", b));
+    const M = MODELOS[modelo], dd = { nome, whatsapp: whats, instagram: insta, email };
+    const pag = criaPagina({ titulo: nome, design: { ...M.tema }, itens: M.itens(dd).filter(i => i.tipo !== "instagram" || insta), origem: "ativacao" }, nome);
+    db.prepare("UPDATE lk_qr SET dados = ? WHERE id = ?").run(JSON.stringify({ ...q, destinoTipo: "pagina", paginaId: pag.id, ativadoEm: new Date().toISOString(), ativadoPor: nome }), r.id);
+    res.redirect(303, "/l/" + pag.slug + "?ativado=1");
+  });
+  // digitar o código ou ler o QR com a câmera
+  app.get("/ativar", limite, (req, res) => res.send(paginaBase("Ativar meu cartão", `<h1>Ativar meu cartão ou placa</h1><p>Leia o QR code com a câmera ou digite o código que veio no produto.</p>
+    <div class="cam" id="cam" hidden><video id="camv" playsinline muted></video></div><button class="b" type="button" id="camb" hidden>Ler QR com a câmera</button>
+    <form id="codf" class="f"><input name="c" id="codi" maxlength="32" placeholder="Código (ex.: 7KQ2M9XA)" autocomplete="off" autocapitalize="characters" required><button class="b" type="submit">Continuar</button></form>`, "/lk-ativar.js")));
+
+  // ---------- público: formulário de contato ----------
+  const limiteForm = rateLimit({ windowMs: 10 * 60 * 1000, limit: 8, standardHeaders: "draft-7", legacyHeaders: false, message: { erro: "Muitos envios. Tente daqui a pouco." } });
+  app.post("/l/:slug/f/:item", limiteForm, (req, res) => {
+    const r = pagina(req.params.slug); if (!r) return res.status(404).json({ erro: "Página não encontrada." });
+    const i = limpaPagina(JSON.parse(r.dados)).itens.find(x => x.id === req.params.item && x.tipo === "formulario" && x.ativo); if (!i) return res.status(404).json({ erro: "Formulário não encontrado." });
+    const b = req.body || {}; if (b.site) return res.json({ ok: true });
+    const d = { nome: txt(b.nome, 80), whatsapp: txt(b.whatsapp, 30).replace(/[^\d+() -]/g, ""), email: i.pedeEmail ? txt(b.email, 120) : "", mensagem: i.pedeMensagem ? txt(b.mensagem, 1000) : "" };
+    if (d.nome.length < 2) return res.status(400).json({ erro: "Coloque seu nome." });
+    if (d.whatsapp.replace(/\D/g, "").length < 10) return res.status(400).json({ erro: "Coloque o WhatsApp com DDD." });
+    if (d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) return res.status(400).json({ erro: "Confira o e-mail." });
+    db.prepare("INSERT INTO lk_contatos (id, pagina_id, item, dados) VALUES (?, ?, ?, ?)").run(crypto.randomUUID(), r.id, i.id, JSON.stringify(d));
+    registra("p:" + r.id, i.id); res.json({ ok: true });
+  });
+
+  // ---------- relatório mensal (página com link secreto + e-mail) ----------
+  const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+  const mesAnterior = () => { const d = new Date(Date.now() - 3 * 3600000); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7); };
+  function dadosRelatorio(r, mes) {
+    const d = limpaPagina(JSON.parse(r.dados)), [a, m] = mes.split("-").map(Number), fimDia = new Date(Date.UTC(a, m, 0)).getUTCDate();
+    const ini = `${mes}-01`, fim = `${mes}-${String(fimDia).padStart(2, "0")}`, x = metrPeriodo("p:" + r.id, ini, fim);
+    const ant = new Date(Date.UTC(a, m - 2, 1)).toISOString().slice(0, 7), fa = new Date(Date.UTC(a, m - 1, 0)).getUTCDate(), xa = metrPeriodo("p:" + r.id, `${ant}-01`, `${ant}-${String(fa).padStart(2, "0")}`);
+    const cliques = d.itens.map(i => ({ nome: i.titulo || i.tipo, n: x.porItem[i.id] || 0 })).filter(i => i.n).sort((p, q) => q.n - p.n);
+    const contatos = db.prepare("SELECT COUNT(*) n FROM lk_contatos WHERE pagina_id = ? AND substr(criado_em, 1, 7) = ?").get(r.id, mes).n;
+    const dias = [...Array(fimDia)].map((_, k) => x.porDia[`${mes}-${String(k + 1).padStart(2, "0")}`] || 0);
+    return { d, mes, rotulo: `${MESES[m - 1]} de ${a}`, acessos: x.total, antes: xa.total, cliques, totalCliques: cliques.reduce((s, c) => s + c.n, 0), contatos, dias };
+  }
+  const variacao = (a, b) => !b ? (a ? "primeiro mês com acessos" : "") : `${a >= b ? "▲" : "▼"} ${Math.abs(Math.round((a - b) / b * 100))}% em relação ao mês anterior`;
+  app.get("/l/:slug/relatorio/:token", limite, (req, res) => {
+    const r = pagina(req.params.slug), dd = r && JSON.parse(r.dados);
+    if (!r || !/^[a-f0-9]{32}$/.test(req.params.token) || dd.relToken !== req.params.token) return res.status(404).send(paginaAviso("Relatório não encontrado", "Confira o link."));
+    const mes = /^\d{4}-(0[1-9]|1[0-2])$/.test(req.query.mes || "") ? req.query.mes : mesAnterior(), R = dadosRelatorio(r, mes), max = Math.max(1, ...R.dias);
+    const [a, m] = mes.split("-").map(Number), nav = k => new Date(Date.UTC(a, m - 1 + k, 1)).toISOString().slice(0, 7);
+    res.set("Cache-Control", "no-store").send(paginaBase("Relatório · " + R.d.titulo, `<div class="rel"><small class="tag">Relatório mensal</small><h1>${esc(R.d.titulo)}</h1>
+      <div class="navm"><a href="?mes=${nav(-1)}">‹</a><b>${esc(R.rotulo)}</b><a href="?mes=${nav(1)}">›</a></div>
+      <div class="nums"><div><b>${R.acessos}</b><span>acessos</span></div><div><b>${R.totalCliques}</b><span>cliques</span></div><div><b>${R.contatos}</b><span>contatos</span></div></div>
+      <p class="var">${esc(variacao(R.acessos, R.antes))}</p>
+      <div class="barras">${R.dias.map((n, k) => `<i style="height:${Math.max(3, Math.round(n / max * 90))}px" title="${k + 1}/${m}: ${n}"></i>`).join("")}</div>
+      <h2>Cliques por botão</h2>${R.cliques.length ? R.cliques.map(c => `<div class="cl"><span>${esc(c.nome)}</span><b>${c.n}</b></div>`).join("") : "<p>Nenhum clique neste mês.</p>"}
+      <p class="rod"><a href="/l/${esc(r.slug)}">Ver a página</a></p></div>`));
+  });
+  let mailer = null;
+  const emailPronto = () => !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+  function transporte() {
+    if (!emailPronto()) return null;
+    if (!mailer) { const porta = Number(process.env.SMTP_PORT) || 465; mailer = require("nodemailer").createTransport({ host: process.env.SMTP_HOST, port: porta, secure: porta === 465, auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } }); }
+    return mailer;
+  }
+  async function enviaRelatorio(r, mes, origem, para) {
+    const t = transporte(); if (!t) throw new Error("O envio de e-mail não está configurado no servidor (SMTP).");
+    let dd = JSON.parse(r.dados); if (!dd.relToken) { dd.relToken = novoToken(); db.prepare("UPDATE lk_paginas SET dados = ? WHERE id = ?").run(JSON.stringify(dd), r.id); }
+    const R = dadosRelatorio(r, mes), link = `${origem}/l/${r.slug}/relatorio/${dd.relToken}?mes=${mes}`, L = lojaConfig();
+    const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#111">
+      <p style="color:#6b7280;font-size:13px;margin:0">Relatório mensal · ${esc(R.rotulo)}</p><h1 style="font-size:22px;margin:4px 0 16px">${esc(R.d.titulo)}</h1>
+      <table style="width:100%;border-collapse:collapse;text-align:center"><tr>${[[R.acessos, "acessos"], [R.totalCliques, "cliques"], [R.contatos, "contatos"]].map(([n, t]) => `<td style="padding:14px;background:#f3f4f6;border:4px solid #fff;border-radius:12px"><b style="font-size:26px;display:block">${n}</b><span style="color:#6b7280;font-size:13px">${t}</span></td>`).join("")}</tr></table>
+      <p style="color:#374151;font-size:14px">${esc(variacao(R.acessos, R.antes))}</p>
+      ${R.cliques.length ? `<h2 style="font-size:16px;margin:18px 0 6px">Botões mais clicados</h2>${R.cliques.slice(0, 8).map(c => `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #e5e7eb;font-size:14px"><span>${esc(c.nome)}</span><b>${c.n}</b></div>`).join("")}` : ""}
+      <p style="margin:22px 0"><a href="${link}" style="background:#111827;color:#fff;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Ver relatório completo</a></p>
+      <p style="color:#9ca3af;font-size:12px">${esc(L.nome || "")} · página ${esc(origem.replace(/^https?:\/\//, ""))}/l/${esc(r.slug)}</p></div>`;
+    await t.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: para || R.d.relatorioEmail, subject: `Relatório de ${R.rotulo} · ${R.d.titulo}`, html });
+  }
+  app.get("/api/lk/email", exigeLogin, (req, res) => res.json({ configurado: emailPronto() }));
+  app.post("/api/lk/paginas/:id/relatorio", exigeLogin, exigeEdicao, async (req, res) => {
+    const r = db.prepare("SELECT * FROM lk_paginas WHERE id = ?").get(req.params.id); if (!r) return res.status(404).json({ erro: "Página não encontrada." });
+    const para = limpaPagina(JSON.parse(r.dados)).relatorioEmail; if (!para) return res.status(400).json({ erro: "Coloque o e-mail do cliente primeiro." });
+    try { await enviaRelatorio(r, mesAnterior(), origemUrl(req), para); res.json({ ok: true, para }); } catch (e) { res.status(400).json({ erro: e.message }); }
+  });
+  // todo dia 1º, a partir das 9h (Brasília), manda o relatório do mês anterior para quem tem e-mail cadastrado
+  setInterval(async () => {
+    const agora = new Date(Date.now() - 3 * 3600000); if (agora.getUTCDate() !== 1 || agora.getUTCHours() < 9 || !emailPronto()) return;
+    const mes = mesAnterior(), origem = process.env.SITE_URL || process.env.PUBLIC_URL || "https://3d.8ondigital.com.br";
+    for (const r of db.prepare("SELECT * FROM lk_paginas").all()) {
+      const d = limpaPagina(JSON.parse(r.dados)), chave = `rel:${r.id}:${mes}`;
+      if (!d.relatorioEmail || db.prepare("SELECT 1 FROM lk_meta WHERE chave = ?").get(chave)) continue;
+      try { await enviaRelatorio(r, mes, origem, d.relatorioEmail); db.prepare("INSERT OR REPLACE INTO lk_meta (chave, valor) VALUES (?, ?)").run(chave, new Date().toISOString()); }
+      catch (e) { console.error("relatório", r.slug, e.message); }
+    }
+  }, 30 * 60 * 1000).unref();
+
+  // ---------- painel: importar página do multlinks / Smart Painel ----------
+  const HOSTS_IMPORT = /(^|\.)(multlinks\.com|smartpainel\.com\.br)$/i;
+  async function baixa(url, max = 8 * 1024 * 1024) {
+    const u = new URL(url); if (u.protocol !== "https:" || !HOSTS_IMPORT.test(u.hostname)) throw new Error("endereço não permitido");
+    const r = await fetch(u, { redirect: "follow", signal: AbortSignal.timeout(15000), headers: { "User-Agent": "Mozilla/5.0 (importador de links)" } });
+    if (!r.ok) throw new Error("HTTP " + r.status); if (!HOSTS_IMPORT.test(new URL(r.url).hostname)) throw new Error("redirecionou para fora");
+    const buf = Buffer.from(await r.arrayBuffer()); if (buf.length > max) throw new Error("arquivo grande demais");
+    return { buf, tipo: r.headers.get("content-type") || "" };
+  }
+  async function baixaImagem(url) {
+    try { const { buf, tipo } = await baixa(url); const ext = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" }[tipo.split(";")[0].trim()]; if (!ext) return "";
+      const nome = crypto.randomBytes(16).toString("hex") + "." + ext; fs.writeFileSync(path.join(FOTOS_DIR, nome), buf); return nome; } catch (e) { return ""; }
+  }
+  const desc = s => String(s || "").replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+  const atr = (tag, nome) => { const m = tag.match(new RegExp(nome + '="([^"]*)"')); return m ? desc(m[1]) : ""; };
+  const hexDe = s => { const m = String(s || "").match(/#[0-9a-f]{6}/gi); return m || []; };
+  function itemDeLink(href, titulo) {
+    const h = href.toLowerCase();
+    if (/wa\.me\/|api\.whatsapp\.com|chat\.whatsapp\.com/.test(h)) { const n = (href.match(/wa\.me\/(\d+)/) || href.match(/phone=(\d+)/) || [])[1]; return { tipo: "whatsapp", titulo, numero: n || href }; }
+    if (/instagram\.com\//.test(h)) return { tipo: "instagram", titulo, usuario: (href.match(/instagram\.com\/([\w.]+)/i) || [])[1] || "" };
+    if (/tiktok\.com\/@/.test(h)) return { tipo: "tiktok", titulo, usuario: (href.match(/@([\w.]+)/) || [])[1] || "" };
+    if (/facebook\.com|fb\.com/.test(h)) return { tipo: "facebook", titulo, url: href };
+    if (/youtube\.com|youtu\.be/.test(h)) return { tipo: "youtube", titulo, url: href };
+    if (h.startsWith("mailto:")) return { tipo: "email", titulo, email: href.slice(7).split("?")[0] };
+    if (h.startsWith("tel:")) return { tipo: "telefone", titulo, numero: href.slice(4) };
+    if (/google\.[^/]+\/maps|maps\.app\.goo\.gl|goo\.gl\/maps/.test(h)) return { tipo: "localizacao", titulo, url: href };
+    if (/\.pdf($|\?)|pdf_proxy/.test(h)) return { tipo: "pdf", titulo, url: href };
+    return { tipo: "link", titulo, url: href };
+  }
+  app.post("/api/lk/importar", exigeLogin, exigeEdicao, async (req, res) => {
+    let u; try { u = new URL(String(req.body?.url || "").trim()); } catch (e) { return res.status(400).json({ erro: "Cole o endereço da página (ex.: https://multlinks.com/minhapagina)." }); }
+    if (!/^(www\.)?multlinks\.com$/i.test(u.hostname) || !/^\/[\w-]+\/?$/.test(u.pathname)) return res.status(400).json({ erro: "Por enquanto só importo páginas do multlinks.com." });
+    let html; try { html = (await baixa(u.href, 3 * 1024 * 1024)).buf.toString("utf8"); } catch (e) { return res.status(400).json({ erro: "Não consegui abrir a página (" + e.message + ")." }); }
+    const abs = h => { try { return new URL(desc(h), u).href; } catch (e) { return ""; } };
+    const head = html.slice(0, html.indexOf("<body")), body = html.slice(html.indexOf("<body"));
+    const v = nome => { const m = head.match(new RegExp("--" + nome + "\\s*:\\s*([^;]+);")); return m ? m[1].trim() : ""; };
+    const titulo = desc((head.match(/<title>([^<]*)/) || [])[1]) || u.pathname.replace(/\//g, "");
+    const imgLogo = body.match(/<img[^>]*class="logo([^"]*)"[^>]*>/) || body.match(/<img[^>]*class="[^"]*\blogo\b[^"]*"[^>]*>/);
+    const pulados = []; const d = { titulo, mostrarTitulo: !imgLogo, descricao: desc((body.match(/<div class="description">([\s\S]*?)<\/div>/) || [])[1]).slice(0, 300), origem: "multlinks", itens: [], design: {} };
+    if (imgLogo) {
+      d.logo = await baixaImagem(abs(atr(imgLogo[0], "src"))); const cl = atr(imgLogo[0], "class");
+      d.logoForma = /shape-original/.test(cl) ? "inteira" : /shape-arredondado/.test(cl) ? "arredondado" : /shape-quadrad/.test(cl) ? "quadrado" : "redondo";
+      d.logoTam = /size-(pequen|small)/.test(cl) ? "p" : /size-(grande|large)/.test(cl) ? "g" : "m"; d.logoFundo = false; d.logoBorda = d.logoForma !== "inteira";
+    }
+    const ds = d.design, bg = (v("page-bg-image").match(/url\(["']?([^"')]+)/) || [])[1];
+    ds.tema = "azul"; ds.estilo = /btn-style-glass/.test(body.slice(0, 300)) ? "vidro" : "solido"; ds.fonte = "poppins";
+    const gl = hexDe(v("btn-link-bg")); ds.corBotao = gl[1] || hexDe(v("btn-bg"))[0] || ""; if (gl.length >= 2) { ds.degrade = true; ds.corBotao = gl[0]; ds.corBotao2 = gl[gl.length - 1]; }
+    ds.corTexto = hexDe(v("btn-text"))[0] || ""; ds.pixCor = hexDe(v("card-bg"))[0] || ""; ds.pixTexto = hexDe(v("card-text-color"))[0] || "";
+    ds.botao = parseInt(v("btn-link-radius")) >= 30 ? "pilula" : "arredondado";
+    if (bg) { ds.fundoImagem = await baixaImagem(abs(bg)); if (ds.fundoImagem) { ds.fundo = "imagem"; ds.fundoBlur = parseInt(v("page-bg-blur")) || 0; const op = (v("page-bg-overlay").match(/rgba\([^)]*,\s*([\d.]+)\)/) || [])[1]; ds.fundoSobre = "escura"; ds.fundoOpac = op ? Math.round(Number(op) * 100) : 30; } }
+    if (!ds.fundoImagem) { const g = hexDe(v("gradient")); if (g.length) { ds.fundo = "gradiente"; ds.fundo1 = g[0]; ds.fundo2 = g[g.length - 1]; } }
+    // ícones pequenos (linha de redes)
+    const mini = (body.match(/<div class="mini-icons-public"[\s\S]*?<\/div>/) || [""])[0];
+    for (const m of mini.matchAll(/<a[^>]*href="([^"]+)"/g)) { const it = itemDeLink(abs(m[1]), ""); it.modo = "icone"; it.titulo = { instagram: "Instagram", facebook: "Facebook", youtube: "YouTube", tiktok: "TikTok", whatsapp: "WhatsApp", email: "E-mail", link: "Site" }[it.tipo] || ""; d.itens.push(it); }
+    // blocos da lista, na ordem em que aparecem
+    const ini = body.indexOf('<div class="links">'), fim = body.indexOf("public-dialogs.js");
+    const lista = ini >= 0 ? body.slice(ini, fim > ini ? fim : undefined) : "";
+    const achados = [];
+    for (const m of lista.matchAll(/<div class="gbtn-wrap"[^>]*>/g)) achados.push([m.index, { tipo: "avaliacao", titulo: atr(m[0], "data-btn-title") || "Avalie no Google", url: atr(m[0], "data-google-url"), coresGoogle: true }]);
+    for (const m of lista.matchAll(/class="card pix-block[\s\S]*?data-pix-key="[^"]*"[^>]*>/g)) { const t = m[0];
+      achados.push([m.index, { tipo: "pix", chave: atr(t, "data-pix-key"), tipoChave: { cpf: "cpf", cnpj: "cnpj", email: "email", phone: "telefone", telefone: "telefone", evp: "aleatoria", random: "aleatoria", aleatoria: "aleatoria" }[atr(t, "data-pix-type")] || "auto", nome: atr(t, "data-pix-merchant-name").slice(0, 25), cidade: atr(t, "data-pix-merchant-city").slice(0, 15) }]); }
+    for (const m of lista.matchAll(/class="card wifi-block[\s\S]*?data-wifi-qr="[^"]*"[^>]*>/g)) { const t = m[0], qr = atr(t, "data-wifi-qr");
+      achados.push([m.index, { tipo: "wifi", titulo: "Wi-Fi", rede: atr(t, "data-wifi-ssid"), senha: atr(t, "data-wifi-password"), seguranca: /T:WEP/.test(qr) ? "WEP" : /T:nopass/i.test(qr) ? "nopass" : "WPA", ocultarSenha: atr(t, "data-wifi-show-password") === "0" }]); }
+    for (const m of lista.matchAll(/<a class="btn([^"]*)"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)) {
+      const cl = m[1], href = abs(m[2]), tit = desc(m[3]).slice(0, 80); if (/\bgoogle\b/.test(cl)) continue;
+      if (/contact-btn/.test(cl)) {
+        let c = { tipo: "contato", titulo: tit || "Salvar contato" };
+        try { const vc = (await baixa(href, 200000)).buf.toString("utf8"), g = k => ((vc.match(new RegExp("^" + k + "[^:\\n]*:(.*)$", "mi")) || [])[1] || "").trim().replace(/\\([,;])/g, "$1");
+          Object.assign(c, { nome: g("FN"), telefone: g("TEL"), email: g("EMAIL"), empresa: g("ORG").replace(/;+$/, ""), cargo: g("TITLE"), site: g("URL") }); } catch (e) { pulados.push("contato (não abriu o vCard)"); }
+        achados.push([m.index, c]); continue;
+      }
+      const it = itemDeLink(href, tit); if (/\bdestaque\b/.test(cl)) it.destaque = "brilho"; achados.push([m.index, it]);
+    }
+    const tipos = (lista.match(/<div class="card ([\w-]+)/g) || []).map(x => x.slice(17)).filter(t => !/pix-block|wifi-block/.test(t));
+    if (tipos.length) pulados.push(...tipos.map(t => "bloco " + t));
+    d.itens.push(...achados.sort((a, b) => a[0] - b[0]).map(x => x[1]));
+    const r = criaPagina(d, u.pathname.replace(/\//g, ""));
+    res.json({ pagina: linhaPag(r), itens: d.itens.length, pulados });
   });
 
   // ---------- público: página ----------
@@ -176,10 +442,16 @@ module.exports = function instalar({ app, db, exigeLogin, exigeEdicao, rateLimit
   app.get("/l/:slug", limite, async (req, res) => {
     const r = pagina(req.params.slug);
     if (!r) return res.status(404).send(paginaAviso("Página não encontrada", "Confira o endereço."));
-    if (!req.query.previa) registra("p:" + r.id);
-    const csp = res.get("Content-Security-Policy"); // a prévia do painel mostra a página num iframe do próprio site
-    if (csp) res.set("Content-Security-Policy", csp.replace("frame-ancestors 'none'", "frame-ancestors 'self'"));
-    res.set("Cache-Control", "no-store").type("html").send(await renderiza(r, origemUrl(req)));
+    const previa = !!req.query.previa; if (!previa) registra("p:" + r.id);
+    const nonce = crypto.randomBytes(16).toString("base64"), up = /upgrade-insecure-requests/.test(res.get("Content-Security-Policy") || "");
+    // política própria das páginas: prévia em iframe do painel, vídeo/mapa embutidos e pixel do Meta / Google Analytics
+    res.set("Content-Security-Policy", ["default-src 'self'", `script-src 'self' 'nonce-${nonce}' https://connect.facebook.net https://www.googletagmanager.com`,
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", "font-src 'self' https://fonts.gstatic.com",
+      "img-src 'self' data: blob: https://i.ytimg.com https://www.facebook.com https://*.google-analytics.com https://*.googletagmanager.com",
+      "connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://www.facebook.com https://connect.facebook.net",
+      "frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://www.google.com https://maps.google.com", "form-action 'self'", "frame-ancestors 'self'",
+      "base-uri 'self'", "object-src 'none'", ...(up ? ["upgrade-insecure-requests"] : [])].join(";"));
+    res.set("Cache-Control", "no-store").type("html").send(await renderiza(r, origemUrl(req), { nonce, previa, ativado: !!req.query.ativado }));
   });
   app.get("/l/:slug/i/:item", limite, (req, res) => { // clique em item (conta e redireciona)
     const r = pagina(req.params.slug); if (!r) return res.status(404).end();
@@ -234,6 +506,7 @@ module.exports = function instalar({ app, db, exigeLogin, exigeEdicao, rateLimit
     contato: '<circle cx="12" cy="9" r="3.5"/><path d="M5.5 19c.8-3.2 3.4-5 6.5-5s5.7 1.8 6.5 5"/>',
     wifi: '<path d="M3 9.5a13 13 0 0 1 18 0M6 12.8a8.5 8.5 0 0 1 12 0M9 16a4 4 0 0 1 6 0"/><circle cx="12" cy="19" r="1" fill="currentColor"/>',
     produto: '<path d="M5 8h14l-1.2 11H6.2z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/>',
+    relogio: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>', ok: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16.5 9.5"/>',
     qr: '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 18h2v2h-2zM14 18v2M18 14h2"/>',
   };
   const ic = t => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONES[t] || ICONES.link}</svg>`;
@@ -244,7 +517,11 @@ module.exports = function instalar({ app, db, exigeLogin, exigeEdicao, rateLimit
   const tipoChaveDe = i => i.tipoChave !== "auto" ? i.tipoChave : /@/.test(i.chave) ? "email" : /^\+?\d[\d\s().-]{9,}$/.test(i.chave) && i.chave.replace(/\D/g, "").length === 11 && !/[.-]/.test(i.chave) ? "telefone"
     : i.chave.replace(/\D/g, "").length === 11 ? "cpf" : i.chave.replace(/\D/g, "").length === 14 ? "cnpj" : /^[0-9a-f-]{32,36}$/i.test(i.chave) ? "aleatoria" : "";
 
-  async function renderiza(r, origem) {
+  const ytId = u => (String(u).match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/))([\w-]{11})/) || [])[1] || "";
+  const vimeoId = u => (String(u).match(/vimeo\.com\/(?:video\/)?(\d{6,12})/) || [])[1] || "";
+  const DIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+  const faixaHor = x => x.aberto ? `${x.abre} às ${x.fecha}${x.abre2 && x.fecha2 ? ` · ${x.abre2} às ${x.fecha2}` : ""}` : "Fechado";
+  async function renderiza(r, origem, op = {}) {
     const d = limpaPagina(JSON.parse(r.dados)), ds = d.design, T = TEMAS[ds.tema] || TEMAS.azul;
     const c = ds.corBotao || T.cor, c2 = ds.degrade ? (ds.corBotao2 || T.cor2) : c, claroTema = T.claro && ds.fundo === "tema";
     const txtCor = claroTema ? "#111827" : "#ffffff", btnTxt = ds.corTexto || (ds.estilo === "contorno" ? txtCor : "#ffffff");
@@ -277,6 +554,21 @@ module.exports = function instalar({ app, db, exigeLogin, exigeEdicao, rateLimit
       if (["link", "whatsapp", "instagram", "tiktok", "facebook", "youtube", "email", "telefone", "localizacao", "avaliacao", "pdf"].includes(i.tipo)) {
         if (destinoItem(i)) partes.push(`<a class="bt${dest(i)}${i.tipo === "avaliacao" && i.coresGoogle ? " google" : ""}" href="${link(i)}" target="_blank" rel="noopener">${ic(i.tipo === "avaliacao" ? "google" : i.tipo)}<span>${tit || i.tipo}</span></a>`); continue; }
       if (i.tipo === "titulo") partes.push(`<h2 class="sec">${tit}</h2>`);
+      if (i.tipo === "horario") partes.push(`<div class="hor" data-horario="${esc(JSON.stringify(i.dias))}"><div class="hortop">${ic("relogio")}<b>${tit || "Horário de funcionamento"}</b></div><span class="horst" hidden></span>
+        <ul>${[1, 2, 3, 4, 5, 6, 0].map(k => `<li data-dia="${k}"><span>${DIAS[k]}</span><em>${faixaHor(i.dias[k])}</em></li>`).join("")}</ul>${i.obs ? `<small>${esc(i.obs)}</small>` : ""}</div>`);
+      if (i.tipo === "video" && i.url) { const y = ytId(i.url), vm = vimeoId(i.url), vert = /shorts\//.test(i.url);
+        if (y) partes.push(`${tit ? `<h2 class="sec">${tit}</h2>` : ""}<div class="vid${vert ? " vert" : ""}"><button type="button" data-video="https://www.youtube-nocookie.com/embed/${y}?autoplay=1&rel=0&playsinline=1" aria-label="Tocar vídeo${tit ? ": " + tit : ""}"><img src="https://i.ytimg.com/vi/${y}/hqdefault.jpg" alt="" loading="lazy"><span class="play"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></svg></span></button></div>`);
+        else if (vm) partes.push(`${tit ? `<h2 class="sec">${tit}</h2>` : ""}<div class="vid"><iframe src="https://player.vimeo.com/video/${vm}" loading="lazy" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen title="${tit || "Vídeo"}"></iframe></div>`); }
+      if (i.tipo === "mapa" && i.endereco) { const q = encodeURIComponent(i.endereco);
+        partes.push(`<div class="mapa">${tit ? `<b class="mtit">${ic("localizacao")}${tit}</b>` : ""}<iframe src="https://www.google.com/maps?q=${q}&output=embed" style="height:${i.altura}px" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Mapa: ${esc(i.endereco)}"></iframe><a href="https://www.google.com/maps/search/?api=1&query=${q}" target="_blank" rel="noopener">${esc(i.endereco)} · Abrir no Maps</a></div>`); }
+      if (i.tipo === "formulario") partes.push(`<form class="form" data-form="/l/${r.slug}/f/${i.id}" novalidate><b class="ftit">${tit || "Fale com a gente"}</b>${i.descricao ? `<small>${esc(i.descricao)}</small>` : ""}
+        <input name="nome" required maxlength="80" placeholder="Seu nome" autocomplete="name"><input name="whatsapp" required maxlength="30" inputmode="tel" placeholder="Seu WhatsApp com DDD" autocomplete="tel">
+        ${i.pedeEmail ? `<input name="email" type="email" maxlength="120" placeholder="Seu e-mail" autocomplete="email">` : ""}${i.pedeMensagem ? `<textarea name="mensagem" maxlength="1000" rows="3" placeholder="Mensagem"></textarea>` : ""}
+        <input name="site" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true"><button class="bt" type="submit">${esc(i.textoBotao) || "Enviar"}</button><p class="ferro" hidden></p></form>
+        <div class="fok" hidden>${ic("ok")}<b>${esc(i.textoOk) || "Recebemos! Logo falamos com você."}</b></div>`);
+      if (i.tipo === "catalogo") { const lp = produtosPublicos().filter(x => !i.categoria || (x.p.categoria || "") === i.categoria).slice(0, i.limite);
+        if (lp.length) partes.push(`${tit ? `<h2 class="sec">${tit}</h2>` : ""}<div class="cat ${i.estilo}">${lp.map(x => `<a class="catit" href="${linkProduto(origem, x.id, x.p.nome)}" target="_blank" rel="noopener">${x.foto ? `<img src="/fotos-publicas/${x.foto}" alt="" loading="lazy">` : `<span class="pi">${ic("produto")}</span>`}<span class="pt"><b>${esc(x.p.nome)}</b><em>${brl(Number(x.p.precoCatalogo) || 0)}</em></span></a>`).join("")}</div>
+          <a class="bt" href="${origem}/${i.categoria ? "?cat=" + encodeURIComponent(i.categoria) : ""}" target="_blank" rel="noopener">${ic("produto")}<span>Ver catálogo completo</span></a>`); }
       if (i.tipo === "texto" && i.texto) partes.push(`<p class="tx">${esc(i.texto).replace(/\n/g, "<br>")}</p>`);
       if (i.tipo === "espacador") partes.push(`<div style="height:${i.altura}px"></div>`);
       if (i.tipo === "contato" && (i.nome || i.telefone)) partes.push(`<a class="bt${dest(i)}" href="/l/${r.slug}/v/${i.id}.vcf">${ic("contato")}<span>${tit || "Salvar contato"}</span></a>`);
@@ -296,7 +588,7 @@ module.exports = function instalar({ app, db, exigeLogin, exigeEdicao, rateLimit
         let qr = ""; try { qr = await QRCode.toString(`WIFI:T:${i.seguranca};S:${e(i.rede)};${i.seguranca !== "nopass" ? `P:${e(i.senha)};` : ""};`, { type: "svg", margin: 1 }); } catch (err) {}
         partes.push(`<div class="pix"><div class="pixtop"><span class="wftit">${ic("wifi")}<b>${tit || "Wi-Fi"}</b></span>${qr ? `<button class="pixqrbt" type="button" data-qr aria-label="Mostrar QR code do Wi-Fi">${ic("qr")}</button>` : ""}</div>
           ${qr ? `<div class="pixqr" hidden>${qr}<small>Aponte a câmera para conectar</small></div>` : ""}
-          <div class="pixch"><small>Rede</small><b>${esc(i.rede)}</b>${i.senha && i.seguranca !== "nopass" ? `<small style="margin-top:6px">Senha</small><b>${esc(i.senha)}</b>` : ""}</div>
+          <div class="pixch"><small>Rede</small><b>${esc(i.rede)}</b>${i.senha && i.seguranca !== "nopass" && !i.ocultarSenha ? `<small style="margin-top:6px">Senha</small><b>${esc(i.senha)}</b>` : ""}</div>
           ${i.senha && i.seguranca !== "nopass" ? `<span class="wfdica">Toque para copiar a senha do Wi-Fi:</span><button class="bt pixcp" type="button" data-copia="${esc(i.senha)}" data-item="${i.id}">Copiar senha</button>` : ""}</div>`);
       }
     }
@@ -343,14 +635,61 @@ h1{font-size:23px;font-weight:800;text-align:center;letter-spacing:-.01em;margin
 .pixch small{font-size:12px;color:${pixTx};opacity:.85}.pixch b{font:800 15px ui-monospace,Consolas,monospace;color:${pixTx};word-break:break-all}
 .pixcp{width:100%;cursor:pointer}
 .wftit{display:flex;align-items:center;gap:8px;font-size:16px;color:${pixTx}}.wftit svg{width:24px;height:24px}
+.hor,.form,.mapa,.fok{width:100%;border-radius:20px;padding:14px 16px;background:${claroTema ? "#fff" : "rgba(255,255,255,.12)"};border:1px solid ${claroTema ? "rgba(0,0,0,.08)" : "rgba(255,255,255,.25)"};backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 10px 28px rgba(0,0,0,.16)}
+.hortop{display:flex;align-items:center;gap:8px;font-size:16px}.hortop svg,.mtit svg{width:22px;height:22px;flex:none}
+.horst{display:inline-block;margin:8px 0 2px;padding:4px 11px;border-radius:99px;font-size:13px;font-weight:700}.horst.on{background:#16a34a;color:#fff}.horst.off{background:#dc2626;color:#fff}
+.hor ul{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:3px}.hor li{display:flex;justify-content:space-between;gap:10px;font-size:14px;opacity:.85}.hor li em{font-style:normal;text-align:right}.hor li.hoje{opacity:1;font-weight:700}.hor>small{display:block;margin-top:8px;opacity:.8;font-size:12.5px}
+.vid{width:100%;aspect-ratio:16/9;border-radius:18px;overflow:hidden;background:#000;box-shadow:0 12px 30px rgba(0,0,0,.28)}.vid.vert{aspect-ratio:9/16;max-width:300px;align-self:center}
+.vid button{all:unset;display:block;width:100%;height:100%;position:relative;cursor:pointer}.vid img{width:100%;height:100%;object-fit:cover;display:block}.vid iframe{width:100%;height:100%;border:0;display:block}
+.play{position:absolute;left:50%;top:50%;width:68px;height:48px;margin:-24px 0 0 -34px;border-radius:14px;background:#ff0033;color:#fff;display:grid;place-items:center;box-shadow:0 6px 20px rgba(0,0,0,.35)}.play svg{width:28px;height:28px}
+.mapa{padding:10px;display:flex;flex-direction:column;gap:8px}.mtit{display:flex;align-items:center;gap:8px;padding:4px 6px 0}.mapa iframe{width:100%;border:0;border-radius:14px;display:block}.mapa a{color:inherit;font-size:13px;opacity:.85;text-align:center;text-decoration:underline}
+.form{display:flex;flex-direction:column;gap:9px}.ftit{font-size:17px}.form>small{opacity:.85;margin-top:-4px}
+.form input,.form textarea{width:100%;border:1px solid ${claroTema ? "rgba(0,0,0,.15)" : "rgba(255,255,255,.35)"};background:${claroTema ? "#fff" : "rgba(255,255,255,.92)"};color:#111;border-radius:12px;padding:12px 13px;font:15px inherit;font-family:inherit;outline:0}
+.form input:focus,.form textarea:focus{box-shadow:0 0 0 3px ${rgba(c, .35)}}.form .hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}.form .bt{min-height:50px;padding:12px 18px}.ferro{color:#fecaca;font-size:13px;font-weight:600}
+.fok{display:flex;align-items:center;gap:10px;font-size:15px}.fok svg{width:28px;height:28px;color:#22c55e;flex:none}
+.cat{width:100%;display:grid;gap:10px}.cat.grade{grid-template-columns:1fr 1fr}.catit{display:flex;flex-direction:column;border-radius:16px;overflow:hidden;text-decoration:none;color:inherit;background:${claroTema ? "#fff" : "rgba(255,255,255,.12)"};border:1px solid ${claroTema ? "rgba(0,0,0,.08)" : "rgba(255,255,255,.22)"}}
+.catit img,.catit .pi{width:100%;aspect-ratio:1;object-fit:cover;display:grid;place-items:center;background:rgba(255,255,255,.1)}.catit .pt{padding:8px 10px 10px}.catit b{font-size:13.5px;line-height:1.25}
+.cat.lista .catit{flex-direction:row;align-items:center;gap:12px;padding:8px}.cat.lista .catit img,.cat.lista .catit .pi{width:64px;border-radius:12px;flex:none}.cat.lista .catit .pt{padding:0}
+.ativado{width:100%;border-radius:18px;padding:14px 16px;background:#ecfdf5;color:#064e3b;font-size:14px;display:flex;flex-direction:column;gap:6px;box-shadow:0 10px 28px rgba(0,0,0,.2)}.ativado b{font-size:16px}.ativado a{color:#047857;font-weight:700}
 .rod{margin-top:24px;text-align:center;font-size:13px;opacity:.8;white-space:pre-line}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:rgba(17,17,17,.92);color:#fff;padding:10px 18px;border-radius:12px;font-size:14px;z-index:9}
 @media (prefers-reduced-motion:reduce){.d-pulsar,.d-balancar,.d-brilho::after{animation:none}}
 </style></head><body><main class="w">
 ${logoHtml}${d.mostrarTitulo ? `<h1>${esc(d.titulo)}</h1>` : ""}${d.descricao ? `<p class="ds">${esc(d.descricao)}</p>` : ""}
 ${d.compartilhar ? `<button class="share" type="button" data-share="${esc(url)}" data-titulo="${esc(d.titulo)}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg>Compartilhar</button>` : ""}
+${op.ativado ? (() => { const L = lojaConfig(), wa = String(L.whatsapp || "").replace(/\D/g, ""); return `<div class="ativado"><b>🎉 Sua página está no ar!</b><span>Guarde este endereço: <b>${esc(url.replace(/^https?:\/\//, ""))}</b></span><span>Quer colocar sua logo, trocar cores ou botões?${wa ? ` <a href="https://wa.me/${wa.length <= 11 ? "55" + wa : wa}?text=${encodeURIComponent("Olá! Ativei minha página " + url + " e quero personalizar.")}" target="_blank" rel="noopener">Fale com a loja no WhatsApp</a>` : " Fale com a loja."}</span></div>`; })() : ""}
 <div class="lista">${partes.join("\n")}</div>${d.rodape ? `<p class="rod">${esc(d.rodape)}</p>` : ""}
-</main><script src="/lk.js" defer></script></body></html>`;
+</main><script src="/lk.js" defer></script>${!op.previa && d.metaPixel ? `<script nonce="${op.nonce}">!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','${d.metaPixel}');fbq('track','PageView');</script>` : ""}${!op.previa && d.ga4 ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${d.ga4}"></script><script nonce="${op.nonce}">window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','${d.ga4}');</script>` : ""}</body></html>`;
+  }
+  function paginaBase(t, corpo, script) {
+    return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(t)}</title><meta name="robots" content="noindex">
+<style>*{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(160deg,#0f172a,#1e293b);color:#f1f5f9;font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:28px 16px}
+.c{max-width:440px;margin:0 auto;display:flex;flex-direction:column;gap:14px}h1{font-size:23px;margin:0}h2{font-size:16px;margin:10px 0 0}p{margin:0;opacity:.85}
+.b{display:inline-flex;justify-content:center;align-items:center;border:0;background:#1FBE8C;color:#06130F;padding:14px 20px;border-radius:14px;font:700 15px inherit;font-family:inherit;text-decoration:none;cursor:pointer;width:100%}
+.f{display:flex;flex-direction:column;gap:10px}.f label{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:600;opacity:.9}
+input{width:100%;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.95);color:#111;border-radius:12px;padding:13px;font:16px inherit;font-family:inherit}
+.mods{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mods label{display:block;cursor:pointer}.mods input{position:absolute;opacity:0;width:1px}.mods span{display:block;border:1px solid rgba(255,255,255,.2);border-radius:12px;padding:10px;font-weight:700;font-size:14px;background:rgba(255,255,255,.06)}
+.mods small{display:block;font-weight:400;opacity:.75;font-size:12px;margin-top:2px}.mods input:checked+span{border-color:#1FBE8C;background:rgba(31,190,140,.18);box-shadow:0 0 0 2px #1FBE8C}
+.erro{background:#7f1d1d;color:#fff;padding:10px 12px;border-radius:12px;font-weight:600}.hp{position:absolute;left:-9999px}
+.cam{border-radius:16px;overflow:hidden;background:#000}.cam video{width:100%;display:block}.tag{color:#1FBE8C;font-weight:700;text-transform:uppercase;letter-spacing:.08em;font-size:12px}
+.navm{display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,.06);border-radius:12px;padding:6px}.navm a{color:#fff;text-decoration:none;font-size:22px;padding:2px 14px}.navm b{text-transform:capitalize}
+.nums{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.nums div{background:rgba(255,255,255,.07);border-radius:14px;padding:14px 8px;text-align:center}.nums b{display:block;font-size:28px}.nums span{opacity:.75;font-size:13px}
+.var{font-size:13px}.barras{display:flex;align-items:flex-end;gap:2px;height:96px;background:rgba(255,255,255,.04);border-radius:12px;padding:6px}.barras i{flex:1;background:#1FBE8C;border-radius:2px 2px 0 0}
+.cl{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.1)}.rel{display:flex;flex-direction:column;gap:12px}.rod a{color:#1FBE8C}</style></head>
+<body><main class="c">${corpo}</main>${script ? `<script src="${script}" defer></script>` : ""}</body></html>`;
+  }
+  function paginaAtivar(r, erro = "", b = {}) {
+    const ops = Object.entries(MODELOS).map(([k, m]) => `<label><input type="radio" name="modelo" value="${k}"${(b.modelo || "branco") === k ? " checked" : ""}><span>${esc(m.nome)}<small>${esc(m.desc)}</small></span></label>`).join("");
+    return paginaBase("Ativar " + r.codigo, `<small class="tag">Código ${esc(r.codigo)}</small><h1>Vamos ativar sua página</h1><p>Preencha os dados e em segundos seu cartão ou placa já abre a sua página. Depois a loja pode colocar sua logo e personalizar.</p>
+      ${erro ? `<div class="erro">${esc(erro)}</div>` : ""}
+      <form class="f" method="post" action="/q/${esc(r.codigo)}/ativar">
+        <label>Nome da empresa ou seu nome<input name="nome" required maxlength="80" value="${esc(b.nome || "")}" autocomplete="organization"></label>
+        <label>WhatsApp com DDD<input name="whatsapp" required maxlength="20" inputmode="tel" value="${esc(b.whatsapp || "")}" placeholder="(41) 99999-9999" autocomplete="tel"></label>
+        <label>Instagram (opcional)<input name="instagram" maxlength="60" value="${esc(b.instagram || "")}" placeholder="@seuperfil"></label>
+        <label>E-mail (opcional)<input name="email" type="email" maxlength="120" value="${esc(b.email || "")}" autocomplete="email"></label>
+        <label style="margin-top:4px">Escolha um modelo</label><div class="mods">${ops}</div>
+        <input name="site" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+        <button class="b" type="submit">Ativar minha página</button></form>`);
   }
   function paginaAviso(t, m) {
     return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(t)}</title>

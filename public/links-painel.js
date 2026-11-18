@@ -6,7 +6,7 @@
   const $ = s => document.querySelector(s);
   const esc = s => P().esc(s);
   const ORIGEM = location.origin, HOST = ORIGEM.replace(/^https?:\/\//, "");
-  let paginas = null, qrs = null, ed = null, salvarT = null, salvando = false, pendente = false, abertoItem = null, aba = null, abaDesign = "tema", gradeAberta = false;
+  let categorias = null, emailOk = null, contatos = null, paginas = null, qrs = null, ed = null, salvarT = null, salvando = false, pendente = false, abertoItem = null, aba = null, abaDesign = "tema", gradeAberta = false;
 
   const TEMAS = { azul: ["#2563eb", "#0f1d3d", "#1e3a8a"], roxo: ["#7c3aed", "#1e1239", "#4c1d95"], verde: ["#16a34a", "#0b2416", "#14532d"], laranja: ["#ea580c", "#2a1306", "#7c2d12"],
     vermelho: ["#dc2626", "#2a0b0b", "#7f1d1d"], grafite: ["#374151", "#0b0f14", "#1f2937"], rosa: ["#db2777", "#2a0a1c", "#831843"], menta: ["#1FBE8C", "#0E1114", "#12382d"],
@@ -36,6 +36,10 @@
     dup: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/>',
     lixo: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12.5A1.5 1.5 0 0 0 8.5 21h7a1.5 1.5 0 0 0 1.5-1.5L18 7M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7"/>',
     lapis: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>', arr: '<circle cx="9" cy="6" r="1.3" fill="currentColor"/><circle cx="15" cy="6" r="1.3" fill="currentColor"/><circle cx="9" cy="12" r="1.3" fill="currentColor"/><circle cx="15" cy="12" r="1.3" fill="currentColor"/><circle cx="9" cy="18" r="1.3" fill="currentColor"/><circle cx="15" cy="18" r="1.3" fill="currentColor"/>',
+    horario: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>', video: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9v6l5-3z" fill="currentColor"/>',
+    mapa: '<path d="M9 4L3.5 6v14L9 18l6 2 5.5-2V4L15 6z"/><path d="M9 4v14M15 6v14"/>', formulario: '<rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+    catalogo: '<path d="M4 7l8-4 8 4-8 4z"/><path d="M4 7v10l8 4 8-4V7M12 11v10"/>', contatos: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.7-3 2.9-4.7 5.5-4.7s4.8 1.7 5.5 4.7"/><circle cx="17" cy="9" r="2.4"/><path d="M15.8 14.4c2.3.1 4 1.6 4.7 4.1"/>',
+    importar: '<path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19h14"/>',
     mais: '<path d="M12 5v14M5 12h14"/>', foto: '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5"/>',
     desc: '<path d="M5 7h14M5 12h14M5 17h9"/>', design: '<path d="M4 20l8.5-8.5M14 4l1 2.5L17.5 7.5 15 8.5 14 11l-1-2.5L10.5 7.5 13 6.5z"/><path d="M19 13l.6 1.4 1.4.6-1.4.6L19 17l-.6-1.4-1.4-.6 1.4-.6z"/>',
     corrente: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
@@ -47,12 +51,15 @@
     ["whatsapp", "WhatsApp", "WhatsApp"], ["instagram", "Instagram", "Instagram"], ["pix", "PIX", "Pix"], ["avaliacao", "Avaliação", "Avalie no Google"],
     ["link", "Link", "Acesse nosso site"], ["contato", "Contato", "Salvar contato"], ["wifi", "Wi-Fi", "Wi-Fi"], ["tiktok", "TikTok", "TikTok"],
     ["facebook", "Facebook", "Facebook"], ["youtube", "YouTube", "YouTube"], ["email", "E-mail", "Enviar e-mail"], ["telefone", "Ligar", "Ligar agora"],
-    ["localizacao", "Localização", "Como chegar"], ["pdf", "PDF", "Cardápio (PDF)"], ["produto", "Produto", "Produto"], ["imagem", "Imagem", ""],
+    ["localizacao", "Localização", "Como chegar"], ["horario", "Horário", "Horário de funcionamento"], ["mapa", "Mapa", "Onde estamos"], ["video", "Vídeo", ""],
+    ["formulario", "Formulário", "Fale com a gente"], ["catalogo", "Catálogo 3D", "Nossos produtos"], ["pdf", "PDF", "Cardápio (PDF)"], ["produto", "Produto", "Produto"], ["imagem", "Imagem", ""],
     ["galeria", "Galeria", ""], ["texto", "Texto", ""], ["titulo", "Título", "Seção"], ["espacador", "Espaçador", ""],
   ];
   const DICA = { whatsapp: "Abre uma conversa no WhatsApp com o número configurado.", instagram: "Leva para o perfil do Instagram.", pix: "Mostra a chave Pix com botão de copiar e QR code.",
     avaliacao: "Leva direto para a avaliação no Google.", link: "Leva para qualquer site.", contato: "Salva o contato direto na agenda do celular.", wifi: "Mostra a rede e copia a senha (com QR para conectar).",
     telefone: "Liga para o número ao tocar.", localizacao: "Abre o endereço no Google Maps.", pdf: "Abre um PDF (cardápio, catálogo…).", produto: "Mostra um produto com foto e preço.",
+    horario: "Horários da semana com o selo Aberto agora / Fechado.", mapa: "Mapa do Google dentro da página.", video: "Vídeo do YouTube ou Vimeo tocando na página.",
+    formulario: "O visitante deixa nome e WhatsApp. Os contatos aparecem em Contatos.", catalogo: "Produtos do seu catálogo 3D com foto e preço.",
     imagem: "Mostra uma imagem.", galeria: "Mostra várias fotos em grade.", texto: "Um parágrafo de texto.", titulo: "Um título para separar seções.", espacador: "Um espaço em branco entre itens." };
   const NOME_TIPO = Object.fromEntries(TIPOS.map(t => [t[0], t[1]]));
   const SOCIAIS = ["instagram", "tiktok", "facebook", "youtube", "whatsapp", "email", "link", "telefone", "localizacao"];
@@ -64,13 +71,20 @@
     instagram: [T, ["usuario", "@ do Instagram"]], tiktok: [T, ["usuario", "@ do TikTok"]], email: [T, ["email", "E-mail", "email"], ["assunto", "Assunto (opcional)"]],
     telefone: [T, ["numero", "Telefone com DDD", "tel"]], localizacao: [T, ["endereco", "Endereço"], ["url", "Ou o link do Google Maps (opcional)", "url"]],
     pix: [["chave", "Chave PIX"], ["tipoChave", "Tipo da chave PIX", "sel:auto=Detectar automaticamente|cpf=CPF|cnpj=CNPJ|email=E-mail|telefone=Telefone|aleatoria=Chave aleatória"], ["titulo", "Texto do botão (opcional)"], ["nome", "Nome de quem recebe (até 25 letras)"], ["cidade", "Cidade (até 15 letras)"]],
-    wifi: [["titulo", "Título"], ["rede", "Nome da rede"], ["senha", "Senha"], ["seguranca", "Segurança", "sel:WPA=WPA/WPA2|WEP=WEP|nopass=Sem senha"]],
+    wifi: [["titulo", "Título"], ["rede", "Nome da rede"], ["senha", "Senha"], ["seguranca", "Segurança", "sel:WPA=WPA/WPA2|WEP=WEP|nopass=Sem senha"], ["ocultarSenha", "Esconder a senha na tela (fica só o botão de copiar)", "check0"]],
     contato: [T, ["nome", "Nome"], ["telefone", "Telefone", "tel"], ["email", "E-mail", "email"], ["empresa", "Empresa"], ["cargo", "Cargo"], ["site", "Site", "url"]],
     texto: [["texto", "Texto", "area"]], titulo: [["titulo", "Título da seção"]],
     produto: [["titulo", "Nome do produto"], ["descricao", "Descrição curta"], ["preco", "Preço (R$)", "num"], ["foto", "Foto", "foto"], ["url", "Link ao tocar (opcional)", "url"]],
     imagem: [["foto", "Imagem", "foto"], ["titulo", "Descrição (opcional)"], ["url", "Link ao tocar (opcional)", "url"]],
     galeria: [["titulo", "Título (opcional)"], ["fotos", "Fotos (até 12)", "fotos"]], espacador: [["altura", "Altura em pixels", "num"]],
+    horario: [["titulo", "Título"], ["dias", "Dias e horários", "horario"], ["obs", "Observação (ex.: feriados sob consulta)"]],
+    mapa: [["titulo", "Título (opcional)"], ["endereco", "Endereço completo (rua, número, cidade)"], ["altura", "Altura do mapa (px)", "num"]],
+    video: [["titulo", "Título (opcional)"], ["url", "Link do vídeo no YouTube (ou Shorts) ou Vimeo", "url"]],
+    formulario: [["titulo", "Título"], ["descricao", "Texto curto (opcional)"], ["pedeEmail", "Pedir e-mail", "check0"], ["pedeMensagem", "Pedir mensagem", "check"], ["textoBotao", "Texto do botão (padrão: Enviar)"], ["textoOk", "Mensagem depois de enviar"]],
+    catalogo: [["titulo", "Título (opcional)"], ["categoria", "Categoria", "cat"], ["limite", "Quantos produtos (até 24)", "num"], ["estilo", "Formato", "sel:grade=Grade (2 por linha)|lista=Lista"]],
   };
+  const NDIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+  const diasPadrao = () => [0, 1, 2, 3, 4, 5, 6].map(k => ({ aberto: k > 0 && k < 6, abre: "08:00", fecha: k === 6 ? "12:00" : "18:00", abre2: "", fecha2: "" }));
   const uid = () => Math.random().toString(36).slice(2, 12).padEnd(10, "0");
   const imgUrl = f => "/fotos/" + encodeURIComponent(f);
   const qrImg = (t, extra = "") => `/api/lk/qrimg?t=${encodeURIComponent(t)}${extra}`;
@@ -85,26 +99,49 @@
     box.innerHTML = `<div class="lp-wrap">
       <div class="lp-cab"><div><h2>Páginas de links</h2><p>Para cartões e placas NFC, QR codes e link na bio. Você edita quando quiser, sem mudar o cartão.</p></div></div>
       <button class="lp-grande edit-only" type="button" data-lk="nova">${svg("mais")} Nova página</button>
+      <button class="lp-tracejado edit-only" type="button" data-lk="importar">${svg("importar")} Importar página do multlinks</button>
       <div class="lp-busca">${svg("link")}<input type="search" id="lkBusca" placeholder="Buscar páginas" value="${esc(lista.b || "")}"></div>
       ${l.length ? l.map(p => `<div class="lp-pcard" data-pid="${esc(p.id)}">
         <div class="lp-pc-a">${p.logo ? `<img src="${imgUrl(p.logo)}" alt="">` : `<span>${esc((p.titulo || "?")[0].toUpperCase())}</span>`}</div>
-        <div class="lp-pc-b"><b>${esc(p.titulo)}</b><small>${esc(HOST)}/l/${esc(p.slug)}</small><span class="lp-pc-v">${svg("olho")} ${p.acessos30} <small>em 30 dias</small></span></div>
+        <div class="lp-pc-b"><b>${esc(p.titulo)}${p.contatosNovos ? ` <span class="lp-bolha" title="Contatos novos">${p.contatosNovos}</span>` : ""}${p.origem === "ativacao" ? ' <small class="lp-tag">ativada pelo cliente</small>' : p.origem === "multlinks" ? ' <small class="lp-tag">importada</small>' : ""}</b><small>${esc(HOST)}/l/${esc(p.slug)}</small><span class="lp-pc-v">${svg("olho")} ${p.acessos30} <small>em 30 dias</small></span></div>
         <div class="lp-pc-c"><button class="lp-bt" type="button" data-lk="editar">${svg("lapis")} Editar</button><a class="lp-bt pri" href="/l/${esc(p.slug)}" target="_blank" rel="noopener">${svg("abrir")} Abrir</a></div>
       </div>`).join("") : `<div class="lp-vazio"><b>${paginas?.length ? "Nada encontrado" : "Nenhuma página ainda"}</b><p>Crie uma página com WhatsApp, Instagram, Pix, Wi-Fi, avaliação no Google e o que mais quiser. Depois grave o link num cartão NFC ou num QR code.</p></div>`}
     </div>`;
   }
-  async function novaPagina() {
-    const titulo = prompt("Nome da página (ex.: nome do cliente ou da empresa):"); if (!titulo || !titulo.trim()) return;
-    try {
-      const p = await P().api("POST", "/api/lk/paginas", { titulo: titulo.trim(), design: { tema: "azul", estilo: "vidro" }, itens: [{ tipo: "whatsapp", titulo: "WhatsApp" }, { tipo: "instagram", titulo: "Instagram", modo: "icone" }] });
-      paginas.unshift(p); abreEditor(p.id);
-    } catch (e) { P().toast(e.message); }
+  function novaPagina() {
+    const MOD = window.LK_MODELOS || {}, ICM = { branco: "mais", restaurante: "produto", loja: "catalogo", advogado: "contato", clinica: "horario", empresa: "link", pessoal: "instagram" };
+    let escolhido = "branco";
+    const ov = document.createElement("div"); ov.className = "lp-modal"; ov.innerHTML = `<div class="lp-mbox" role="dialog" aria-label="Nova página"><div class="lp-mcab"><b>Nova página</b><button type="button" class="lp-mx" data-n="x" aria-label="Fechar">✕</button></div>
+      <label class="lp-flut"><span>Nome (cliente ou empresa)</span><input id="npNome" maxlength="80" placeholder="Ex.: Da Nossa Cozinha"></label>
+      <div class="lp-row"><label class="lp-flut" style="flex:1;min-width:160px"><span>WhatsApp (opcional)</span><input id="npZap" maxlength="20" inputmode="tel"></label><label class="lp-flut" style="flex:1;min-width:160px"><span>Instagram (opcional)</span><input id="npIg" maxlength="40" placeholder="@perfil"></label></div>
+      <div class="lp-grupo"><span>Comece com um modelo</span><div class="lp-mods">${Object.entries(MOD).map(([k, m]) => `<button type="button" class="lp-mod${k === escolhido ? " on" : ""}" data-n="${k}">${svg(ICM[k] || "link")}<b>${esc(m.nome)}</b><small>${esc(m.desc)}</small></button>`).join("")}</div></div>
+      <div class="lp-row" style="justify-content:flex-end"><button type="button" class="lp-bt" data-n="x">Cancelar</button><button type="button" class="lp-bt pri" data-n="ok">Criar página</button></div></div>`;
+    document.body.appendChild(ov); setTimeout(() => ov.querySelector("#npNome").focus(), 30);
+    ov.addEventListener("click", async e => {
+      if (e.target === ov) return ov.remove(); const b = e.target.closest("[data-n]"); if (!b) return; const n = b.dataset.n;
+      if (n === "x") return ov.remove();
+      if (n !== "ok") { escolhido = n; ov.querySelectorAll(".lp-mod").forEach(x => x.classList.toggle("on", x === b)); return; }
+      const titulo = ov.querySelector("#npNome").value.trim(); if (!titulo) { P().toast("Coloque o nome da página"); return ov.querySelector("#npNome").focus(); }
+      const dd = { nome: titulo, whatsapp: ov.querySelector("#npZap").value.replace(/\D/g, ""), instagram: ov.querySelector("#npIg").value.replace(/^@/, "").trim() }, M = MOD[escolhido];
+      b.disabled = true;
+      try { const p = await P().api("POST", "/api/lk/paginas", { titulo, design: { ...M.tema }, itens: M.itens(dd) }); paginas.unshift(p); ov.remove(); abreEditor(p.id); }
+      catch (err) { b.disabled = false; P().toast(err.message); }
+    });
+  }
+  async function importar() {
+    const url = prompt("Cole o endereço da página do multlinks (ex.: https://multlinks.com/minhapagina):"); if (!url || !url.trim()) return;
+    P().toast("Importando… pode levar alguns segundos");
+    try { const r = await P().api("POST", "/api/lk/importar", { url: url.trim() }); paginas.unshift(r.pagina); abreEditor(r.pagina.id);
+      P().toast(`Importada com ${r.itens} itens.` + (r.pulados.length ? ` Não deu para trazer: ${r.pulados.join(", ")}.` : " Confira e ajuste o que precisar.")); }
+    catch (e) { P().toast(e.message); }
   }
 
   // ================= EDITOR =================
   function abreEditor(id) {
     const p = paginas.find(x => x.id === id); if (!p) return;
-    ed = JSON.parse(JSON.stringify(p)); abertoItem = null; aba = null; gradeAberta = false; desenha(); window.scrollTo({ top: 0 });
+    ed = JSON.parse(JSON.stringify(p)); abertoItem = null; aba = null; gradeAberta = false; contatos = null; desenha(); window.scrollTo({ top: 0 });
+    if (!categorias) P().api("GET", "/api/lk/categorias").then(c => { categorias = c; }).catch(() => { categorias = []; });
+    if (emailOk == null) P().api("GET", "/api/lk/email").then(r => { emailOk = r.configurado; }).catch(() => {});
   }
   const chips = (nome, atual, ops) => `<div class="lp-chips">${ops.map(([v, t]) => `<button type="button" class="lp-chip${atual === v ? " on" : ""}" data-set="${nome}" data-v="${v}">${t}</button>`).join("")}</div>`;
   const faixa = (nome, rot, v, a, b, unid = "") => `<label class="lp-faixa"><span>${rot}<b>${v}${unid}</b></span><input type="range" min="${a}" max="${b}" value="${v}" data-k="${nome}"></label>`;
@@ -115,7 +152,7 @@
       <div class="lp-colA">
         <button class="lp-voltar" type="button" data-lk="voltar">← Páginas</button>
         <div class="lp-cab"><div><h2>Editar página</h2><p>Organize o conteúdo e o visual da página.</p></div>
-          <div class="lp-cab-bts"><button class="lp-bt" type="button" data-aba="ajustes">${svg("engrenagem")} Ajustes</button><button class="lp-bt" type="button" data-aba="metricas">${svg("grafico")} Métricas</button><a class="lp-bt" href="/l/${esc(d.slug)}" target="_blank" rel="noopener" id="lkAbrir">${svg("abrir")} Ver página</a></div></div>
+          <div class="lp-cab-bts"><button class="lp-bt" type="button" data-aba="contatos">${svg("contatos")} Contatos${d.contatosNovos ? ` <span class="lp-bolha">${d.contatosNovos}</span>` : ""}</button><button class="lp-bt" type="button" data-aba="ajustes">${svg("engrenagem")} Ajustes</button><button class="lp-bt" type="button" data-aba="metricas">${svg("grafico")} Métricas</button><a class="lp-bt" href="/l/${esc(d.slug)}" target="_blank" rel="noopener" id="lkAbrir">${svg("abrir")} Ver página</a></div></div>
         <div class="lp-box"><label class="lp-flut"><span>Título da página</span><input data-k="titulo" maxlength="80" value="${esc(d.titulo)}"></label></div>
         <div class="lp-quatro">${[["logo", "foto", "Logo"], ["descricao", "desc", "Descrição"], ["design", "design", "Design"], ["link", "corrente", "Meu link"]].map(([a, i, t]) => `<button type="button" class="lp-bt${aba === a ? " on" : ""}" data-aba="${a}">${svg(i)} ${t}</button>`).join("")}</div>
         <div id="lpAba">${painelAba()}</div>
@@ -152,8 +189,15 @@
       <div class="lp-grupo"><span>Imagem de compartilhamento</span><p class="lp-sub">Aparece quando o link é enviado no WhatsApp e nas redes. Tamanho ideal 1200×630. Sem imagem, usa a logo.</p>
         <div class="lp-row">${d.ogImagem ? `<img src="${imgUrl(d.ogImagem)}" alt="" class="lp-og">` : ""}<label class="lp-bt">${svg("foto")} ${d.ogImagem ? "Trocar" : "Enviar imagem"}<input type="file" id="lkOgArq" accept="image/*" hidden></label>${d.ogImagem ? `<button class="lp-bt" type="button" data-lk="tiraog">Tirar</button>` : ""}</div></div>
       <label class="lp-sw"><input type="checkbox" data-k="compartilhar"${d.compartilhar !== false ? " checked" : ""}><i></i> Mostrar o botão "Compartilhar"</label>
+      <div class="lp-grupo"><span>Anúncios e métricas (opcional)</span><p class="lp-sub">Para quem anuncia: conta as visitas e os cliques nos botões no Meta e no Google.</p>
+        <div class="lp-row"><label class="lp-flut" style="flex:1;min-width:200px"><span>ID do Pixel do Meta</span><input data-k="metaPixel" maxlength="20" inputmode="numeric" value="${esc(d.metaPixel || "")}" placeholder="Ex.: 1234567890123456"></label>
+        <label class="lp-flut" style="flex:1;min-width:200px"><span>Google Analytics 4</span><input data-k="ga4" maxlength="20" value="${esc(d.ga4 || "")}" placeholder="G-XXXXXXXXXX"></label></div></div>
+      <div class="lp-grupo"><span>Relatório mensal para o cliente</span><p class="lp-sub">Todo dia 1º, às 9h, o cliente recebe por e-mail os acessos e cliques do mês anterior.${emailOk === false ? ' <b style="color:#b45309">O envio de e-mail ainda não está configurado no servidor: o link abaixo funciona, mas o e-mail não sai.</b>' : ""}</p>
+        <label class="lp-flut"><span>E-mail do cliente</span><input data-k="relatorioEmail" type="email" maxlength="120" value="${esc(d.relatorioEmail || "")}" placeholder="cliente@empresa.com.br"></label>
+        ${d.relToken ? `<div class="lp-row"><a class="lp-bt" href="/l/${esc(d.slug)}/relatorio/${d.relToken}" target="_blank" rel="noopener">${svg("grafico")} Ver relatório</a><button class="lp-bt" type="button" data-lk="relcopia">${svg("corrente")} Copiar link do relatório</button><button class="lp-bt" type="button" data-lk="relenvia">Enviar e-mail agora</button></div>` : `<p class="lp-sub">O link do relatório aparece depois que a página salvar.</p>`}</div>
       <div class="lp-row" style="justify-content:flex-end"><button class="lp-bt perigo edit-only" type="button" data-lk="excluir">${svg("lixo")} Excluir página</button></div></div>`;
     if (aba === "metricas") return `<div class="lp-box lp-pn" id="lkMet"><b>Métricas</b><p class="lp-sub">Carregando…</p></div>`;
+    if (aba === "contatos") return `<div class="lp-box lp-pn" id="lkCont">${contatosHtml()}</div>`;
     if (aba === "design") {
       const sub = { tema: () => `<div class="lp-temas">${Object.entries(TEMAS).map(([k, [c, f1, f2]]) => `<button type="button" class="lp-tema${ds.tema === k ? " on" : ""}" data-tema="${k}"><i style="background:linear-gradient(160deg,${f1},${f2})"><em style="background:${c}"></em><em style="background:${c};opacity:.7"></em></i><span>${NOME_TEMA[k]}</span></button>`).join("")}</div>`,
         fundo: () => `<div class="lp-grupo"><span>Fundo</span>${chips("design.fundo", ds.fundo, [["tema", "Do tema"], ["cor", "Uma cor"], ["gradiente", "Degradê"], ["imagem", "Foto"]])}</div>
@@ -189,6 +233,13 @@
   function campo(i, [k, rot, tipo]) {
     const v = i[k] ?? "";
     if (tipo === "check") return `<label class="lp-sw"><input type="checkbox" data-c="${k}"${v !== false ? " checked" : ""}><i></i> ${rot}</label>`;
+    if (tipo === "check0") return `<label class="lp-sw"><input type="checkbox" data-c="${k}"${v === true ? " checked" : ""}><i></i> ${rot}</label>`;
+    if (tipo === "cat") return `<label class="lp-flut"><span>${rot}</span><select data-c="${k}"><option value="">Todas as categorias</option>${(categorias || []).map(c => `<option${c === v ? " selected" : ""}>${esc(c)}</option>`).join("")}</select></label>`;
+    if (tipo === "horario") { const dias = i.dias || diasPadrao(); return `<div class="lp-grupo lp-hor"><span>${rot}</span>${[1, 2, 3, 4, 5, 6, 0].map(n => { const x = dias[n];
+      return `<div class="lp-hdia${x.aberto ? "" : " off"}"><label class="lp-sw"><input type="checkbox" data-hd="${n}:aberto"${x.aberto ? " checked" : ""}><i></i> <b>${NDIAS[n]}</b></label>
+        ${x.aberto ? `<span class="lp-hh"><input type="time" data-hd="${n}:abre" value="${x.abre}"> às <input type="time" data-hd="${n}:fecha" value="${x.fecha}">${x.abre2 ? ` e <input type="time" data-hd="${n}:abre2" value="${x.abre2}"> às <input type="time" data-hd="${n}:fecha2" value="${x.fecha2}">` : ""}
+        <button type="button" class="lp-link" data-hdint="${n}">${x.abre2 ? "tirar intervalo" : "+ intervalo"}</button></span>` : `<span class="lp-sub">Fechado</span>`}</div>`; }).join("")}
+      <button type="button" class="lp-link" data-hdcopia="1">Copiar o horário de segunda para terça a sexta</button></div>`; }
     if (tipo === "area") return `<label class="lp-flut"><span>${rot}</span><textarea data-c="${k}" rows="3" maxlength="1500">${esc(v)}</textarea></label>`;
     if (tipo && tipo.startsWith("sel:")) return `<label class="lp-flut"><span>${rot}</span><select data-c="${k}">${tipo.slice(4).split("|").map(o => { const [a, b] = o.split("="); return `<option value="${a}"${(v || tipo.slice(4).split("=")[0]) === a ? " selected" : ""}>${b}</option>`; }).join("")}</select></label>`;
     if (tipo === "foto") return `<div class="lp-grupo"><span>${rot}</span><div class="lp-row">${v ? `<img src="${imgUrl(v)}" alt="" class="lp-mini">` : ""}<label class="lp-bt">${svg("foto")} ${v ? "Trocar" : "Enviar"}<input type="file" accept="image/*" data-foto="${k}" hidden></label>${v ? `<button type="button" class="lp-bt" data-tirafoto="${k}">Tirar</button>` : ""}</div></div>`;
@@ -197,7 +248,18 @@
     return `<label class="lp-flut"><span>${rot}</span><input type="${t}" data-c="${k}" value="${esc(v)}"${t === "number" ? ' step="0.01" min="0"' : ""}></label>`;
   }
   const redesenhaItens = () => { $("#lkItens").innerHTML = itensHtml(); };
-  const redesenhaAba = () => { $("#lpAba").innerHTML = painelAba(); document.querySelectorAll(".lp-quatro .lp-bt").forEach(b => b.classList.toggle("on", b.dataset.aba === aba)); if (aba === "metricas") metricas(); };
+  const redesenhaAba = () => { $("#lpAba").innerHTML = painelAba(); document.querySelectorAll(".lp-quatro .lp-bt").forEach(b => b.classList.toggle("on", b.dataset.aba === aba)); if (aba === "metricas") metricas(); if (aba === "contatos") carregaContatos(); };
+  function contatosHtml() {
+    if (!contatos) return `<b>Contatos</b><p class="lp-sub">Carregando…</p>`;
+    const wa = n => { const d = String(n || "").replace(/\D/g, ""); return d ? "https://wa.me/" + (d.length <= 11 ? "55" + d : d) : ""; };
+    return `<div class="lp-row" style="justify-content:space-between"><b>Contatos do formulário</b>${contatos.length ? `<a class="lp-bt" href="/api/lk/contatos.csv?pagina=${encodeURIComponent(ed.id)}">${svg("importar")} Baixar planilha</a>` : ""}</div>
+      ${!ed.itens.some(i => i.tipo === "formulario") ? `<p class="lp-sub">Adicione o item "Formulário" na página para receber contatos aqui.</p>` : ""}
+      ${contatos.length ? contatos.map(c => `<div class="lp-ct${c.lido ? "" : " novo"}" data-cid="${esc(c.id)}"><div><b>${esc(c.nome)}</b> <small class="lp-sub">${esc(new Date(c.criadoEm.replace(" ", "T") + "Z").toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }))}</small>
+        <span class="lp-sub">${esc(c.whatsapp)}${c.email ? " · " + esc(c.email) : ""}</span>${c.mensagem ? `<p>${esc(c.mensagem)}</p>` : ""}</div>
+        <div class="lp-row">${wa(c.whatsapp) ? `<a class="lp-bt pri" href="${wa(c.whatsapp)}?text=${encodeURIComponent("Olá, " + c.nome.split(" ")[0] + "! Recebemos seu contato pela nossa página.")}" target="_blank" rel="noopener" data-ct="lido">${svg("whatsapp")} Responder</a>` : ""}
+        <button class="lp-bt" type="button" data-ct="${c.lido ? "naolido" : "lido"}">${c.lido ? "Marcar como novo" : "Marcar como visto"}</button><button class="lp-bt perigo edit-only" type="button" data-ct="del" title="Excluir">${svg("lixo")}</button></div></div>`).join("") : `<p class="lp-sub">Nenhum contato ainda.</p>`}`;
+  }
+  async function carregaContatos() { contatos = null; const box = $("#lkCont"); try { contatos = await P().api("GET", "/api/lk/contatos?pagina=" + encodeURIComponent(ed.id)); } catch (e) { contatos = []; P().toast(e.message); } if ($("#lkCont")) $("#lkCont").innerHTML = contatosHtml(); }
 
   // salvar com espera (auto-save) e prévia atualizada
   function agenda(rapido) { clearTimeout(salvarT); const s = $("#lkStatus"); if (s) s.textContent = "Salvando…"; salvarT = setTimeout(salva, rapido ? 150 : 650); }
@@ -241,6 +303,8 @@
       agenda(); return;
     }
     if (t.id === "lkSlug") { clearTimeout(pag._s); pag._s = setTimeout(async () => { const r = await P().api("GET", `/api/lk/slug?s=${encodeURIComponent(t.value)}&id=${encodeURIComponent(ed.id)}`).catch(() => null); if (!r) return; $("#lkSlugMsg").textContent = r.livre ? `${HOST}/l/${r.slug} ✓ disponível` : `"${r.slug || t.value}" não está disponível`; if (r.livre) { ed.slug = r.slug; agenda(true); } }, 500); return; }
+    const bh = t.closest(".lp-item");
+    if (bh && t.dataset.hd) { const i = ed.itens[+bh.dataset.k], [n, c] = t.dataset.hd.split(":"); i.dias = i.dias || diasPadrao(); i.dias[+n][c] = t.type === "checkbox" ? t.checked : t.value; if (c === "aberto") redesenhaItens(); agenda(); return; }
     const box = t.closest(".lp-item"); if (box && t.dataset.c) { const i = ed.itens[+box.dataset.k]; i[t.dataset.c] = t.type === "checkbox" ? t.checked : t.value; const s = box.querySelector(".lp-ih > b"); if (t.dataset.c === "titulo" && s && s.firstChild) s.firstChild.textContent = t.value || NOME_TIPO[i.tipo]; agenda(); }
   });
   pag.addEventListener("change", async e => {
@@ -254,9 +318,10 @@
     if (t.dataset.gal && t.files.length) { i.fotos = i.fotos || []; for (const f of [...t.files].slice(0, 12 - i.fotos.length)) { const id = await sobe(f); if (id) i.fotos.push(id); } redesenhaItens(); agenda(true); }
   });
   pag.addEventListener("click", async e => {
-    const b = e.target.closest("[data-lk],[data-aba],[data-dtab],[data-set],[data-tema],[data-add],[data-ia],[data-im],[data-tirafoto],[data-tiragal]"); if (!b) return;
+    const b = e.target.closest("[data-lk],[data-aba],[data-dtab],[data-set],[data-tema],[data-add],[data-ia],[data-im],[data-tirafoto],[data-tiragal],[data-hdint],[data-hdcopia],[data-ct],[data-mod]"); if (!b) return;
     const a = b.dataset.lk;
     if (a === "nova") return novaPagina();
+    if (a === "importar") return importar();
     if (a === "editar") return abreEditor(b.closest("[data-pid]").dataset.pid);
     if (a === "voltar") { clearTimeout(salvarT); if ($("#lkStatus")?.textContent === "Salvando…") await salva(); ed = null; lista(); return; }
     if (!ed) return;
@@ -272,18 +337,29 @@
     if (a === "coresPix") { ed.design.pixCor = ""; ed.design.pixTexto = ""; redesenhaAba(); agenda(true); return; }
     if (a === "copialink") { const u = ORIGEM + "/l/" + ed.slug; try { await navigator.clipboard.writeText(u); P().toast("Link copiado: " + u); } catch (err) { prompt("Copie:", u); } return; }
     if (a === "qrpagina") return qrParaPagina(ed.id);
+    if (a === "relcopia") { const u = `${ORIGEM}/l/${ed.slug}/relatorio/${ed.relToken}`; try { await navigator.clipboard.writeText(u); P().toast("Link do relatório copiado"); } catch (err) { prompt("Copie:", u); } return; }
+    if (a === "relenvia") { clearTimeout(salvarT); await salva(); try { const r = await P().api("POST", `/api/lk/paginas/${encodeURIComponent(ed.id)}/relatorio`); P().toast("Relatório enviado para " + r.para); } catch (err) { P().toast(err.message); } return; }
+    if (b.dataset.ct) { const cel = b.closest("[data-cid]"), c = contatos.find(x => x.id === cel.dataset.cid);
+      if (b.dataset.ct === "del") { if (!confirm(`Excluir o contato de ${c.nome}?`)) return; await P().api("DELETE", "/api/lk/contatos/" + encodeURIComponent(c.id)).catch(err => P().toast(err.message)); contatos = contatos.filter(x => x !== c); }
+      else { c.lido = b.dataset.ct === "lido"; await P().api("PUT", "/api/lk/contatos/" + encodeURIComponent(c.id), { lido: c.lido }).catch(() => {}); }
+      ed.contatosNovos = contatos.filter(x => !x.lido).length; const pg = paginas.find(x => x.id === ed.id); if (pg) pg.contatosNovos = ed.contatosNovos;
+      $("#lkCont").innerHTML = contatosHtml(); const bb = document.querySelector('.lp-cab-bts [data-aba="contatos"]'); if (bb) bb.innerHTML = `${svg("contatos")} Contatos${ed.contatosNovos ? ` <span class="lp-bolha">${ed.contatosNovos}</span>` : ""}`;
+      if (b.tagName === "A") return; e.preventDefault(); return; }
     if (b.dataset.aba) { aba = aba === b.dataset.aba ? null : b.dataset.aba; redesenhaAba(); return; }
     if (b.dataset.dtab) { abaDesign = b.dataset.dtab; redesenhaAba(); return; }
     if (b.dataset.tema) { ed.design.tema = b.dataset.tema; ed.design.corBotao = ""; ed.design.corBotao2 = ""; ed.design.pixTexto = ""; redesenhaAba(); agenda(true); return; }
     if (b.dataset.set) { setK(b.dataset.set, b.dataset.v); redesenhaAba(); agenda(true); return; }
     if (b.dataset.add) {
       const tp = TIPOS.find(t => t[0] === b.dataset.add); const i = { id: uid(), tipo: tp[0], titulo: tp[2], ativo: true };
-      if (tp[0] === "espacador") i.altura = 24; if (tp[0] === "pix") i.tipoChave = "auto"; if (["tiktok", "email"].includes(tp[0]) && e.target.closest(".lp-atalhos")) i.modo = "icone";
+      if (tp[0] === "espacador") i.altura = 24; if (tp[0] === "pix") i.tipoChave = "auto"; if (tp[0] === "horario") i.dias = diasPadrao(); if (tp[0] === "mapa") i.altura = 240;
+      if (tp[0] === "catalogo") { i.limite = 6; i.estilo = "grade"; } if (tp[0] === "formulario") i.pedeMensagem = true; if (["tiktok", "email"].includes(tp[0]) && e.target.closest(".lp-atalhos")) i.modo = "icone";
       ed.itens.push(i); abertoItem = i.id; gradeAberta = false; desenhaManter(); agenda(true);
       setTimeout(() => document.querySelector(`.lp-item[data-k="${ed.itens.length - 1}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 60); return;
     }
     const box = b.closest(".lp-item"); if (!box) return; const k = +box.dataset.k, i = ed.itens[k];
     if (b.dataset.im) { i[b.dataset.im] = b.dataset.v; redesenhaItens(); agenda(true); return; }
+    if (b.dataset.hdint) { const x = i.dias[+b.dataset.hdint]; if (x.abre2) { x.abre2 = ""; x.fecha2 = ""; } else { x.abre2 = "14:00"; x.fecha2 = x.fecha; x.fecha = "12:00"; } redesenhaItens(); agenda(true); return; }
+    if (b.dataset.hdcopia) { for (let n = 2; n <= 5; n++) i.dias[n] = { ...i.dias[1] }; redesenhaItens(); agenda(true); return; }
     if (b.dataset.tirafoto) { i[b.dataset.tirafoto] = ""; redesenhaItens(); agenda(true); return; }
     if (b.dataset.tiragal != null) { i.fotos.splice(+b.dataset.tiragal, 1); redesenhaItens(); agenda(true); return; }
     const ia = b.dataset.ia;
@@ -429,6 +505,17 @@
 
   // ================= QR CODES DINÂMICOS =================
   async function carregaQrs() { qrs = await P().api("GET", "/api/lk/qr"); }
+  const VIS0 = { cor: "#000000", fundo: "#ffffff", corOlho: "", modulo: "quadrado", olho: "quadrado", logo: "", logoFoto: "" };
+  const qrVisImg = (q, extra = "") => `/api/lk/qrimg?qr=${encodeURIComponent(q.id)}&_=${encodeURIComponent(JSON.stringify(q.visual || {})).length}${extra}`;
+  // PNG em alta (1200 px) feito no navegador a partir do SVG com o visual
+  async function baixaPng(urlSvg, nome) {
+    try { const txt = await (await fetch(urlSvg)).text(), url = URL.createObjectURL(new Blob([txt], { type: "image/svg+xml" }));
+      const im = await carregaImg(url), c = document.createElement("canvas"); c.width = c.height = 1200; c.getContext("2d").drawImage(im, 0, 0, 1200, 1200); URL.revokeObjectURL(url);
+      c.toBlob(b => { const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = nome + ".png"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }, "image/png");
+    } catch (e) { P().toast("Não deu para gerar o PNG"); }
+  }
+  const lum = h => { const n = parseInt(String(h || "#000000").slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255].map(x => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const contrasteRuim = v => { const f = lum(v.fundo || "#ffffff"); return [v.cor || "#000000", v.corOlho || v.cor || "#000000"].some(c => f <= lum(c) || (f + 0.05) / (lum(c) + 0.05) < 3.5); };
   const destTxt = q => q.destinoTipo === "url" ? q.url : q.destinoTipo === "pagina" ? ((paginas || []).find(p => p.id === q.paginaId) ? "Página: " + paginas.find(p => p.id === q.paginaId).titulo : "Página excluída") : "Sem destino (ainda não ativado)";
   function telaQr() {
     const box = $("#lkQr"), busca = (telaQr.b || "").toLowerCase(), f = telaQr.form;
@@ -444,13 +531,21 @@
         <div class="lp-grupo"><span>Destino</span><div class="lp-chips">${[["pagina", "Uma página de links"], ["url", "Um link"], ["nenhum", "Nenhum (ativar depois)"]].map(([v, t]) => `<button type="button" class="lp-chip${f.destinoTipo === v ? " on" : ""}" data-qt="${v}">${t}</button>`).join("")}</div></div>
         ${f.destinoTipo === "pagina" ? `<label class="lp-flut"><span>Página</span><select id="qPag">${opcPag(f.paginaId) || "<option value=''>Crie uma página primeiro</option>"}</select></label>` : ""}
         ${f.destinoTipo === "url" ? `<label class="lp-flut"><span>Link de destino</span><input id="qUrl" type="url" placeholder="https://…" value="${esc(f.url || "")}"></label>` : ""}
+        ${f.destinoTipo === "nenhum" ? `<label class="lp-sw"><input type="checkbox" id="qAtiva"${f.ativavel !== false ? " checked" : ""}><i></i> O cliente pode ativar sozinho (ao ler o QR, ele preenche nome e WhatsApp e a página é criada)</label>` : ""}
+        ${(v => `<div class="lp-grupo"><span>Visual do QR code</span><div class="lp-qrvis"><img id="qPrev" alt="Prévia do QR" src="${qrPrevUrl(f)}"><div class="lp-pn" style="flex:1;min-width:220px">
+          <div class="lp-row">${[["cor", "Pontos", "#000000"], ["corOlho", "Cantos", v.cor || "#000000"], ["fundo", "Fundo", "#ffffff"]].map(([k, t, pd]) => `<label class="lp-cor"><span>${t}</span><input type="color" data-qv="${k}" value="${v[k] || pd}"></label>`).join("")}</div>
+          <div class="lp-grupo"><span>Pontos</span><div class="lp-chips">${[["quadrado", "Quadrados"], ["redondo", "Arredondados"], ["pontos", "Bolinhas"]].map(([k, t]) => `<button type="button" class="lp-chip${v.modulo === k ? " on" : ""}" data-qvs="modulo" data-v="${k}">${t}</button>`).join("")}</div></div>
+          <div class="lp-grupo"><span>Cantos</span><div class="lp-chips">${[["quadrado", "Quadrados"], ["arredondado", "Arredondados"]].map(([k, t]) => `<button type="button" class="lp-chip${(v.olho === "redondo" ? "arredondado" : v.olho) === k ? " on" : ""}" data-qvs="olho" data-v="${k}">${t}</button>`).join("")}</div></div>
+          <div class="lp-grupo"><span>Logo no meio</span><div class="lp-chips"><button type="button" class="lp-chip${!v.logo ? " on" : ""}" data-qvs="logo" data-v="">Sem logo</button>${f.destinoTipo === "pagina" ? `<button type="button" class="lp-chip${v.logo === "pagina" ? " on" : ""}" data-qvs="logo" data-v="pagina">Logo da página</button>` : ""}<label class="lp-chip${v.logo === "foto" ? " on" : ""}">Enviar imagem<input type="file" id="qLogoArq" accept="image/*" hidden></label></div></div>
+          ${contrasteRuim(v) ? `<p class="lp-pend">Atenção: pouco contraste ou pontos claros em fundo escuro. Muitos celulares não leem. Use pontos escuros em fundo claro.</p>` : ""}
+          <button type="button" class="lp-link" data-q="vispadrao">Voltar ao preto e branco</button></div></div></div>`)({ ...VIS0, ...(f.visual || {}) })}
         <div class="lp-row"><button class="lp-bt pri" type="button" data-q="salvar">${f.id ? "Salvar destino" : "Criar"}</button><button class="lp-bt" type="button" data-q="cancelar">Cancelar</button></div></div>` : ""}
       <div class="lp-busca">${svg("link")}<input type="search" id="qBusca" placeholder="Buscar QR codes" value="${esc(telaQr.b || "")}"></div>
       ${l.length ? l.map(q => { const link = ORIGEM + "/q/" + q.codigo; return `<div class="lp-qr" data-qid="${esc(q.id)}">
-        <img src="${qrImg(link)}" alt="QR ${esc(q.codigo)}" loading="lazy">
+        <img src="${qrVisImg(q)}" alt="QR ${esc(q.codigo)}" loading="lazy">
         <div class="lp-qr-b"><b>${esc(q.nome)}</b><a href="${esc(link)}" target="_blank" rel="noopener">${esc(HOST)}/q/${esc(q.codigo)}</a>
-          <span class="${q.destinoTipo === "nenhum" ? "lp-pend" : "lp-sub"}">→ ${esc(destTxt(q))}</span><span class="lp-sub">${svg("olho")} ${q.scans30} leitura${q.scans30 === 1 ? "" : "s"} em 30 dias · ${q.scansSempre} no total</span>
-          <div class="lp-row"><button class="lp-bt edit-only" type="button" data-q="editar">${svg("lapis")} Mudar destino</button><a class="lp-bt" href="${qrImg(link, "&f=png&n=" + encodeURIComponent("qr-" + q.codigo))}">PNG</a><a class="lp-bt" href="${qrImg(link, "&d=1&n=" + encodeURIComponent("qr-" + q.codigo))}">SVG</a><button class="lp-bt" type="button" data-q="copiar">${svg("corrente")} Copiar</button><button class="lp-bt perigo edit-only" type="button" data-q="excluir" title="Excluir">${svg("lixo")}</button></div></div>
+          <span class="${q.destinoTipo === "nenhum" ? "lp-pend" : "lp-sub"}">→ ${esc(destTxt(q))}${q.destinoTipo === "nenhum" && q.ativavel !== false ? " · o cliente pode ativar" : ""}</span>${q.ativadoEm ? `<span class="lp-sub">✓ Ativado pelo cliente (${esc(q.ativadoPor || "")}) em ${new Date(q.ativadoEm).toLocaleDateString("pt-BR")}</span>` : ""}<span class="lp-sub">${svg("olho")} ${q.scans30} leitura${q.scans30 === 1 ? "" : "s"} em 30 dias · ${q.scansSempre} no total</span>
+          <div class="lp-row"><button class="lp-bt edit-only" type="button" data-q="editar">${svg("lapis")} Mudar destino</button><button class="lp-bt" type="button" data-q="png">PNG</button><a class="lp-bt" href="${qrVisImg(q, "&d=1&n=" + encodeURIComponent("qr-" + q.codigo))}">SVG</a><button class="lp-bt" type="button" data-q="copiar">${svg("corrente")} Copiar</button><button class="lp-bt perigo edit-only" type="button" data-q="excluir" title="Excluir">${svg("lixo")}</button></div></div>
       </div>`; }).join("") : `<div class="lp-vazio"><b>${qrs?.length ? "Nada encontrado" : "Nenhum QR code ainda"}</b><p>Crie um QR para uma página de links ou para qualquer endereço. Se o endereço mudar, é só trocar o destino aqui.</p></div>`}
     </div>`;
   }
@@ -462,10 +557,19 @@
   }
   const qbox = document.getElementById("lkQr");
   qbox.addEventListener("input", e => { if (e.target.id === "qBusca") { telaQr.b = e.target.value; const pos = e.target.selectionStart; telaQr(); const b = $("#qBusca"); b.focus(); b.setSelectionRange(pos, pos); } });
-  function leFormQr() { const f = telaQr.form; if (!f) return; f.nome = $("#qNome")?.value ?? f.nome; f.quantidade = $("#qQtd")?.value ?? f.quantidade; f.codigo = $("#qCod")?.value ?? f.codigo; f.paginaId = $("#qPag")?.value ?? f.paginaId; f.url = $("#qUrl")?.value ?? f.url; }
+  function qrPrevUrl(f) { const v = { ...VIS0, ...(f.visual || {}) }, texto = f.codigo && f.id ? ORIGEM + "/q/" + f.codigo : ORIGEM + "/q/EXEMPLO1";
+    return `/api/lk/qrimg?t=${encodeURIComponent(texto)}&v=${encodeURIComponent(JSON.stringify(v))}${f.destinoTipo === "pagina" && f.paginaId ? "&pg=" + encodeURIComponent(f.paginaId) : ""}`; }
+  const atualizaPrevQr = () => { leFormQr(); const im = $("#qPrev"); if (im) im.src = qrPrevUrl(telaQr.form); };
+  qbox.addEventListener("input", e => { const k = e.target.dataset.qv; if (!k || !telaQr.form) return; telaQr.form.visual = { ...VIS0, ...(telaQr.form.visual || {}), [k]: e.target.value }; clearTimeout(qbox._t); qbox._t = setTimeout(atualizaPrevQr, 120); });
+  qbox.addEventListener("change", async e => { if (e.target.id !== "qLogoArq" || !e.target.files[0]) return;
+    try { const id = await P().enviaBlob(await paraPng(e.target.files[0], 600), "logo.png"); leFormQr(); telaQr.form.visual = { ...VIS0, ...(telaQr.form.visual || {}), logo: "foto", logoFoto: id }; telaQr(); } catch (err) { P().toast(err.message); } });
+  function leFormQr() { const f = telaQr.form; if (!f) return; f.nome = $("#qNome")?.value ?? f.nome; if ($("#qAtiva")) f.ativavel = $("#qAtiva").checked; f.quantidade = $("#qQtd")?.value ?? f.quantidade; f.codigo = $("#qCod")?.value ?? f.codigo; f.paginaId = $("#qPag")?.value ?? f.paginaId; f.url = $("#qUrl")?.value ?? f.url; }
   qbox.addEventListener("click", async e => {
     const qt = e.target.closest("[data-qt]"); if (qt) { leFormQr(); telaQr.form.destinoTipo = qt.dataset.qt; if (qt.dataset.qt === "pagina" && !telaQr.form.paginaId) telaQr.form.paginaId = paginas?.[0]?.id; telaQr(); return; }
+    const vs = e.target.closest("[data-qvs]"); if (vs) { leFormQr(); telaQr.form.visual = { ...VIS0, ...(telaQr.form.visual || {}), [vs.dataset.qvs]: vs.dataset.v }; telaQr(); return; }
     const b = e.target.closest("[data-q]"); if (!b) return; const a = b.dataset.q, q = qrs?.find(x => x.id === b.closest("[data-qid]")?.dataset.qid);
+    if (a === "vispadrao") { leFormQr(); telaQr.form.visual = { ...VIS0 }; telaQr(); return; }
+    if (a === "png") return baixaPng(qrVisImg(q), "qr-" + q.codigo);
     if (a === "novo") { telaQr.form = { destinoTipo: (paginas || []).length ? "pagina" : "url", paginaId: paginas?.[0]?.id, quantidade: 1 }; telaQr(); $("#qNome")?.focus(); return; }
     if (a === "cancelar") { telaQr.form = null; telaQr(); return; }
     if (a === "editar") { telaQr.form = { ...q }; telaQr(); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
