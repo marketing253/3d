@@ -1465,7 +1465,50 @@ $("#filaLista").addEventListener("change",async e=>{const s=e.target.closest("[d
 let rolos=[], roloForm=false;
 async function carregaRolos(){ try{ rolos=await api("GET","/api/rolos"); renderEstoque() }catch(e){ if(e.status!==401) toast(e.message) } }
 const nomeFil=id=>cfg.filamentos.find(f=>f.id===id)?.nome||"Filamento removido";
+/* ---------- custos de filamento: o que foi comprado, usado e está em estoque, e o preço real por kg ---------- */
+function renderCustosFil(){
+  const box=$("#custoFil"); if(!box) return;
+  if(!rolos.length){ box.innerHTML=""; return }
+  const kg=v=>(v).toLocaleString("pt-BR",{maximumFractionDigits:2})+" kg";
+  const tipos={}, porMes={};
+  for(const r of rolos){
+    const t=tipos[r.filamento_id]||(tipos[r.filamento_id]={rolos:0,kg:0,pago:0,kgPago:0,usadoKg:0,usadoR:0,estoqueKg:0,estoqueR:0});
+    const peso=Math.max(0,num(r.peso))/1000, rest=Math.min(peso,Math.max(0,num(r.restante))/1000), pr=num(r.preco), rkg=pr>0&&peso>0?pr/peso:null;
+    t.rolos++; t.kg+=peso; t.usadoKg+=peso-rest; if(r.ativo) t.estoqueKg+=rest;
+    if(rkg!=null){ t.pago+=pr; t.kgPago+=peso; t.usadoR+=(peso-rest)*rkg; if(r.ativo) t.estoqueR+=rest*rkg }
+    if(pr>0&&r.data_compra){ const m=r.data_compra.slice(0,7); porMes[m]=(porMes[m]||0)+pr }
+  }
+  const lin=Object.entries(tipos).sort((a,b)=>b[1].pago-a[1].pago);
+  const tot=lin.reduce((s,[,t])=>({pago:s.pago+t.pago,usadoR:s.usadoR+t.usadoR,estoqueR:s.estoqueR+t.estoqueR,usadoKg:s.usadoKg+t.usadoKg,kg:s.kg+t.kg}),{pago:0,usadoR:0,estoqueR:0,usadoKg:0,kg:0});
+  // preço real x preço do cálculo
+  const difs=lin.map(([id,t])=>{ const f=cfg.filamentos.find(x=>x.id===id); const real=t.kgPago>0?t.pago/t.kgPago:null; const calc_=f?num(f.precoKg):null;
+    return {id,nome:nomeFil(id),real,calc:calc_,dif:real&&calc_?real/calc_-1:null} }).filter(x=>x.dif!=null&&Math.abs(x.dif)>=0.05);
+  // gasto por mês (últimos 6 meses com compra)
+  const meses=Object.keys(porMes).sort().slice(-6), maxMes=Math.max(1,...meses.map(m=>porMes[m]));
+  const nomeMes=m=>new Date(m+"-15T12:00:00").toLocaleDateString("pt-BR",{month:"short",year:"2-digit"}).replace(".","");
+  // produtos que mais gastam filamento por peça
+  const prods=produtos.map(p=>({p,r:calc(p)})).filter(x=>x.r.gramasUnid>0).sort((a,b)=>b.r.u.material-a.r.u.material).slice(0,8);
+  box.innerHTML=`<details class="card stack custofil" open><summary><h3 style="display:inline">Custos de filamento</h3> <span class="pcat">pelo que você cadastrou nos rolos</span></summary>
+    <div class="tiles" style="margin-top:10px">
+      <div class="tile"><span class="tl">Gasto com rolos</span><span class="tv num sm">${brl(tot.pago)}</span><span class="pcat">${kg(tot.kg)} comprados</span></div>
+      <div class="tile"><span class="tl">Filamento já usado</span><span class="tv num sm">${brl(tot.usadoR)}</span><span class="pcat">${kg(tot.usadoKg)}</span></div>
+      <div class="tile"><span class="tl">Valor em estoque</span><span class="tv num sm">${brl(tot.estoqueR)}</span><span class="pcat">nos rolos ativos</span></div>
+    </div>
+    ${difs.length?`<div class="warnbox">${difs.map(d=>`<div class="row spread" style="gap:8px"><span><b>${esc(d.nome)}</b>: você paga em média <b>${brl(d.real)}/kg</b>, mas o cálculo dos produtos usa <b>${brl(d.calc)}/kg</b> (${d.dif>0?"+":""}${Math.round(d.dif*100)}%).${d.dif>0?" Seus preços estão saindo mais baratos que o custo real.":""}</span><button class="btn sm edit-only" type="button" data-cfp="${esc(d.id)}" data-v="${d.real.toFixed(2)}">Usar ${brl(d.real)}/kg</button></div>`).join("")}</div>`:""}
+    <div class="tablewrap"><table class="mini" style="min-width:640px"><thead><tr><th>Filamento</th><th class="n">Rolos</th><th class="n">Comprado</th><th class="n">Pago</th><th class="n">R$/kg real</th><th class="n">R$/kg no cálculo</th><th class="n">Usado</th><th class="n">Em estoque</th></tr></thead><tbody>
+      ${lin.map(([id,t])=>{ const f=cfg.filamentos.find(x=>x.id===id); const real=t.kgPago>0?t.pago/t.kgPago:null;
+        return `<tr><td>${esc(nomeFil(id))}</td><td class="n num">${t.rolos}</td><td class="n num">${kg(t.kg)}</td><td class="n num">${t.pago?brl(t.pago):"—"}</td><td class="n num">${real?brl(real):"—"}</td><td class="n num">${f?brl(num(f.precoKg)):"—"}</td><td class="n num">${kg(t.usadoKg)}${t.usadoR?`<div class="pcat">${brl(t.usadoR)}</div>`:""}</td><td class="n num">${kg(t.estoqueKg)}${t.estoqueR?`<div class="pcat">${brl(t.estoqueR)}</div>`:""}</td></tr>` }).join("")}
+    </tbody></table></div>
+    ${meses.length?`<div><b>Gasto com filamento por mês</b><div class="cfmeses">${meses.map(m=>`<div class="cfm"><span class="num">${brl(porMes[m])}</span><i style="height:${Math.max(4,Math.round(porMes[m]/maxMes*90))}px"></i><small>${nomeMes(m)}</small></div>`).join("")}</div></div>`:""}
+    ${prods.length?`<div><b>Produtos que mais gastam filamento por peça</b><div class="tablewrap"><table class="mini" style="min-width:480px"><thead><tr><th>Produto</th><th class="n">Filamento</th><th class="n">Custo do filamento</th><th class="n">% do custo</th></tr></thead><tbody>
+      ${prods.map(({p,r})=>`<tr><td>${esc(p.nome)}</td><td class="n num">${Math.round(r.gramasUnid)} g</td><td class="n num">${brl(r.u.material)}</td><td class="n num">${r.custo>0?Math.round(r.u.material/r.custo*100)+"%":"—"}</td></tr>`).join("")}
+    </tbody></table></div><p class="note" style="margin:4px 0 0">O custo do filamento usa o R$/kg do cálculo (Ajustes). Rolos sem preço não entram no gasto nem no R$/kg real.</p></div>`:""}
+  </details>`;
+}
+$("#custoFil")?.addEventListener("click",e=>{ const b=e.target.closest("[data-cfp]"); if(!b) return;
+  const f=cfg.filamentos.find(x=>x.id===b.dataset.cfp); if(!f) return; f.precoKg=num(b.dataset.v); saveCfg(); renderCustosFil(); toast(`${f.nome}: cálculo agora usa ${brl(f.precoKg)}/kg. Os preços sugeridos foram atualizados.`) });
 function renderEstoque(){
+  renderCustosFil();
   const ativos=rolos.filter(r=>r.ativo), acabados=rolos.filter(r=>!r.ativo);
   const porTipo={}; for(const r of ativos){porTipo[r.filamento_id]=(porTipo[r.filamento_id]||0)+r.restante}
   const baixo=ativos.filter(r=>r.restante<150);
