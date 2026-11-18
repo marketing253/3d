@@ -572,6 +572,7 @@ function limpaFotosOrfas() {
   for (const r of db.prepare("SELECT dados FROM pedidos WHERE dados LIKE '%\"previa\"%'").all()) { const f = JSON.parse(r.dados).previa?.foto; if (f) usadas.add(f); }
   for (const r of db.prepare("SELECT dados FROM pedidos WHERE dados LIKE '%\"fotosOrc\"%'").all())
     for (const f of JSON.parse(r.dados).fotosOrc || []) usadas.add(f.id);
+  try { for (const r of db.prepare("SELECT dados FROM lk_paginas").all()) for (const m of r.dados.matchAll(/[a-f0-9]{32}\.(?:jpg|png|webp|gif)/g)) usadas.add(m[0]); } catch (e) {} // fotos das páginas de links
   const L0 = lojaConfig(); if (L0.logo) usadas.add(L0.logo);
   for (const b of bannersLoja(L0)) { usadas.add(b.foto); if (b.cel) usadas.add(b.cel); }
   for (const f of fs.readdirSync(FOTOS_DIR)) {
@@ -2492,6 +2493,9 @@ app.get("/pedido/:token", limitePublico, (req, res) => {
       : (p.artes || []).length ? `${origemUrl(req)}/aprovacao/${r.token}/arte/${p.artes[p.artes.length - 1].v}` : null,
   }));
 });
+
+// ---------- páginas de links e QR codes dinâmicos (módulo separado: paginas.js) ----------
+require("./paginas")({ app, db, exigeLogin, exigeEdicao, rateLimit, QRCode, FOTOS_DIR, FOTO_RE, pixPayload, origemUrl, path, lojaConfig });
 
 // catálogo na raiz do site; o endereço antigo /catalogo continua funcionando (redireciona com o ?p= / ?cupom=)
 app.get("/catalogo", (req, res) => { const q = req.originalUrl.indexOf("?"); res.redirect(301, "/" + (q >= 0 ? req.originalUrl.slice(q) : "")); });

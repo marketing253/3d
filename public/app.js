@@ -103,6 +103,7 @@ const GRUPOS={hoje:["Hoje",[["hoje","Hoje"]]],
   produtos:["Produtos",[["produtos","Produtos"],["novo","Cadastrar",1],["estoque","Estoque"],["kits","Kits e cupons"],["tendencias","Em alta"]]],
   fila:["Impressoras",[["fila","Fila e painel"],["manutencao","Manutenção"]]],
   financeiro:["Financeiro",[["financeiro","Financeiro"],["compras","Compras"]]],
+  paginas:["Links",[["paginas","Páginas"],["qrcodes","QR codes"]]],
   config:["Ajustes",[["config","Custos e loja"],["usuarios","Usuários"],["conta","Minha conta"]]]};
 const grupoDe=t=>Object.keys(GRUPOS).find(g=>GRUPOS[g][1].some(x=>x[0]===t))||"hoje";
 function renderSubnav(t){
@@ -116,7 +117,7 @@ function setTab(t){
   const g=grupoDe(t);
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===g)));
   renderSubnav(t);
-  ["hoje","produtos","pedidos","orcamento","clientes","fila","estoque","manutencao","compras","financeiro","novo","tendencias","kits","config","usuarios","conta","proposta"].forEach(x=>{$("#p-"+x).hidden=x!==t});
+  ["hoje","produtos","pedidos","orcamento","clientes","fila","estoque","manutencao","compras","financeiro","novo","tendencias","kits","config","usuarios","conta","proposta","paginas","qrcodes"].forEach(x=>{$("#p-"+x).hidden=x!==t});
   try{localStorage.setItem("prec3d.tab",t)}catch(e){}
   $("#pageTitle").textContent=t==="proposta"?"Proposta comercial":GRUPOS[g][0];
   document.body.classList.remove("navopen"); $("#menuBtn").setAttribute("aria-expanded","false");
@@ -134,6 +135,7 @@ function setTab(t){
   if(t==="orcamento") renderQo();
   if(t==="manutencao"){ renderManutencao(); carregaPedidos(); carregaImpressoes() }
   if(t==="kits"){ renderKits(); if(!pedCarregado) carregaPedidos() }
+  if(t==="paginas"||t==="qrcodes") window.lkPainel?.abrir(t); // área Links (links-painel.js)
   window.scrollTo({top:0});
 }
 $("#subnav").addEventListener("click",e=>{const b=e.target.closest("[data-sub]"); if(b) $("#tab-"+b.dataset.sub)?.click()});
@@ -3060,5 +3062,7 @@ document.addEventListener("click",e=>{ if(!e.target.closest("details.mais")) doc
 window.addEventListener("scroll",()=>document.querySelectorAll("details.mais[open]").forEach(x=>x.removeAttribute("open")),true);
 
 $("#pedForm").addEventListener("close",()=>{ pedForm=null; $("#pedForm").innerHTML="" }); // Esc também fecha a caixa do pedido
+// ferramentas do painel usadas pela área Links (links-painel.js), que fica em arquivo separado
+window.painel={api,toast,esc,brl,enviaImagem,podeEditar,abreTab:t=>setTab(t)};
 boot();
 })();
