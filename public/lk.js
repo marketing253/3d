@@ -9,6 +9,8 @@
       if (c.dataset.item) fetch(`/l/${slug}/c/${c.dataset.item}`, { method: "POST", keepalive: true }).catch(() => {});
       return;
     }
+    const q = e.target.closest("[data-qr]");
+    if (q) { const box = q.closest(".pix")?.querySelector(".pixqr"); if (box) { box.hidden = !box.hidden; q.classList.toggle("on", !box.hidden); } return; }
     const s = e.target.closest("[data-share]");
     if (s) {
       const dados = { title: s.dataset.titulo, url: s.dataset.share };
