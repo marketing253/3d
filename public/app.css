@@ -761,3 +761,14 @@ main,.main,.content{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
 
 .medidas .unit span{display:none}
 .medidas .unit input{padding-left:8px;padding-right:6px;min-width:0}
+
+/* cadastro de produto em passos */
+.passo-cab{display:flex;align-items:center;gap:12px}
+.passo-cab h3{margin:0}
+.passo-cab .note{display:block;margin-top:2px}
+.passo-n{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-weight:800;font-size:14px}
+#form .so-cat{display:none}
+#form.cat-on .so-cat{display:flex}
+.salvabar{position:sticky;bottom:0;z-index:5;background:var(--bg);padding:12px 0;margin-top:-4px;border-top:1px solid var(--line)}
+.par{display:flex;gap:8px}
+.par .unit{flex:1;min-width:0}

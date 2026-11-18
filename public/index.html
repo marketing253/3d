@@ -263,18 +263,14 @@
   <!-- NOVO / EDITAR -->
   <section class="panel" id="p-novo" hidden>
     <div class="grid-form">
-      <form class="stack" id="form" autocomplete="off">
+        <form class="stack" id="form" autocomplete="off">
         <div class="card stack">
           <div class="row spread"><h2 id="formTitle">Novo produto</h2><button type="button" class="btn ghost" id="btnLimpar">Limpar</button></div>
+          <div class="passo-cab"><span class="passo-n">1</span><div><h3>O produto</h3><span class="note">Nome, link do modelo e fotos</span></div></div>
           <div class="fields">
             <label class="f" style="grid-column:1/-1">Nome do produto<input id="f-nome" required placeholder="Ex.: Chaveiro com nome 2 cores"></label>
             <label class="f">Categoria<input id="f-cat" list="cats" placeholder="Ex.: Personalizados"></label>
-            <label class="f">Peças por impressão<span class="hint">Quantas cabem na mesa de uma vez</span><input id="f-unid" type="number" min="1" step="1" value="1"></label>
           </div>
-        </div>
-
-        <div class="card stack">
-          <h3>Arquivo e foto</h3>
           <label class="f">Link do modelo<span class="hint">Cole o link da página do modelo no MakerWorld, Printables ou Thingiverse, ou o link do arquivo no seu Drive</span>
             <input id="f-link" type="url" inputmode="url" placeholder="https://makerworld.com/pt/models/…"></label>
           <div class="row" style="gap:10px;align-items:flex-start"><button type="button" class="btn sm" id="btnPuxaFoto"><svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3v9m-4-4l4 4 4-4M4 16h12"/></svg>Puxar dados do link</button><span class="note" id="linkMsg" style="margin:0;flex:1;min-width:200px">Com link do MakerWorld, a foto, o nome, o tempo e o peso de cada cor entram sozinhos ao colar. Do Thingiverse vem a foto e o nome.</span></div>
@@ -298,24 +294,21 @@
         </div>
 
         <div class="card stack">
-          <div class="row spread"><h3>Filamento usado (por impressão)</h3><button type="button" class="btn ghost" id="btnAddFil">+ Cor / material</button></div>
+          <div class="passo-cab"><span class="passo-n">2</span><div><h3>Impressão</h3><span class="note">Um arquivo do Bambu Studio preenche filamento, tempo e medidas</span></div></div>
           <div class="importbox"><label class="btn" for="f-fatiado">Importar do Bambu Studio</label><input id="f-fatiado" type="file" accept=".3mf,.gcode,.stl" hidden>
             <span class="note" id="impMsg">Envie o arquivo fatiado (.gcode.3mf) e o peso de cada cor, o tempo e as medidas da peça são preenchidos sozinhos. Também aceita o projeto .3mf ou o .stl, só para as medidas.</span></div>
-          <p class="note" style="margin:0">Ou digite os gramas do Bambu Studio depois de fatiar. Em impressão colorida, use o total de cada cor, que já inclui a purga na troca de cor.</p>
+          <div class="row spread" style="gap:8px"><b style="font-size:14px">Filamento por impressão</b><button type="button" class="btn ghost" id="btnAddFil">+ Cor / material</button></div>
           <div class="stack" id="filLines" style="gap:8px"></div>
-        </div>
-
-        <div class="card stack">
-          <h3>Tempo</h3>
+          <p class="note" style="margin:0">Ou digite os gramas do Bambu Studio depois de fatiar. Em impressão colorida, use o total de cada cor, que já inclui a purga na troca de cor.</p>
           <div class="fields">
-            <label class="f">Tempo de impressão<div class="unit"><input id="f-h" type="number" min="0" step="1" value="0"><span>h</span></div></label>
-            <label class="f">&nbsp;<div class="unit"><input id="f-m" type="number" min="0" max="59" step="1" value="0"><span>min</span></div></label>
+            <label class="f">Tempo de impressão<div class="par"><div class="unit"><input id="f-h" type="number" min="0" step="1" value="0"><span>h</span></div><div class="unit"><input id="f-m" type="number" min="0" max="59" step="1" value="0"><span>min</span></div></div></label>
+            <label class="f">Peças por impressão<span class="hint">Quantas cabem na mesa de uma vez</span><input id="f-unid" type="number" min="1" step="1" value="1"></label>
             <label class="f">Trabalho manual<span class="hint">Tirar suportes, montar, embalar</span><div class="unit"><input id="f-manual" type="number" min="0" step="1" value="0"><span>min</span></div></label>
           </div>
         </div>
 
         <div class="card stack">
-          <h3>Outros custos e preço</h3>
+          <div class="passo-cab"><span class="passo-n">3</span><div><h3>Custos e preço</h3><span class="note">O resumo de custo mostra o preço sugerido em cada canal</span></div></div>
           <div class="fields">
             <label class="f">Embalagem por unidade<div class="unit pre"><span>R$</span><input id="f-emb" type="number" min="0" step="0.01" value="0"></div></label>
             <label class="f">Outros por unidade<span class="hint">Argola, ímã, adesivo…</span><div class="unit pre"><span>R$</span><input id="f-out" type="number" min="0" step="0.01" value="0"></div></label>
@@ -325,29 +318,35 @@
         </div>
 
         <div class="card stack">
-          <h3>Catálogo e pronta entrega</h3>
+          <div class="passo-cab"><span class="passo-n">4</span><div><h3>Catálogo</h3><span class="note">Como o produto aparece para o cliente</span></div></div>
           <label class="chk"><input type="checkbox" id="f-catshow"> Mostrar no catálogo público</label>
-          <label class="chk"><input type="checkbox" id="f-pers"> Aceita personalização (nome, cor, texto)</label>
-          <div class="fields">
-            <label class="f wide">Descrição no catálogo<input id="f-catdesc" maxlength="400" placeholder="Ex.: Chaveiro com o nome que você quiser, em 2 cores"></label>
-            <label class="f">Preço no catálogo<span class="hint">Vazio usa seu preço ou o sugerido</span><div class="unit pre"><span>R$</span><input id="f-catpreco" type="number" min="0" step="0.01"></div></label>
-            <label class="f">Peças prontas em estoque<div class="unit"><input id="f-estoque" type="number" min="0" step="1" value="0"><span>un.</span></div></label>
+          <div class="so-cat stack">
+            <label class="chk"><input type="checkbox" id="f-pers"> Aceita personalização (nome, cor, texto)</label>
+            <div class="fields">
+              <label class="f wide">Descrição no catálogo<input id="f-catdesc" maxlength="400" placeholder="Ex.: Chaveiro com o nome que você quiser, em 2 cores"></label>
+              <label class="f">Preço no catálogo<span class="hint">Vazio usa seu preço ou o sugerido</span><div class="unit pre"><span>R$</span><input id="f-catpreco" type="number" min="0" step="0.01"></div></label>
+            </div>
+            <div class="stack" style="gap:8px">
+            <b>Adicionais <span class="pcat" style="font-weight:400">o cliente marca no catálogo e o valor soma no preço. Ex.: cadeira, caixinha</span></b>
+            <div id="adLista" class="stack" style="gap:8px"></div>
+            <div><button type="button" class="btn sm ghost" id="adMais">+ Adicional</button></div>
           </div>
+          </div>
+        </div>
+
+        <div class="card stack">
+          <div class="passo-cab"><span class="passo-n">5</span><div><h3>Envio e estoque</h3><span class="note">Peso e medidas para o frete e as planilhas da Shopee e do Mercado Livre</span></div></div>
           <div class="fields">
+            <label class="f">Peças prontas em estoque<div class="unit"><input id="f-estoque" type="number" min="0" step="1" value="0"><span>un.</span></div></label>
             <label class="f">Peso com embalagem<span class="hint" id="f-pesoHint">Para o frete e os marketplaces</span><div class="unit"><input id="f-peso" type="number" min="0" step="1" placeholder="—"><span>g</span></div></label>
             <label class="f wide">Medidas da peça (comprimento × largura × altura)<span class="hint">Em cm. O "Importar do Bambu Studio" preenche sozinho, ou digite</span>
               <div class="medidas"><div class="unit"><input id="f-pecaC" type="number" min="0" step="0.1" placeholder="C" aria-label="Comprimento da peça"><span>cm</span></div><b>×</b><div class="unit"><input id="f-pecaL" type="number" min="0" step="0.1" placeholder="L" aria-label="Largura da peça"><span>cm</span></div><b>×</b><div class="unit"><input id="f-pecaA" type="number" min="0" step="0.1" placeholder="A" aria-label="Altura da peça"><span>cm</span></div></div></label>
             <label class="f wide">Embalagem (comprimento × largura × altura)<span class="hint" id="f-embHint">Em cm. Correios aceita no mínimo 16 × 11 × 2</span>
               <div class="medidas"><div class="unit"><input id="f-embC" type="number" min="0" step="1" placeholder="C" aria-label="Comprimento"><span>cm</span></div><b>×</b><div class="unit"><input id="f-embL" type="number" min="0" step="1" placeholder="L" aria-label="Largura"><span>cm</span></div><b>×</b><div class="unit"><input id="f-embA" type="number" min="0" step="1" placeholder="A" aria-label="Altura"><span>cm</span></div></div></label>
           </div>
-          <div class="stack" style="gap:8px">
-            <b>Adicionais <span class="pcat" style="font-weight:400">o cliente marca no catálogo e o valor soma no preço. Ex.: cadeira, caixinha</span></b>
-            <div id="adLista" class="stack" style="gap:8px"></div>
-            <div><button type="button" class="btn sm ghost" id="adMais">+ Adicional</button></div>
-          </div>
         </div>
 
-        <div class="row">
+        <div class="row salvabar">
           <button class="btn primary" type="submit" id="btnSalvar">Salvar produto</button>
           <button class="btn" type="button" id="btnCancelar">Cancelar</button>
           <span class="note" id="saveMsg"></span>
