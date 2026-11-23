@@ -2570,10 +2570,14 @@ app.get(["/links", "/links/"], (req, res) => {
 // link do produto com cara de página (o Mercado Livre não aceita ?p=): /produto/<id>/<nome-do-produto>
 const slugNome = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70) || "produto";
 const linkProduto = (o, id, nome) => `${o}/produto/${encodeURIComponent(id)}/${slugNome(nome)}`;
-app.get(["/", "/produto/:id", "/produto/:id/:slug"], (req, res) => {
-  const id = String(req.params.id || req.query.p || "");
-  const x = id ? produtosPublicos().find(y => y.id === id) : null;
-  if (req.params.id && !x) return res.redirect(302, "/"); // produto saiu do catálogo: mostra a vitrine
+// link curto do produto para compartilhar: /c/<começo do id> (o menor começo que não repete entre os produtos do catálogo, mín. 5)
+// O catálogo gera o código no navegador (codCurto em catalogo.js); aqui vale o começo que achar um produto só.
+app.get(["/", "/produto/:id", "/produto/:id/:slug", "/c/:cod"], (req, res) => {
+  const pubs = req.params.cod ? produtosPublicos() : null;
+  const cod = String(req.params.cod || "").toLowerCase();
+  const id = cod ? (pubs.filter(y => y.id.toLowerCase().startsWith(cod)).length === 1 ? pubs.find(y => y.id.toLowerCase().startsWith(cod)).id : "") : String(req.params.id || req.query.p || "");
+  const x = id ? (pubs || produtosPublicos()).find(y => y.id === id) : null;
+  if ((req.params.id || req.params.cod) && !x) return res.redirect(302, "/"); // produto saiu do catálogo: mostra a vitrine
   const L = lojaConfig(), loja = txt(L.nome, 80) || "Impressões 3D";
   const o = origemUrl(req), fotos = x && x.foto ? [x.foto, ...(x.p.fotosExtra || [])].map(f => `${o}/fotos-publicas/${f}`) : [];
   const desc = x ? txt(x.p.descricaoCatalogo, 400) || `Peça impressa em 3D da ${loja}` : "";

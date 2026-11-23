@@ -9,6 +9,7 @@ const brl=v=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL
 const sem=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
 let dados=null, cat="Todos", busca="", carrinho={}, cupom=null;
 let foco=new URLSearchParams(location.search).get("p")||(()=>{ const m=location.pathname.match(/^\/produto\/([^/]+)/); try{ return m?decodeURIComponent(m[1]):null }catch(e){ return null } })();
+const focoCurto=(location.pathname.match(/^\/c\/([^/]+)/)||[])[1]||""; // link curto /c/<código>: vira o id quando o catálogo carregar
 let cli={nome:"",whatsapp:""};
 // entrega: tipo, cep e endereço; valor/combinar vêm do servidor pelo CEP (o servidor confere de novo no pedido)
 let ent={tipo:"retirada",cep:"",rua:"",numero:"",complemento:"",bairro:"",cidade:"",uf:"",valor:null,combinar:false,achou:false};
@@ -67,6 +68,7 @@ async function carrega(){
   montaEntrega();
   banners();
   render();
+  if(focoCurto&&!foco){ const l=dados.produtos.filter(p=>p.id.toLowerCase().startsWith(focoCurto.toLowerCase())); if(l.length===1) foco=l[0].id }
   if(foco&&item(foco)) abreProduto(foco);
   avaliacoes();
   refazer();
@@ -171,20 +173,23 @@ function bnAbre(alvo){
 /* janela do produto */
 function abreProduto(id){
   const x=item(id); if(!x) return; const q=carrinho[id]?.q||0;
+  const esc_=esc(id), cor=carrinho[id]?.cor||"";
+  const icShare='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg>';
+  const icZap='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z"/><path d="M9.5 9.5c.3 1.6 1.4 3 3 3.9l1-1 2 1-.5 1.5c-2.8 0-6-3-6-6l1.5-.5 1 2z"/></svg>';
   $("#dProd").innerHTML=`<button class="x" type="button" data-fecha aria-label="Fechar">✕</button><div class="dp">
     <div class="ph">${galeria(x)}</div>
-    <div class="info">${x.categoria?`<span class="cat" style="font-size:12px;color:var(--suave);font-weight:700;text-transform:uppercase;letter-spacing:.06em">${esc(x.categoria)}</span>`:""}
-      <h2 class="titulo">${esc(x.nome)}</h2>
-      <div>${x.avulso>x.preco?`<span class="de">${brl(x.avulso)}</span>`:""}<span class="preco" style="font-size:28px">${brl(x.preco)}</span></div>
-      ${x.descricao?`<p>${esc(x.descricao)}</p>`:""}
-      ${x.prontaEntrega?'<p><b style="color:var(--verde)">Pronta entrega</b> · sai mais rápido</p>':""}
-      ${x.personalizavel?`<label>Personalização <span style="font-weight:400;color:var(--suave)">(opcional)</span><input class="campo" data-pers="${esc(id)}" maxlength="200" placeholder="Nome, cor, texto…" value="${esc(carrinho[id]?.pers||"")}"></label>`:""}
-      ${x.cores?.length?`<fieldset class="cores"><legend>Cor${carrinho[id]?.cor?`: <b>${esc(carrinho[id].cor)}</b>`:" <span>(escolha uma)</span>"}</legend><div class="corop">${x.cores.map(c=>`<label title="${esc(c.nome)}"><input type="radio" name="cor-${esc(id)}" data-cor="${esc(id)}" value="${esc(c.nome)}"${carrinho[id]?.cor===c.nome?" checked":""}>${amostra(c)}<span>${esc(c.nome)}</span></label>`).join("")}</div></fieldset>`:""}
-      ${x.adicionais?.length?`<fieldset class="adcs"><legend>Adicionais <span>(opcional)</span></legend>${x.adicionais.map((v,i)=>`<label class="adc"><input type="checkbox" data-ad="${esc(id)}" value="${i}"${(carrinho[id]?.ad||[]).includes(i)?" checked":""}><span>${esc(v.nome)}</span><b>${v.preco>0?"+ "+brl(v.preco):"grátis"}</b></label>`).join("")}</fieldset>`:""}
-      <div class="share"><button type="button" data-share="${esc(id)}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg>Compartilhar este produto</button>
-        <a href="https://wa.me/?text=${encodeURIComponent(`${x.nome} · ${brl(x.preco)}\n${linkItem(x)}`)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z"/></svg>Enviar no WhatsApp</a></div>
-      <div class="acoes">${q?qtdHtml(id,q)+`<button class="grande" type="button" data-abre-carr>Ver carrinho · ${brl(q*precoUn(id))}</button>`:`<button class="grande" type="button" data-id="${esc(id)}" data-d="1">Adicionar ao carrinho · ${brl(precoUn(id))}</button>`}</div>
-      ${x.kit?"":`<button type="button" class="orcbtn" data-orc="${esc(id)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h3"/></svg><span><b>Solicitar orçamento</b><small>Quantidade maior ou algo diferente? A loja responde com o valor.</small></span></button>`}
+    <div class="info">
+      <div class="dp-cab">${x.categoria?`<span class="cat">${esc(x.categoria)}</span>`:""}<h2 class="titulo">${esc(x.nome)}</h2></div>
+      <div class="dp-preco"><div>${x.avulso>x.preco?`<span class="de">${brl(x.avulso)}</span>`:""}<span class="preco">${brl(x.preco)}</span>${x.prontaEntrega?'<span class="pe">Pronta entrega</span>':""}</div>
+        <div class="dp-sh"><button type="button" data-share="${esc_}" aria-label="Compartilhar este produto" title="Compartilhar">${icShare}</button><a href="https://wa.me/?text=${encodeURIComponent(`${x.nome} · ${brl(x.preco)}\n${linkItem(x)}`)}" target="_blank" rel="noopener" aria-label="Enviar no WhatsApp" title="Enviar no WhatsApp">${icZap}</a></div></div>
+      ${x.descricao?`<p class="dp-desc">${esc(x.descricao)}</p>`:""}
+      ${x.cores?.length?`<div class="opt cores" role="radiogroup" aria-label="Cor"><div class="opt-t">Cor <span>${cor?esc(cor):"escolha uma"}</span></div><div class="corop">${x.cores.map(c=>`<label title="${esc(c.nome)}"><input type="radio" name="cor-${esc_}" data-cor="${esc_}" value="${esc(c.nome)}"${cor===c.nome?" checked":""}>${amostra(c)}<span>${esc(c.nome)}</span></label>`).join("")}</div></div>`:""}
+      ${x.adicionais?.length?`<div class="opt"><div class="opt-t">Adicionais <span>opcional</span></div><div class="adlist">${x.adicionais.map((v,i)=>`<label class="adc"><input type="checkbox" data-ad="${esc_}" value="${i}"${(carrinho[id]?.ad||[]).includes(i)?" checked":""}><span>${esc(v.nome)}</span><b>${v.preco>0?"+ "+brl(v.preco):"grátis"}</b></label>`).join("")}</div></div>`:""}
+      ${x.personalizavel?`<label class="opt"><span class="opt-t">Personalização <span>opcional</span></span><input class="campo" data-pers="${esc_}" maxlength="200" placeholder="Nome, texto ou detalhe" value="${esc(carrinho[id]?.pers||"")}"></label>`:""}
+      <div class="dp-pe">
+        <div class="acoes">${q?qtdHtml(id,q)+`<button class="grande" type="button" data-abre-carr>Ver carrinho · ${brl(q*precoUn(id))}</button>`:`<button class="grande" type="button" data-id="${esc_}" data-d="1">Adicionar ao carrinho · ${brl(precoUn(id))}</button>`}</div>
+        ${x.kit?"":`<button type="button" class="orclink" data-orc="${esc_}">Mais unidades ou algo diferente? <span>Solicitar orçamento</span></button>`}
+      </div>
     </div></div>`;
   if(!$("#dProd").open) $("#dProd").showModal();
   foco=id; try{ history.replaceState(null,"",linkItem(x).replace(location.origin,"")) }catch(e){} // o endereço vira o do produto
@@ -223,9 +228,26 @@ document.addEventListener("submit",async e=>{
       ${wa?`<a class="sec" href="https://wa.me/${wa}?text=${encodeURIComponent(`Olá! Acabei de pedir o orçamento #${j.numero} de ${x?.nome||"um produto"} pelo catálogo.`)}" target="_blank" rel="noopener">Falar com a loja no WhatsApp</a>`:""}</div>`;
   }catch(x){ err.textContent=x.message; b.disabled=false; b.textContent="Enviar pedido de orçamento" }
 });
+/* foto do produto em tela cheia: arrasta para o lado entre as fotos; fecha no ✕, no Esc ou tocando fora da foto */
+function zoomFotos(id,ini){
+  const x=item(id); if(!x) return; const fs=x.fotos?.length?x.fotos:x.foto?[x.foto]:[]; if(!fs.length) return;
+  const z=document.createElement("div"); z.className="zoomf"; z.setAttribute("role","dialog"); z.setAttribute("aria-modal","true"); z.setAttribute("aria-label",`Fotos de ${x.nome}`);
+  z.innerHTML=`<div class="ztr">${fs.map((u,i)=>`<div class="zsl"><img src="${esc(u)}" alt="${esc(x.nome)} · foto ${i+1} de ${fs.length}"></div>`).join("")}</div>
+    <button type="button" class="zx" aria-label="Fechar">✕</button>${fs.length>1?`<span class="zct">${ini+1}/${fs.length}</span><button type="button" class="zs e" data-zv="-1" aria-label="Foto anterior">‹</button><button type="button" class="zs d" data-zv="1" aria-label="Próxima foto">›</button>`:""}`;
+  $("#dProd").appendChild(z); // dentro da janela do produto, para ficar por cima dela
+  const tr=z.querySelector(".ztr"), at=()=>Math.round(tr.scrollLeft/Math.max(1,tr.clientWidth));
+  tr.scrollLeft=ini*tr.clientWidth;
+  tr.addEventListener("scroll",()=>{ const c=z.querySelector(".zct"); if(c) c.textContent=`${at()+1}/${fs.length}` },{passive:true});
+  const fecha=()=>{ z.remove(); document.removeEventListener("keydown",tecla,true) };
+  const tecla=ev=>{ if(ev.key==="Escape"){ ev.preventDefault(); ev.stopPropagation(); fecha() } else if(ev.key==="ArrowRight"||ev.key==="ArrowLeft") tr.scrollTo({left:(at()+(ev.key==="ArrowRight"?1:-1))*tr.clientWidth,behavior:"smooth"}) };
+  z.addEventListener("click",ev=>{ ev.stopPropagation(); const v=ev.target.closest("[data-zv]"); if(v) return tr.scrollTo({left:(at()+Number(v.dataset.zv))*tr.clientWidth,behavior:"smooth"}); if(ev.target.closest(".zx")||ev.target.classList.contains("zsl")) fecha() });
+  document.addEventListener("keydown",tecla,true); z.querySelector(".zx").focus();
+}
 /* link de um produto só (abre o catálogo já nele, com foto e preço na prévia do WhatsApp) */
 const slugNome=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,70)||"produto";
-const linkItem=x=>location.origin+(x.kit?"/?p="+encodeURIComponent(x.id):`/produto/${encodeURIComponent(x.id)}/${slugNome(x.nome)}`);
+// link curto para compartilhar: /c/<menor começo do id que não repete> (o servidor usa a mesma regra)
+const codCurto=id=>{ const ids=(dados?.produtos||[]).map(p=>p.id); for(let k=5;k<id.length;k++){ const c=id.slice(0,k); if(!ids.some(o=>o!==id&&o.startsWith(c))) return c } return id };
+const linkItem=x=>location.origin+(x.kit?"/?p="+encodeURIComponent(x.id):"/c/"+encodeURIComponent(codCurto(x.id)));
 async function compartilha(id){
   const x=item(id); if(!x) return; const url=linkItem(x);
   if(navigator.share){ try{ await navigator.share({title:x.nome,text:`${x.nome} · ${brl(x.preco)}`,url}); return }catch(e){ if(e.name==="AbortError") return } }
@@ -357,6 +379,7 @@ $("#dcPe").addEventListener("submit",async e=>{
 document.addEventListener("click",e=>{
   const d=e.target.closest("[data-d]"); if(d){ e.stopPropagation(); return muda(d.dataset.id||d.closest("[data-id]").dataset.id,Number(d.dataset.d)) }
   if(e.target.closest("[data-abre-carr]")) return abreCarrinho();
+  const zf=e.target.closest("#dProd .ph img"); if(zf&&!zf.closest(".galmin")){ const tr=zf.closest(".galtr"); return zoomFotos(foco,tr?[...tr.children].indexOf(zf):0) }
   const sh=e.target.closest("[data-share]"); if(sh) return compartilha(sh.dataset.share);
   const oc=e.target.closest("[data-orc]"); if(oc) return abreOrcamento(oc.dataset.orc);
   if(e.target.closest("[data-fecha]")){ e.target.closest("dialog").close(); return }
