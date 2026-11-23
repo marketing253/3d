@@ -114,7 +114,7 @@ async function carrega(){
   // os 5 passos: [chave, título, resumo quando feito]
   const temArte=!!d.precisaArte;
   const passos=[
-    ["orcamento","Orçamento",d.resposta?.acao==="aprovado"?`Aprovado em ${quando(d.resposta.em)}`:"Aprovado"],
+    ["orcamento",d.resposta?.catalogo?"Pedido":"Orçamento",d.resposta?.catalogo?`Feito pelo catálogo em ${quando(d.resposta.em)}`:d.resposta?.acao==="aprovado"?`Aprovado em ${quando(d.resposta.em)}`:"Aprovado"],
     ["pagamento",et==="orcamento"&&restante>0?"Pagamento":d.receber<=0.004&&et!=="orcamento"?"Pagamento de 100%":`Pagamento de ${d.entrada>0&&d.total>0?Math.round(d.entrada/d.total*100)+"%":"entrada"}`,d.receber<=0.004?`${brl(d.total)} pago${ultPag(d)?" via "+ultPag(d).forma+" em "+quando(ultPag(d).em):""}`:`Entrada de ${brl(Math.max(0,d.total-d.receber))} recebida`],
     ...(temArte?[["arte","Aprovação da arte",d.arte?`Arte ${V(d.arte.v)} aprovada`:"Arte aprovada"]]:[]),
     ["producao","Produção","Produzido"],
@@ -145,7 +145,14 @@ async function carrega(){
       <div data-etapa="aprovar" hidden><p class="exp" style="color:var(--tinta)">Confirma a aprovação de <b>${brl(d.total)}</b>?</p><div class="acoes"><button class="btn pri" type="button" data-a="aprovar-ok">Sim, aprovar</button><button class="btn" type="button" data-a="voltar">Voltar</button></div></div>
       <div data-etapa="recusar" hidden><label for="motivo">Quer contar o motivo? (opcional)</label><textarea id="motivo" rows="3" maxlength="300"></textarea><div class="acoes"><button class="btn perigo" type="button" data-a="recusar-ok">Recusar orçamento</button><button class="btn" type="button" data-a="voltar">Voltar</button></div></div>
     </div>`;
-  corpo.pagamento=d.pix?.auto
+  // pedido do catálogo: escolha de quanto pagar agora e os itens, já na tela de pagamento
+  const o=d.opcoesPag;
+  const escolha=o?`<div class="opcoes" role="radiogroup" aria-label="Quanto pagar agora">
+      <label class="opc"><input type="radio" name="pagarAgora" value="total"${o.tudo?" checked":""}><span><b>Pagar 100%: ${brl(o.total)}</b><small>Quita o pedido e não paga mais nada na entrega</small></span></label>
+      <label class="opc"><input type="radio" name="pagarAgora" value="entrada"${o.tudo?"":" checked"}><span><b>Entrada de ${o.pct}%: ${brl(o.parcial)}</b><small>E o restante, ${brl(o.total-o.parcial)}, quando ficar pronto</small></span></label>
+    </div>`:"";
+  const itensMini=d.resposta?.catalogo?`<details class="itensmini"><summary>Ver os itens do pedido (${d.itens.length})</summary><ul class="lista">${d.itens.map(i=>`<li><span class="txt"><b>${esc(i.descricao)}</b>${i.personalizacao?`<span class="tag">${esc(i.personalizacao)}</span>`:""}<small>${Number(i.quantidade).toLocaleString("pt-BR")} × ${brl(i.preco)}</small></span><b>${brl(i.quantidade*i.preco)}</b></li>`).join("")}</ul>${entHtml(d)}${d.prazo?`<p class="exp">Prazo: pronto até <b>${dataBR(d.prazo)}</b>.</p>`:""}</details>`:"";
+  corpo.pagamento=itensMini+escolha+(d.pix?.auto
     ?`<div class="valor">${brl(d.pix.valor)}</div>
       <p class="exp">${d.cartao?"Pague por Pix ou cartão de crédito para começarmos.":"Pague por Pix para começarmos. No app do banco, escolha <b>Pix copia e cola</b>: o valor já vem preenchido."} <b>Assim que o pagamento cair, esta página avança sozinha.</b></p>
       ${pagHtml(d)}${seguro(d)}`
@@ -155,7 +162,7 @@ async function carrega(){
     :`<div class="valor">${brl(d.pix?d.pix.valor:d.faltaEntrada)}</div>
       <p class="exp">Pague por Pix para começarmos. No app do banco, escolha <b>Pix copia e cola</b>: o valor já vem preenchido.</p>
       ${d.pix?pixHtml(d):`<p class="exp">Fale com a loja para pagar.</p>`}
-      <button class="btn pri" type="button" data-a="paguei">Já paguei</button>`;
+      <button class="btn pri" type="button" data-a="paguei">Já paguei</button>`);
   corpo.arte=!d.arte||d.arte.status==="substituida"
     ?`<div class="aviso"><b>Estamos preparando a sua arte</b><span>Ela aparece aqui para você aprovar. Avisamos pelo WhatsApp.</span></div>`
     :d.arte.status==="ajuste"
@@ -242,6 +249,13 @@ async function carrega(){
     }catch(err){ toast(err.message); x.disabled=false }
   };
 
+  // troca entre 100% e entrada: o servidor guarda a escolha e a página recarrega com o valor e o Pix novos
+  $("#ped").onchange=async e=>{
+    const x=e.target; if(x.name!=="pagarAgora") return;
+    const rs=document.querySelectorAll('input[name="pagarAgora"]'); rs.forEach(r=>r.disabled=true);
+    try{ await envia(`/api/publico/pedido/${encodeURIComponent(token)}/forma`,{pagar:x.value}); await carrega() }
+    catch(err){ toast(err.message); rs.forEach(r=>r.disabled=false) }
+  };
   // Pix do Mercado Pago: pergunta de tempos em tempos e avança a página quando o pagamento cair
   relogio(); // contador do código Pix
   const trilho=document.getElementById("trilho");

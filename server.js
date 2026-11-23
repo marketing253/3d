@@ -1480,11 +1480,15 @@ app.post("/api/publico/pedido", limitePedidoPublico, async (req, res) => {
   } else if (fc.entrega && fc.retirada) dados.entrega = { tipo: "retirada" }; // sem entrega ligada, fica como antes (sem escolha)
   else if (fc.entrega) return res.status(400).json({ erro: "Escolha a entrega e informe o CEP." });
   avisoPag(dados, { tipo: "novo", valor: n(bruto - dados.desconto + dados.freteCliente), forma: "Catálogo" }); // aparece no painel como "Novo pedido"
+  // O cliente montou o carrinho com os preços do catálogo: o pedido já nasce aprovado e o link abre direto no
+  // pagamento (100% marcado; ele pode trocar para a entrada ali). Com frete a combinar, a loja ainda fecha o valor.
+  const direto = !dados.entrega?.combinar;
+  if (direto) { dados.resposta = { acao: "aprovado", em: new Date().toISOString(), visto: true, catalogo: true }; dados.pagarTudo = true; }
   const id = crypto.randomUUID(), token = crypto.randomBytes(16).toString("hex");
   const numero = (db.prepare("SELECT COALESCE(MAX(numero),0) m FROM pedidos").get().m) + 1;
-  db.prepare("INSERT INTO pedidos (id, numero, dados, status, prazo, token) VALUES (?, ?, ?, 'orcamento', ?, ?)").run(id, numero, JSON.stringify(dados), dados.prazo, token);
+  db.prepare("INSERT INTO pedidos (id, numero, dados, status, prazo, token) VALUES (?, ?, ?, ?, ?, ?)").run(id, numero, JSON.stringify(dados), direto ? "aprovado" : "orcamento", dados.prazo, token);
   pushAviso(numero, id, { tipo: "novo", valor: n(bruto - dados.desconto + dados.freteCliente), cliente: nome + (dados.entrega?.tipo === "entrega" ? " · entregar em " + dados.entrega.cidade : dados.entrega ? " · retirar pessoalmente" : "") });
-  res.json({ numero, link: "/pedido/" + token }); // o cliente segue pelo link: aprova, paga e acompanha
+  res.json({ numero, link: "/pedido/" + token, direto }); // o cliente segue pelo link: paga e acompanha
 });
 
 // ---------- kits e cupons ----------
@@ -2153,6 +2157,18 @@ app.post("/api/publico/pedido/:token/resposta", limiteResposta, (req, res) => {
     texto: acao === "aprovar" ? brlS(totalPedido(p)) + (p.pagarTudo ? " · vai pagar 100%" : " · vai pagar a entrada") : p.resposta.motivo ? "“" + p.resposta.motivo + "”" : "" });
   res.json({ ok: true });
 });
+// Na tela de pagamento, o cliente troca entre pagar 100% e só a entrada (enquanto não pagou nada).
+app.post("/api/publico/pedido/:token/forma", limiteResposta, (req, res) => {
+  const r = pedidoPorToken(req.params.token); if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
+  const p = JSON.parse(r.dados);
+  if (r.status !== "aprovado" || etapaDe(r.status, p) !== "pagamento" || n(p.sinal) > 0) return res.status(409).json({ erro: "Não dá mais para trocar a forma de pagamento deste pedido." });
+  const tudo = req.body?.pagar === "total";
+  if (!!p.pagarTudo === tudo) return res.json({ ok: true });
+  if (tudo) p.pagarTudo = true; else delete p.pagarTudo;
+  delete p.pagInformado;
+  salvaDados(r.id, p);
+  res.json({ ok: true });
+});
 app.post("/api/publico/pedido/:token/paguei", limiteResposta, (req, res) => {
   const r = pedidoPorToken(req.params.token); if (!r) return res.status(404).json({ erro: "Pedido não encontrado." });
   const p = JSON.parse(r.dados);
@@ -2208,7 +2224,12 @@ app.get("/api/publico/pedido/:token", limitePublico, async (req, res) => {
     fotos: (p.fotosOrc || []).map((f, k) => `/pedido/${r.token}/foto-orc/${k}`),
     desconto: n(p.desconto), frete: n(p.freteCliente), total, sinal: n(p.sinal), receber,
     entrega: p.entrega ? { ...p.entrega, ...(p.entrega.tipo === "retirada" ? { retiradaTxt: freteConfig(L).retiradaTxt } : {}) } : null,
-    entrada, faltaEntrada, resposta: p.resposta ? { acao: p.resposta.acao, em: p.resposta.em } : null,
+    entrada, faltaEntrada, resposta: p.resposta ? { acao: p.resposta.acao, em: p.resposta.em, ...(p.resposta.catalogo ? { catalogo: true } : {}) } : null,
+    opcoesPag: (() => { // escolha 100% ou entrada na própria tela de pagamento (antes de pagar qualquer valor)
+      if (r.status !== "aprovado" || etP !== "pagamento" || n(p.sinal) > 0) return null;
+      const parcial = entradaDe({ ...p, pagarTudo: false }, total, L);
+      return parcial > 0 && parcial < total - 0.004 ? { tudo: !!p.pagarTudo, total: n(total), parcial, pct: Math.round(parcial / total * 100) } : null;
+    })(),
     rastreio: p.rastreio || null, avaliacao: p.avaliacao ? { nota: p.avaliacao.nota, texto: p.avaliacao.texto } : null,
     etapa: etapaDe(r.status, p), pagInformado: p.pagInformado || null, precisaArte: precisaArte(p),
     pagamentos: pagamentosDe(p).map(({ ref, ...x }) => x), comprovante: n(p.sinal) > 0 ? `/pedido/${r.token}/comprovante` : null,
