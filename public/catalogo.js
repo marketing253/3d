@@ -60,6 +60,7 @@ async function carrega(){
   if(L.cartao) $("#nCartao").textContent=" ou cartão em até 12x";
   dados.kits=dados.kits||[];
   for(const id of Object.keys(carrinho)) if(!item(id)) delete carrinho[id]; // tira o que saiu do catálogo
+  for(const [id,c] of Object.entries(carrinho)) if(c.cor&&!(item(id).cores||[]).some(k=>k.nome===c.cor)) delete c.cor; // cor que saiu da lista
   $("#cupBox").hidden=!dados.temCupom;
   if(dados.temCupom){ let c=""; try{c=new URLSearchParams(location.search).get("cupom")||sessionStorage.getItem("cat3d.cupom")||""}catch(e){} if(c){ $("#cCupom").value=c; setTimeout(aplicaCupom,0) } }
   $("#cNome").value=cli.nome; $("#cWhats").value=cli.whatsapp;
@@ -75,7 +76,7 @@ async function refazer(){
   let tk=null; try{ tk=new URLSearchParams(location.search).get("refazer") }catch(e){} if(!tk) return;
   try{ history.replaceState(null,"","/") }catch(e){}
   try{ const r=await fetch("/api/publico/pedido/"+encodeURIComponent(tk)+"/refazer"); if(!r.ok) throw 0; const j=await r.json();
-    for(const i of j.itens){ const id=i.kit?"kit:"+i.kit:i.id; if(!item(id)) continue; const c=carrinho[id]||{q:0,pers:""}; c.q=Math.min(999,c.q+i.q); if(i.pers) c.pers=i.pers; if(i.ad&&i.ad.length) c.ad=i.ad; carrinho[id]=c }
+    for(const i of j.itens){ const id=i.kit?"kit:"+i.kit:i.id; if(!item(id)) continue; const c=carrinho[id]||{q:0,pers:""}; c.q=Math.min(999,c.q+i.q); if(i.pers) c.pers=i.pers; if(i.ad&&i.ad.length) c.ad=i.ad; if(i.cor) c.cor=i.cor; carrinho[id]=c }
     salva(); render(); if(itens().length) abreCarrinho();
     toast(j.itens.length?`Os itens do pedido #${j.numero} estão no carrinho${j.faltaram?` (${j.faltaram} não está${j.faltaram>1?"ão":""} mais no catálogo)`:""}.`:"Os itens desse pedido não estão mais no catálogo.");
   }catch(e){ toast("Não deu para refazer esse pedido.") }
@@ -98,12 +99,14 @@ const adEscolha=id=>{ const x=item(id), a=carrinho[id]?.ad||[]; return (x?.adici
 const precoUn=id=>{ const x=item(id); return x?x.preco+adEscolha(id).reduce((s,v)=>s+v.preco,0):0 };
 const qtdHtml=(id,q)=>q?`<span class="qtd" data-id="${esc(id)}"><button type="button" data-d="-1" aria-label="Menos">−</button><span>${q}</span><button type="button" data-d="1" aria-label="Mais">+</button></span>`
   :`<button class="add" type="button" data-id="${esc(id)}" data-d="1">Adicionar</button>`;
+const amostra=c=>`<i class="am" style="background:${/^#[0-9a-f]{6}$/i.test(c.hex||"")?c.hex:"#d5d9dc"}"></i>`;
+const bolas=cs=>`<div class="bolas" aria-label="${cs.length} ${cs.length===1?"cor":"cores"}">${cs.slice(0,8).map(amostra).join("")}${cs.length>8?`<span>+${cs.length-8}</span>`:""}<span>${cs.length} ${cs.length===1?"cor":"cores"}</span></div>`;
 function card(x){
   const q=carrinho[x.id]?.q||0;
   return `<article class="prod" data-ver="${esc(x.id)}">
     <div class="ph">${x.foto?`<img src="${esc(x.foto)}" alt="${esc(x.nome)}" loading="lazy">`:x.kit?"KIT":"3D"}
       ${x.fotos?.length>1?`<span class="nfotos" aria-label="${x.fotos.length} fotos">${x.fotos.length} fotos</span>`:""}<div class="selos-ph">${x.maisVendido?'<span class="tag mv">Mais vendido</span>':""}${x.prontaEntrega?'<span class="tag pe">Pronta entrega</span>':""}${x.personalizavel&&!x.kit?'<span class="tag">Personalizável</span>':""}</div></div>
-    <div class="bd">${x.categoria?`<span class="cat">${esc(x.categoria)}</span>`:""}<h3>${esc(x.nome)}</h3>${x.descricao?`<p>${esc(x.descricao)}</p>`:""}
+    <div class="bd">${x.categoria?`<span class="cat">${esc(x.categoria)}</span>`:""}<h3>${esc(x.nome)}</h3>${x.cores?.length?bolas(x.cores):""}${x.descricao?`<p>${esc(x.descricao)}</p>`:""}
       <div class="ft"><span>${x.avulso>x.preco?`<span class="de">${brl(x.avulso)}</span>`:""}<span class="preco">${brl(x.preco)}</span></span>${qtdHtml(x.id,q)}</div></div>
   </article>`;
 }
@@ -127,6 +130,11 @@ function render(){
   renderCarrinho();
 }
 function muda(id,d){
+  const x0=item(id);
+  if(d>0&&x0?.cores?.length&&!carrinho[id]?.cor){ // sem cor escolhida: abre o produto para escolher
+    if(!$("#dProd").open) abreProduto(id);
+    const f=$("#dProd .cores"); if(f){ f.classList.add("falta"); f.scrollIntoView({block:"nearest",behavior:"smooth"}) }
+    toast("Escolha a cor"); return }
   const c=carrinho[id]||{q:0,pers:""}; c.q=Math.max(0,Math.min(999,c.q+d));
   if(c.q) carrinho[id]=c; else delete carrinho[id];
   if(d>0&&c.q===1) toast("Adicionado ao carrinho");
@@ -171,15 +179,50 @@ function abreProduto(id){
       ${x.descricao?`<p>${esc(x.descricao)}</p>`:""}
       ${x.prontaEntrega?'<p><b style="color:var(--verde)">Pronta entrega</b> · sai mais rápido</p>':""}
       ${x.personalizavel?`<label>Personalização <span style="font-weight:400;color:var(--suave)">(opcional)</span><input class="campo" data-pers="${esc(id)}" maxlength="200" placeholder="Nome, cor, texto…" value="${esc(carrinho[id]?.pers||"")}"></label>`:""}
+      ${x.cores?.length?`<fieldset class="cores"><legend>Cor${carrinho[id]?.cor?`: <b>${esc(carrinho[id].cor)}</b>`:" <span>(escolha uma)</span>"}</legend><div class="corop">${x.cores.map(c=>`<label title="${esc(c.nome)}"><input type="radio" name="cor-${esc(id)}" data-cor="${esc(id)}" value="${esc(c.nome)}"${carrinho[id]?.cor===c.nome?" checked":""}>${amostra(c)}<span>${esc(c.nome)}</span></label>`).join("")}</div></fieldset>`:""}
       ${x.adicionais?.length?`<fieldset class="adcs"><legend>Adicionais <span>(opcional)</span></legend>${x.adicionais.map((v,i)=>`<label class="adc"><input type="checkbox" data-ad="${esc(id)}" value="${i}"${(carrinho[id]?.ad||[]).includes(i)?" checked":""}><span>${esc(v.nome)}</span><b>${v.preco>0?"+ "+brl(v.preco):"grátis"}</b></label>`).join("")}</fieldset>`:""}
       <div class="share"><button type="button" data-share="${esc(id)}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg>Compartilhar este produto</button>
         <a href="https://wa.me/?text=${encodeURIComponent(`${x.nome} · ${brl(x.preco)}\n${linkItem(x)}`)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z"/></svg>Enviar no WhatsApp</a></div>
       <div class="acoes">${q?qtdHtml(id,q)+`<button class="grande" type="button" data-abre-carr>Ver carrinho · ${brl(q*precoUn(id))}</button>`:`<button class="grande" type="button" data-id="${esc(id)}" data-d="1">Adicionar ao carrinho · ${brl(precoUn(id))}</button>`}</div>
+      ${x.kit?"":`<button type="button" class="orcbtn" data-orc="${esc(id)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h3"/></svg><span><b>Solicitar orçamento</b><small>Quantidade maior ou algo diferente? A loja responde com o valor.</small></span></button>`}
     </div></div>`;
   if(!$("#dProd").open) $("#dProd").showModal();
   foco=id; try{ history.replaceState(null,"",linkItem(x).replace(location.origin,"")) }catch(e){} // o endereço vira o do produto
   ligaGaleria();
 }
+/* pedido de orçamento de um produto: vira um Orçamento no painel; a loja responde com o valor pelo WhatsApp */
+function abreOrcamento(id){
+  const x=item(id); if(!x) return; const info=$("#dProd .info"); if(!info) return;
+  info.innerHTML=`<h2 class="titulo">Solicitar orçamento</h2>
+    <p>${esc(x.nome)}. Conte o que você precisa e a loja responde pelo WhatsApp com o valor e o prazo.</p>
+    <form class="orcform" id="orcForm" data-id="${esc(id)}">
+      <label>Quantidade<input class="campo" id="oQtd" type="number" min="1" max="100000" inputmode="numeric" value="${Math.max(1,carrinho[id]?.q||10)}" required></label>
+      ${x.cores?.length?`<label><span>Cor <small class="opc">(opcional)</small></span><select class="campo" id="oCor"><option value="">Ainda não sei</option>${x.cores.map(c=>`<option${carrinho[id]?.cor===c.nome?" selected":""}>${esc(c.nome)}</option>`).join("")}</select></label>`:""}
+      <label><span>O que você precisa <small class="opc">(opcional)</small></span><textarea class="campo" id="oTxt" rows="3" maxlength="600" placeholder="Ex.: com a logo da empresa, para o dia 15/12"></textarea></label>
+      <div class="dados"><label>Seu nome<input class="campo" id="oNome" maxlength="80" autocomplete="name" value="${esc(cli.nome)}" required></label>
+        <label>WhatsApp<input class="campo" id="oWhats" maxlength="20" inputmode="tel" autocomplete="tel" placeholder="(41) 91234-5678" value="${esc(cli.whatsapp)}" required></label></div>
+      <p class="erro" id="oErro" role="alert"></p>
+      <div class="acoes"><button class="grande" type="submit" id="oEnviar">Enviar pedido de orçamento</button></div>
+      <button type="button" class="voltar" data-ver="${esc(id)}">Voltar ao produto</button>
+    </form>`;
+  $("#oQtd").focus();
+}
+document.addEventListener("submit",async e=>{
+  if(e.target.id!=="orcForm") return; e.preventDefault();
+  const f=e.target, id=f.dataset.id, err=$("#oErro"); err.textContent="";
+  cli={nome:$("#oNome").value.trim(),whatsapp:$("#oWhats").value.trim()}; try{localStorage.setItem("cat3d.cliente",JSON.stringify(cli))}catch(x){}
+  if(cli.nome.length<2){ err.textContent="Digite seu nome."; return $("#oNome").focus() }
+  if(cli.whatsapp.replace(/\D/g,"").length<10){ err.textContent="Digite seu WhatsApp com DDD."; return $("#oWhats").focus() }
+  const b=$("#oEnviar"); b.disabled=true; b.textContent="Enviando…";
+  try{
+    const r=await fetch("/api/publico/orcamento",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,q:Number($("#oQtd").value),cor:$("#oCor")?.value||"",texto:$("#oTxt").value,nome:cli.nome,whatsapp:cli.whatsapp})});
+    const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.erro||"Não deu para enviar. Tente de novo.");
+    const wa=waLoja(), x=item(id);
+    $("#dProd .info").innerHTML=`<div class="ok"><div class="ic" aria-hidden="true">✓</div><h2 class="titulo">Pedido de orçamento #${j.numero} enviado</h2>
+      <p>Obrigado, ${esc(cli.nome.split(" ")[0])}. A loja responde pelo WhatsApp com o valor e o link para aprovar e pagar.</p>
+      ${wa?`<a class="sec" href="https://wa.me/${wa}?text=${encodeURIComponent(`Olá! Acabei de pedir o orçamento #${j.numero} de ${x?.nome||"um produto"} pelo catálogo.`)}" target="_blank" rel="noopener">Falar com a loja no WhatsApp</a>`:""}</div>`;
+  }catch(x){ err.textContent=x.message; b.disabled=false; b.textContent="Enviar pedido de orçamento" }
+});
 /* link de um produto só (abre o catálogo já nele, com foto e preço na prévia do WhatsApp) */
 const slugNome=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,70)||"produto";
 const linkItem=x=>location.origin+(x.kit?"/?p="+encodeURIComponent(x.id):`/produto/${encodeURIComponent(x.id)}/${slugNome(x.nome)}`);
@@ -219,7 +262,7 @@ function renderCarrinho(){
   $("#dcTit").textContent=n?`Seu pedido (${n})`:"Seu pedido";
   $("#dcCorpo").innerHTML=its.length?its.map(x=>`<div class="it" data-id="${esc(x.p.id)}">
       <div class="mini">${x.p.foto?`<img src="${esc(x.p.foto)}" alt="">`:""}</div>
-      <div><b>${esc(x.p.nome)}</b>${x.ads.length?`<small class="adtx">+ ${esc(x.ads.map(v=>v.nome).join(", "))}</small>`:""}<small>${brl(x.pu)} cada</small></div>
+      <div><b>${esc(x.p.nome)}</b>${x.cor?`<small class="adtx">${amostra((x.p.cores||[]).find(k=>k.nome===x.cor)||{})} Cor ${esc(x.cor)}</small>`:""}${x.ads.length?`<small class="adtx">+ ${esc(x.ads.map(v=>v.nome).join(", "))}</small>`:""}<small>${brl(x.pu)} cada</small></div>
       <div style="text-align:right">${qtdHtml(x.p.id,x.q)}<small style="margin-top:4px">${brl(x.q*x.pu)}</small></div>
       ${x.p.personalizavel?`<input class="campo" data-pers="${esc(x.p.id)}" maxlength="200" placeholder="Personalização: nome, cor, texto…" value="${esc(x.pers||"")}">`:""}
     </div>`).join(""):`<p class="vazio" style="padding:30px 0">Seu carrinho está vazio.<br>Escolha um produto para começar.</p>`;
@@ -294,7 +337,7 @@ $("#dcPe").addEventListener("submit",async e=>{
   }
   const btn=$("#cEnviar"); btn.disabled=true; btn.textContent="Enviando…"; let saindo=false;
   try{
-    const corpo={nome:cli.nome,whatsapp:cli.whatsapp,cupom:cupom?cupom.codigo:"",entrega:ent.tipo==="entrega"?{tipo:"entrega",cep:ent.cep,rua:ent.rua,numero:ent.numero,complemento:ent.complemento,bairro:ent.bairro}:{tipo:"retirada"},itens:itens().map(x=>x.p.kit?{kit:x.p.kit,q:x.q,pers:x.pers||""}:{id:x.p.id,q:x.q,pers:x.pers||"",ad:x.ads.map(v=>v.i)})};
+    const corpo={nome:cli.nome,whatsapp:cli.whatsapp,cupom:cupom?cupom.codigo:"",entrega:ent.tipo==="entrega"?{tipo:"entrega",cep:ent.cep,rua:ent.rua,numero:ent.numero,complemento:ent.complemento,bairro:ent.bairro}:{tipo:"retirada"},itens:itens().map(x=>x.p.kit?{kit:x.p.kit,q:x.q,pers:x.pers||""}:{id:x.p.id,q:x.q,pers:x.pers||"",ad:x.ads.map(v=>v.i),cor:x.cor||""})};
     const r=await fetch("/api/publico/pedido",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(corpo)});
     const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.erro||"Não deu para enviar o pedido. Tente de novo.");
     carrinho={}; salva(); render();
@@ -315,6 +358,7 @@ document.addEventListener("click",e=>{
   const d=e.target.closest("[data-d]"); if(d){ e.stopPropagation(); return muda(d.dataset.id||d.closest("[data-id]").dataset.id,Number(d.dataset.d)) }
   if(e.target.closest("[data-abre-carr]")) return abreCarrinho();
   const sh=e.target.closest("[data-share]"); if(sh) return compartilha(sh.dataset.share);
+  const oc=e.target.closest("[data-orc]"); if(oc) return abreOrcamento(oc.dataset.orc);
   if(e.target.closest("[data-fecha]")){ e.target.closest("dialog").close(); return }
   const c=e.target.closest("[data-c]"); if(c){ cat=c.dataset.c; render(); if(!c.closest("#cats")||scrollY>$("#produtos").offsetTop) vaiProdutos(); return }
   const bn=e.target.closest("[data-bn]"); if(bn) return bnVai(bnAtual()+Number(bn.dataset.bn));
@@ -325,6 +369,7 @@ document.addEventListener("click",e=>{
 for(const id of ["#dProd","#dCarr"]) $(id).addEventListener("click",e=>{ if(e.target===e.currentTarget) e.currentTarget.close() }); // clique fora fecha
 $("#dProd").addEventListener("close",()=>{ if(foco){ foco=null; try{history.replaceState(null,"","/")}catch(e){} } });
 document.addEventListener("input",e=>{
+  const k=e.target.closest("[data-cor]"); if(k){ const id=k.dataset.cor; if(!item(id)) return; const c=carrinho[id]||(carrinho[id]={q:0,pers:""}); c.cor=k.value; salva(); renderCarrinho(); abreProduto(id); return }
   const a=e.target.closest("[data-ad]"); if(a){ const id=a.dataset.ad; if(!item(id)) return; const c=carrinho[id]||(carrinho[id]={q:0,pers:""}), v=Number(a.value);
     c.ad=(c.ad||[]).filter(k=>k!==v); if(a.checked) c.ad.push(v); c.ad.sort((x,y)=>x-y); salva(); renderCarrinho(); abreProduto(id); return }
   const p=e.target.closest("[data-pers]"); if(p){ const id=p.dataset.pers; if(carrinho[id]){ carrinho[id].pers=p.value; salva() } else if(item(id)) carrinho[id]={q:0,pers:p.value}; return }

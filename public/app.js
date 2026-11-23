@@ -310,6 +310,7 @@ function startForm(p){
   { const m=draft.medidasPeca||{}, cm=v=>num(v)>0?+(num(v)/10).toFixed(1):""; $("#f-pecaC").value=cm(m.x); $("#f-pecaL").value=cm(m.y); $("#f-pecaA").value=cm(m.z) }
   $("#f-peso").value=draft.pesoEmb??""; $("#f-embC").value=draft.embC??""; $("#f-embL").value=draft.embL??""; $("#f-embA").value=draft.embA??"";
   draft.adicionais=(draft.adicionais||[]).map(a=>({...a})); renderAdic();
+  draft.cores=(draft.cores||[]).map(c=>({...c})); renderCores();
   fotoOriginal=editingId?(draft.fotoId||null):null;
   if(!editingId&&draft.fotoId){draft.fotoId="";} /* cópia não compartilha a foto */
   if(!editingId) draft.fotosExtra=[]; else draft.fotosExtra=[...(draft.fotosExtra||[])];
@@ -326,6 +327,16 @@ function renderAdic(){
     <button type="button" class="btn ghost" data-arm aria-label="Remover adicional">✕</button></div>`).join("");
   $("#adMais").hidden=l.length>=10;
 }
+/* cores que o cliente escolhe no catálogo (uma por produto) */
+const CORES_COMUNS=[["Preto","#1a1a1a"],["Branco","#f4f4f2"],["Cinza","#8a8f94"],["Vermelho","#c62828"],["Rosa","#e8318c"],["Roxo","#6a3fa0"],["Azul","#1e5bb8"],["Verde","#2e8b57"],["Amarelo","#f2c200"],["Laranja","#f07a1a"]];
+function renderCores(){
+  const l=draft?.cores||[];
+  $("#corLista").innerHTML=l.map((c,i)=>`<div class="corline" data-ci="${i}"><input type="color" data-ck="hex" aria-label="Amostra da cor" value="${esc(c.hex||"#cccccc")}"><input data-ck="nome" maxlength="40" placeholder="Ex.: Rosa" aria-label="Nome da cor" value="${esc(c.nome)}"><button type="button" class="btn ghost" data-crm aria-label="Remover cor">✕</button></div>`).join("");
+  $("#corMais").hidden=l.length>=24; $("#corPadrao").hidden=l.length>0;
+}
+$("#corMais").addEventListener("click",()=>{ if(!draft) return; readForm(); draft.cores.push({nome:"",hex:"#cccccc"}); renderCores(); $("#corLista").lastElementChild?.querySelector('[data-ck="nome"]')?.focus() });
+$("#corPadrao").addEventListener("click",()=>{ if(!draft) return; readForm(); draft.cores=CORES_COMUNS.map(([nome,hex])=>({nome,hex})); renderCores() });
+$("#corLista").addEventListener("click",e=>{ const b=e.target.closest("[data-crm]"); if(!b||!draft) return; readForm(); draft.cores.splice(+b.closest("[data-ci]").dataset.ci,1); renderCores() });
 $("#adMais").addEventListener("click",()=>{ if(!draft) return; readForm(); draft.adicionais.push({nome:"",preco:""}); renderAdic(); $("#adLista").lastElementChild?.querySelector("input")?.focus() });
 $("#adLista").addEventListener("click",e=>{ const b=e.target.closest("[data-arm]"); if(!b||!draft) return; readForm(); draft.adicionais.splice(+b.closest("[data-ai]").dataset.ai,1); renderAdic(); renderFicha() });
 function readForm(){
@@ -343,6 +354,7 @@ function readForm(){
   { const mm=id=>Math.max(0,Math.round(num($(id).value)*10)); const x=mm("#f-pecaC"),y=mm("#f-pecaL"),z=mm("#f-pecaA"); if(x>0||y>0||z>0) draft.medidasPeca={x,y,z}; else delete draft.medidasPeca }
   for(const [k,id] of [["pesoEmb","#f-peso"],["embC","#f-embC"],["embL","#f-embL"],["embA","#f-embA"]]){ const v=$(id).value; draft[k]=v===""?"":Math.max(0,Math.round(num(v))) }
   draft.adicionais=[...document.querySelectorAll("#adLista [data-ai]")].map(el=>{ const pr=el.querySelector('[data-ak="preco"]').value; return {nome:el.querySelector('[data-ak="nome"]').value.trim(),preco:pr===""?"":num(pr)} });
+  draft.cores=[...document.querySelectorAll("#corLista [data-ci]")].map(el=>({nome:el.querySelector('[data-ck="nome"]').value.trim(),hex:el.querySelector('[data-ck="hex"]').value})).filter(c=>c.nome);
   draft.linkModelo=$("#f-link").value.trim();
   document.querySelectorAll("#filLines .fil-line").forEach((el,i)=>{
     draft.filamentos[i]={filId:el.querySelector("select").value,gramas:el.querySelector("input").value===""?"":num(el.querySelector("input").value)};

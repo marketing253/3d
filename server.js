@@ -265,6 +265,8 @@ function limpaProduto(b) {
   if (p.medidasPeca && !(p.medidasPeca.x > 0 || p.medidasPeca.y > 0 || p.medidasPeca.z > 0)) delete p.medidasPeca;
   for (const k of ["pesoEmb", "embC", "embL", "embA"]) p[k] = p[k] === "" || p[k] == null || !Number.isFinite(Number(p[k])) ? "" : Math.max(0, Math.min(100000, Math.round(Number(p[k]))));
   p.adicionais = (Array.isArray(p.adicionais) ? p.adicionais : []).map(a => ({ nome: txt(a?.nome, 60), preco: Math.max(0, n(a?.preco)) })).filter(a => a.nome).slice(0, 10);
+  // cores que o cliente escolhe no catálogo (uma por produto no carrinho), até 24
+  p.cores = (Array.isArray(p.cores) ? p.cores : []).map(c => ({ nome: txt(c?.nome, 40), hex: /^#[0-9a-f]{6}$/i.test(c?.hex || "") ? c.hex.toLowerCase() : "" })).filter(c => c.nome).slice(0, 24);
   if (p.linkModelo) { try { const u = new URL(p.linkModelo); p.linkModelo = /^https?:$/.test(u.protocol) ? u.href : ""; } catch { p.linkModelo = ""; } }
   return p;
 }
@@ -1436,6 +1438,7 @@ app.post("/api/publico/pedido", limitePedidoPublico, async (req, res) => {
   if (nome.length < 2) return res.status(400).json({ erro: "Informe seu nome." });
   const prods = new Map(produtosPublicos().map(x => [x.id, x.p]));
   const kits = new Map(kitsPublicos(prods).map(k => [k.id, k]));
+  let semCor = "";
   const itens = (Array.isArray(b.itens) ? b.itens : []).slice(0, 30).map(i => {
     const q = Math.round(Number(i.q) || 0);
     if (q < 1 || q > 999) return null;
@@ -1448,11 +1451,14 @@ app.post("/api/publico/pedido", limitePedidoPublico, async (req, res) => {
     const p = prods.get(String(i.id || ""));
     if (!p) return null;
     const ads = [...new Set((Array.isArray(i.ad) ? i.ad : []).map(Number).filter(Number.isInteger))].map(k => (p.adicionais || [])[k]).filter(a => a && a.nome);
-    return { produto_id: String(i.id), descricao: p.nome + (ads.length ? " + " + ads.map(a => a.nome).join(" + ") : ""), quantidade: q,
+    const cor = (p.cores || []).length ? p.cores.find(c => c.nome === txt(i.cor, 40)) : null;
+    if ((p.cores || []).length && !cor) { semCor = semCor || p.nome; return null; }
+    return { produto_id: String(i.id), ...(cor ? { cor: cor.nome } : {}), descricao: p.nome + (cor ? " · cor " + cor.nome : "") + (ads.length ? " + " + ads.map(a => a.nome).join(" + ") : ""), quantidade: q,
       preco_unit: n(n(p.precoCatalogo) + ads.reduce((s, a) => s + n(a.preco), 0)), custo_unit: 0, horas_unit: 0,
       ...(ads.length ? { ads: ads.map(a => ({ nome: a.nome, preco: n(a.preco) })) } : {}),
       personalizacao: txt(i.pers, 200), doEstoque: false, fil: [], recalc: true };
   }).filter(Boolean);
+  if (semCor) return res.status(400).json({ erro: `Escolha a cor de "${semCor}".` });
   if (!itens.length) return res.status(400).json({ erro: "O carrinho está vazio." });
   const L = lojaConfig();
   const cfg = configCompleta();
@@ -1489,6 +1495,35 @@ app.post("/api/publico/pedido", limitePedidoPublico, async (req, res) => {
   db.prepare("INSERT INTO pedidos (id, numero, dados, status, prazo, token) VALUES (?, ?, ?, ?, ?, ?)").run(id, numero, JSON.stringify(dados), direto ? "aprovado" : "orcamento", dados.prazo, token);
   pushAviso(numero, id, { tipo: "novo", valor: n(bruto - dados.desconto + dados.freteCliente), cliente: nome + (dados.entrega?.tipo === "entrega" ? " · entregar em " + dados.entrega.cidade : dados.entrega ? " · retirar pessoalmente" : "") });
   res.json({ numero, link: "/pedido/" + token, direto }); // o cliente segue pelo link: paga e acompanha
+});
+
+// ---------- pedido de orçamento de um produto (quantidade grande, personalização): entra no painel como Orçamento ----------
+// O preço começa no do catálogo; você ajusta no painel e manda o orçamento pelo WhatsApp (com o link para aprovar e pagar).
+app.post("/api/publico/orcamento", limitePedidoPublico, (req, res) => {
+  const b = req.body || {};
+  const nome = txt(b.nome, 80), whatsapp = txt(b.whatsapp, 30).replace(/[^\d+]/g, "");
+  if (nome.length < 2) return res.status(400).json({ erro: "Informe seu nome." });
+  if (whatsapp.replace(/\D/g, "").length < 10) return res.status(400).json({ erro: "Informe seu WhatsApp com DDD." });
+  const x = produtosPublicos().find(y => y.id === String(b.id || ""));
+  if (!x) return res.status(400).json({ erro: "Esse produto não está mais no catálogo." });
+  const q = Math.round(Number(b.q) || 0);
+  if (q < 1 || q > 100000) return res.status(400).json({ erro: "Informe a quantidade." });
+  const texto = txt(b.texto, 600);
+  const cor = (x.p.cores || []).find(c => c.nome === txt(b.cor, 40));
+  const L = lojaConfig(), cfg = configCompleta();
+  const hoje = new Date().toISOString().slice(0, 10);
+  const prazoD = new Date(); prazoD.setDate(prazoD.getDate() + (Number(L.prazoDias) || 5));
+  const dados = { cliente: nome, whatsapp, canal: cfg.canais?.[0]?.nome || "Venda direta", data: hoje, prazo: prazoD.toISOString().slice(0, 10),
+    itens: [{ produto_id: x.id, descricao: x.p.nome + (cor ? " · cor " + cor.nome : ""), ...(cor ? { cor: cor.nome } : {}), quantidade: q,
+      preco_unit: n(x.p.precoCatalogo), custo_unit: 0, horas_unit: 0, personalizacao: texto.slice(0, 300), doEstoque: false, fil: [], recalc: true }],
+    desconto: 0, freteCliente: 0, freteVoce: 0, taxas: 0, sinal: 0, fluxo: 2, origem: "catalogo", pediuOrcamento: true,
+    obs: "Pedido de orçamento pelo catálogo" + (texto ? ": " + texto : "") };
+  avisoPag(dados, { tipo: "novo", valor: n(q * n(x.p.precoCatalogo)), forma: "Pedido de orçamento" });
+  const id = crypto.randomUUID(), token = crypto.randomBytes(16).toString("hex");
+  const numero = (db.prepare("SELECT COALESCE(MAX(numero),0) m FROM pedidos").get().m) + 1;
+  db.prepare("INSERT INTO pedidos (id, numero, dados, status, prazo, token) VALUES (?, ?, ?, 'orcamento', ?, ?)").run(id, numero, JSON.stringify(dados), dados.prazo, token);
+  pushAviso(numero, id, { tipo: "novo", valor: n(q * n(x.p.precoCatalogo)), cliente: nome + ` · pediu orçamento de ${q}× ${x.p.nome}` });
+  res.json({ numero });
 });
 
 // ---------- kits e cupons ----------
@@ -1844,6 +1879,7 @@ app.get("/api/publico/catalogo", limitePublico, (req, res) => {
       id, nome: p.nome, categoria: p.categoria || "", descricao: txt(p.descricaoCatalogo, 400), preco: n(p.precoCatalogo),
       prontaEntrega: (Number(p.estoque) || 0) > 0, foto: foto ? "/fotos-publicas/" + foto : null, personalizavel: !!p.personalizavel,
       ...(Array.isArray(p.adicionais) && p.adicionais.length ? { adicionais: p.adicionais.slice(0, 10).map(a => ({ nome: txt(a.nome, 60), preco: n(a.preco) })) } : {}),
+      ...(Array.isArray(p.cores) && p.cores.length ? { cores: p.cores.slice(0, 24).map(c => ({ nome: txt(c.nome, 40), hex: /^#[0-9a-f]{6}$/i.test(c.hex || "") ? c.hex : "" })) } : {}),
     })),
     kits: kitsPublicos().map(({ itens, ...k }) => ({ ...k, itens: itens.map(i => ({ nome: i.nome, q: i.q })) })),
     temCupom: (configCompleta().cupons || []).some(c => c && c.ativo),
@@ -2250,7 +2286,8 @@ app.get("/api/publico/pedido/:token/refazer", limitePublico, (req, res) => {
     if (!pr) { faltaram++; continue; }
     const nomes = (i.ads || []).map(a => a.nome);
     const ad = (pr.adicionais || []).map((a, k) => nomes.includes(a.nome) ? k : -1).filter(k => k >= 0);
-    itens.push({ id: i.produto_id, q, pers: txt(i.personalizacao, 200), ad });
+    const cor = i.cor && (pr.cores || []).some(c => c.nome === i.cor) ? i.cor : "";
+    itens.push({ id: i.produto_id, q, pers: txt(i.personalizacao, 200), ad, ...(cor ? { cor } : {}) });
   }
   res.json({ numero: r.numero, itens, faltaram });
 });

@@ -216,6 +216,18 @@ dialog::backdrop{background:rgba(8,12,16,.55);backdrop-filter:blur(2px)}
 .share button,.share a{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--linha,#e3e8ec);background:#fff;color:inherit;border-radius:999px;padding:7px 12px;font-family:inherit;font-weight:600;font-size:13px;text-decoration:none;cursor:pointer}
 .share button:hover,.share a:hover{border-color:var(--verde)}
 .share svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.orcbtn{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:1px dashed #c3ccd4;background:none;border-radius:14px;padding:12px 14px;cursor:pointer;transition:border-color .15s,background-color .15s}
+.orcbtn:hover{border-color:var(--verde);background:#f6faf8}
+.orcbtn svg{width:22px;height:22px;flex:none;fill:none;stroke:var(--verde);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.orcbtn span{display:flex;flex-direction:column;gap:1px}
+.orcbtn b{font-size:14.5px;font-weight:600}
+.orcbtn small{font-size:13px;color:var(--suave)}
+.orcform{display:flex;flex-direction:column;gap:12px}
+.orcform textarea{resize:vertical;font:inherit}
+.orcform .opc{font-weight:400;font-size:inherit;color:var(--suave)}
+.orcform select{appearance:auto}
+.orcform .voltar{border:0;background:none;color:var(--suave);font-weight:500;cursor:pointer;padding:4px;align-self:center}
+.orcform .voltar:hover{color:var(--tinta)}
 .grande{flex:1;border:0;background:#0f7d66;color:#fff;border-radius:999px;padding:14px 20px;font-weight:600;font-size:15.5px;cursor:pointer;transition:background-color .15s}
 .grande:hover{background:#0b6654}
 .grande:disabled{opacity:.6;cursor:default}
@@ -237,6 +249,19 @@ dialog::backdrop{background:rgba(8,12,16,.55);backdrop-filter:blur(2px)}
 .avalc blockquote{margin:0;color:var(--tinta,#16202b);font-size:14.5px;line-height:1.45}
 .avalc figcaption{font-size:13px;color:var(--suave)}
 .it small.adtx{color:var(--verde);font-weight:600}
+.am{display:inline-block;width:14px;height:14px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.14);flex:none;vertical-align:-2px}
+.bolas{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.bolas span{font-size:12.5px;color:var(--suave);margin-left:4px}
+.cores{border:1px solid var(--linha);border-radius:14px;padding:10px 14px 12px;margin:0;transition:border-color .15s}
+.cores.falta{border-color:#b42318}
+.cores legend{font-weight:600;font-size:14px;padding:0 6px}
+.cores legend span{font-weight:400;color:var(--suave)}
+.corop{display:flex;flex-wrap:wrap;gap:8px;padding-top:4px}
+.dp .corop label{flex-direction:row;align-items:center;gap:8px;font-weight:500;font-size:13.5px;border:1px solid var(--linha);border-radius:999px;padding:6px 12px 6px 8px;cursor:pointer;transition:border-color .15s}
+.corop input{position:absolute;opacity:0;pointer-events:none}
+.corop .am{width:20px;height:20px}
+.dp .corop label:has(input:checked){border-color:var(--tinta);box-shadow:inset 0 0 0 1px var(--tinta)}
+.dp .corop label:has(input:focus-visible){outline:2px solid var(--verde);outline-offset:2px}
 .adcs{border:1px solid var(--linha);border-radius:14px;padding:10px 14px 12px;margin:0;display:flex;flex-direction:column;gap:2px}
 .adcs legend{font-weight:600;font-size:14px;padding:0 6px}
 .adcs legend span{font-weight:400;color:var(--suave)}

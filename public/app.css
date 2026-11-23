@@ -762,6 +762,10 @@ main,.main,.content{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
 .medidas .unit span{display:none}
 .medidas .unit input{padding-left:8px;padding-right:6px;min-width:0}
 
+/* cores do produto */
+.corlista{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+.corline{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:8px;align-items:center}
+.corline input[type=color]{width:36px;height:36px;padding:2px;border-radius:8px;cursor:pointer}
 /* cadastro de produto em passos */
 .passo-cab{display:flex;align-items:center;gap:12px}
 .passo-cab h3{margin:0}
