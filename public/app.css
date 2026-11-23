@@ -762,6 +762,46 @@ main,.main,.content{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
 .medidas .unit span{display:none}
 .medidas .unit input{padding-left:8px;padding-right:6px;min-width:0}
 
+/* financeiro: saldo em destaque + três números; gráfico espelhado */
+.finacoes{gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.finsep{width:1px;height:24px;background:var(--line);margin:0 4px}
+.fin-kpis{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);grid-auto-rows:auto;gap:12px}
+.fin-kpis .kpi-saldo{grid-row:span 3}
+.fin-kpis .kpi:not(.kpi-saldo){display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:2px 12px;padding:14px 18px}
+.fin-kpis .kpi:not(.kpi-saldo) .tv{font-size:22px;grid-row:span 2;align-self:center;text-align:right}
+.fin-kpis .kpi:not(.kpi-saldo) .ts{font-size:12.5px;color:var(--muted)}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;display:flex;flex-direction:column;gap:6px;min-width:0;transition:transform .2s cubic-bezier(.2,.7,.2,1),border-color .2s}
+@media (hover:hover){.kpi:hover{transform:translateY(-2px);border-color:var(--line-strong,#cfd8d2)}}
+.kpi .tv{font-size:26px;font-weight:600;line-height:1.15;white-space:nowrap;font-variant-numeric:tabular-nums}
+.kpi .tv.warnv{color:var(--warn)}
+.kpi-saldo{grid-row:span 1;gap:8px;padding:20px 22px}
+.kpi-saldo > .tv{font-size:34px}
+.kpi-split{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--sunken);gap:2px;margin-top:6px}
+.kpi-split i{display:block;height:100%}
+.kpi-split .in{background:var(--ch-in)} .kpi-split .out{background:var(--ch-out)}
+.kpi-io{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px}
+.kpi-io > div{display:flex;flex-direction:column;gap:2px}
+.kpi-io b{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+.kpi-io small{font-size:12px;color:var(--muted)}
+.kpi-io .tl .sw{margin-right:6px}
+.sw.sal{width:14px;height:2px;border-radius:1px;background:var(--ink);vertical-align:3px}
+.chart .saldo{fill:none;stroke:var(--ink);stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round;opacity:.75}
+.chart .saldo-p{fill:var(--surface);stroke:var(--ink);stroke-width:1.4}
+.chart .saldo-p.cur{fill:var(--ink)}
+.chart .b-in.up{transform-box:fill-box;transform-origin:bottom}
+.chart .b-out.dn{transform-box:fill-box;transform-origin:top}
+@media (prefers-reduced-motion:no-preference){
+  .fin-kpis.anima > .kpi{animation:finSobe .45s cubic-bezier(.2,.7,.2,1) both;animation-delay:calc(var(--i) * 60ms)}
+  .chart.anima .b-in,.chart.anima .b-out{animation:finCresce .55s cubic-bezier(.2,.7,.2,1) both;animation-delay:calc(var(--i) * 30ms)}
+  .chart.anima .saldo{stroke-dasharray:1;stroke-dashoffset:1;animation:finLinha .9s .25s cubic-bezier(.2,.7,.2,1) forwards}
+  .chart.anima .saldo-p{animation:finAparece .3s .8s both}
+}
+@keyframes finSobe{from{opacity:0;transform:translateY(8px)}}
+@keyframes finCresce{from{transform:scaleY(0)}}
+@keyframes finLinha{to{stroke-dashoffset:0}}
+@keyframes finAparece{from{opacity:0}}
+@media (max-width:1100px){.fin-kpis{grid-template-columns:1fr}.fin-kpis .kpi-saldo{grid-row:auto}}
+@media (max-width:640px){.fin-kpis .kpi:not(.kpi-saldo) .tv{font-size:19px}.kpi-saldo > .tv{font-size:30px}.finsep{display:none}.finacoes{justify-content:flex-start}}
 /* filtro da lista de produtos */
 .prodfiltro{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
 .prodfiltro #prodBusca{max-width:320px}

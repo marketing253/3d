@@ -247,19 +247,20 @@
           <button class="btn" id="finNext" aria-label="Próximo mês">›</button>
           <button class="btn ghost" id="finHoje">Este mês</button>
         </div>
-        <div class="row">
-          <button class="btn primary edit-only" data-novo="venda">+ Venda</button>
-          <button class="btn edit-only" data-novo="saida">+ Despesa</button>
+        <div class="row finacoes">
+          <a class="btn ghost" id="finCsv" href="#" download>Exportar CSV</a>
+          <a class="btn ghost" id="finPdf" href="#" target="_blank" rel="noopener">Fechamento em PDF</a>
+          <span class="finsep" aria-hidden="true"></span>
           <button class="btn edit-only" data-novo="entrada">+ Receita</button>
-          <a class="btn" id="finCsv" href="#" download>Exportar CSV</a>
-          <a class="btn" id="finPdf" href="#" target="_blank" rel="noopener">Fechamento em PDF</a>
+          <button class="btn edit-only" data-novo="saida">+ Despesa</button>
+          <button class="btn primary edit-only" data-novo="venda">+ Venda</button>
         </div>
       </div>
       <div class="card stack" id="finForm" hidden></div>
-      <div class="tiles" id="finTiles"></div>
+      <div class="fin-kpis" id="finTiles"></div>
       <div class="card stack">
         <div class="row spread"><h3>Entradas e saídas · últimos 12 meses</h3>
-          <div class="row legend"><span><i class="sw in"></i>Entradas</span><span><i class="sw out"></i>Saídas</span><button class="btn ghost" id="finTabela">Ver como tabela</button></div></div>
+          <div class="row legend"><span><i class="sw in"></i>Entradas</span><span><i class="sw out"></i>Saídas</span><span><i class="sw sal"></i>Saldo</span><button class="btn ghost" id="finTabela">Ver como tabela</button></div></div>
         <div id="finChartWrap" style="position:relative"><div id="finChart" class="chart"></div><div class="tip" id="finTip" hidden></div></div>
         <div id="finTable" class="tablewrap" hidden></div>
         <p class="note" style="margin:0">Só entram valores já recebidos ou pagos. Clique em um mês para abrir.</p>

@@ -2021,13 +2021,20 @@ function renderFin(){
   for(const v of vs){const t=vendaTot(v); if(v.status==="pago"){entradas+=t.caixa;lucro+=t.lucro;pecas+=v.quantidade;bruto+=t.bruto} else receber+=t.caixa}
   for(const l of ls){ if(l.status==="pago"){ if(l.tipo==="entrada") entradas+=l.valor; else saidas+=l.valor } else { if(l.tipo==="entrada") receber+=l.valor; else pagar+=l.valor } }
   const saldo=entradas-saidas, acumulado=fin.saldoAnterior+saldo;
+  // cartão grande do saldo (com entradas × saídas) + três números menores; entram com uma leve subida e os valores contam até o total
+  const tot=entradas+saidas, pIn=tot>0?entradas/tot*100:50;
+  const v=(x,cls)=>`<span class="tv num ${cls||""}" data-v="${x}">${brl(x)}</span>`;
   $("#finTiles").innerHTML=`
-    <div class="tile"><span class="tl">Entradas</span><span class="tv num">${brl(entradas)}</span><span class="ts">${pl(vs.filter(v=>v.status==="pago").length,"venda","vendas")} · ${pl(pecas,"peça","peças")}</span></div>
-    <div class="tile"><span class="tl">Saídas</span><span class="tv num">${brl(saidas)}</span><span class="ts">${pl(ls.filter(l=>l.tipo==="saida"&&l.status==="pago").length,"despesa paga","despesas pagas")}</span></div>
-    <div class="tile main"><span class="tl">Saldo do mês</span><span class="tv num ${saldo<0?"neg":"pos"}">${brl(saldo)}</span><span class="ts">Acumulado: ${brl(acumulado)}</span></div>
-    <div class="tile"><span class="tl">Lucro das vendas</span><span class="tv num">${brl(lucro)}</span><span class="ts">${bruto>0?pct(lucro/bruto)+" do faturado":"sem vendas pagas"}</span></div>
-    <div class="tile"><span class="tl">A receber</span><span class="tv num sm">${brl(receber)}</span><span class="ts">vendas e receitas pendentes</span></div>
-    <div class="tile"><span class="tl">A pagar</span><span class="tv num sm">${brl(pagar)}</span><span class="ts">despesas pendentes</span></div>`;
+    <div class="kpi kpi-saldo" style="--i:0"><span class="tl">Saldo do mês</span>${v(saldo,saldo<0?"neg":"")}<span class="ts">Acumulado até aqui: ${brl(acumulado)}</span>
+      <div class="kpi-split" title="Entradas ${brl(entradas)} · Saídas ${brl(saidas)}"><i class="in" style="width:${pIn}%"></i><i class="out" style="width:${100-pIn}%"></i></div>
+      <div class="kpi-io"><div><span class="tl"><i class="sw in"></i>Entradas</span><b class="num" data-v="${entradas}">${brl(entradas)}</b><small>${pl(vs.filter(x=>x.status==="pago").length,"venda","vendas")} · ${pl(pecas,"peça","peças")}</small></div>
+        <div><span class="tl"><i class="sw out"></i>Saídas</span><b class="num" data-v="${saidas}">${brl(saidas)}</b><small>${pl(ls.filter(l=>l.tipo==="saida"&&l.status==="pago").length,"despesa paga","despesas pagas")}</small></div></div></div>
+    <div class="kpi" style="--i:1"><span class="tl">Lucro das vendas</span>${v(lucro)}<span class="ts">${bruto>0?pct(lucro/bruto)+" do faturado":"sem vendas pagas"}</span></div>
+    <div class="kpi" style="--i:2"><span class="tl">A receber</span>${v(receber)}<span class="ts">vendas e receitas pendentes</span></div>
+    <div class="kpi" style="--i:3"><span class="tl">A pagar</span>${v(pagar,pagar>0?"warnv":"")}<span class="ts">despesas pendentes</span></div>`;
+  const anima=renderFin._mes!==finMes; renderFin._mes=finMes;
+  $("#finTiles").classList.toggle("anima",anima);
+  if(anima) contaNumeros($("#finTiles"));
   renderFinChart();
   // categorias de despesa
   const cats={}; for(const l of ls) if(l.tipo==="saida") cats[l.categoria]=(cats[l.categoria]||0)+l.valor;
@@ -2052,20 +2059,36 @@ function renderFin(){
       <td class="edit-only fact" style="white-space:nowrap;text-align:right">${pend?'<button class="btn ghost" data-fa="quitar">Quitar</button>':""}<button class="btn ghost" data-fa="edit">Editar</button><button class="btn ghost" data-fa="del">Excluir</button></td></tr>`}).join("")}
   </tbody></table></div>`:`<div class="card empty"><h2>Nada lançado em ${nomeMes(finMes)}</h2><p>Registre uma venda, uma despesa (filamento, luz, embalagem) ou uma receita para acompanhar o mês.</p></div>`;
 }
+// valores que contam do zero até o total quando o mês abre (desligado para quem prefere menos movimento)
+function contaNumeros(box){
+  if(matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const els=[...box.querySelectorAll("[data-v]")], t0=performance.now(), dur=700, ease=t=>1-Math.pow(1-t,3);
+  const passo=t=>{ const k=Math.min(1,(t-t0)/dur); for(const el of els) el.textContent=brl(Number(el.dataset.v)*ease(k)); if(k<1) requestAnimationFrame(passo) };
+  requestAnimationFrame(passo);
+}
+/* gráfico espelhado: entradas sobem, saídas descem a partir da linha do zero; a linha mostra o saldo de cada mês */
 function renderFinChart(){
-  const s=fin.serie, W=Math.max(320,Math.round($("#finChartWrap").clientWidth||720)), H=W<560?200:240, pl=56, pr=8, pt=12, pb=28;
-  const max=Math.max(1,...s.flatMap(x=>[x.entradas,x.saidas]));
+  const s=fin.serie, W=Math.max(320,Math.round($("#finChartWrap").clientWidth||720)), H=W<560?240:300, pl=56, pr=8, pt=14, pb=28;
+  const anima=renderFinChart._mes!==finMes; renderFinChart._mes=finMes;
+  const maxV=Math.max(1,...s.flatMap(x=>[x.entradas,x.saidas]));
   const nice=v=>{const p=Math.pow(10,Math.floor(Math.log10(v)));const m=v/p;return (m<=1?1:m<=2?2:m<=5?5:10)*p};
-  const top=nice(max), steps=4, gw=(W-pl-pr)/s.length, bw=Math.min(18,(gw-10)/2);
-  const y=v=>pt+(H-pt-pb)*(1-v/top);
+  const topo=nice(maxV), gw=(W-pl-pr)/s.length, bw=Math.min(22,gw-14), meio=pt+(H-pt-pb)/2, esc2=(H-pt-pb)/2/topo;
+  const y=val=>meio-val*esc2;
+  const rot=val=>{const a=Math.abs(val);return (val<0?"−":"")+(a>=1000?(a/1000).toLocaleString("pt-BR")+" mil":a.toLocaleString("pt-BR"))};
   let g="";
-  for(let i=0;i<=steps;i++){const v=top*i/steps;g+=`<line x1="${pl}" x2="${W-pr}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${pl-6}" y="${y(v)+4}" class="ax" text-anchor="end">${v>=1000?(v/1000).toLocaleString("pt-BR")+" mil":v.toLocaleString("pt-BR")}</text>`}
-  const bar=(x,v,cls)=>{const h=Math.max(0,y(0)-y(v));if(h<=0)return "";const r=Math.min(4,h,bw/2);const yt=y(v);
-    return `<path class="${cls}" d="M${x},${y(0)} V${yt+r} Q${x},${yt} ${x+r},${yt} H${x+bw-r} Q${x+bw},${yt} ${x+bw},${yt+r} V${y(0)} Z"/>`};
-  s.forEach((m,i)=>{const cx=pl+gw*i+gw/2;const cur=m.mes===finMes;
-    g+=`<g class="col${cur?" cur":""}" data-i="${i}"><rect x="${pl+gw*i}" y="${pt}" width="${gw}" height="${H-pt-pb}" class="hit"/>${bar(cx-bw-1,m.entradas,"b-in")}${bar(cx+1,m.saidas,"b-out")}${(W>=560||i%2===1)?`<text x="${cx}" y="${H-8}" class="ax${cur?" axc":""}" text-anchor="middle">${nomeMes(m.mes,true)}</text>`:""}</g>`});
-  g+=`<line x1="${pl}" x2="${W-pr}" y1="${y(0)}" y2="${y(0)}" class="base"/>`;
-  $("#finChart").innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Entradas e saídas dos últimos 12 meses">${g}</svg>`;
+  for(const val of [topo,topo/2,0,-topo/2,-topo]) g+=`<line x1="${pl}" x2="${W-pr}" y1="${y(val)}" y2="${y(val)}" class="grid"/><text x="${pl-6}" y="${y(val)+4}" class="ax" text-anchor="end">${rot(val)}</text>`;
+  const r=Math.min(4,bw/2);
+  const barra=(x,val,cls,i)=>{ const h=Math.abs(val)*esc2; if(h<0.5) return ""; const rr=Math.min(r,h); const d=val>0
+      ?`M${x},${meio} V${meio-h+rr} Q${x},${meio-h} ${x+rr},${meio-h} H${x+bw-rr} Q${x+bw},${meio-h} ${x+bw},${meio-h+rr} V${meio} Z`
+      :`M${x},${meio} V${meio+h-rr} Q${x},${meio+h} ${x+rr},${meio+h} H${x+bw-rr} Q${x+bw},${meio+h} ${x+bw},${meio+h-rr} V${meio} Z`;
+    return `<path class="${cls}" d="${d}" style="--i:${i}"/>` };
+  const pts=[];
+  s.forEach((m,i)=>{const cx=pl+gw*i+gw/2;const cur=m.mes===finMes; const sal=Math.max(-topo,Math.min(topo,m.entradas-m.saidas)); pts.push([cx,y(sal)]);
+    g+=`<g class="col${cur?" cur":""}" data-i="${i}"><rect x="${pl+gw*i}" y="${pt}" width="${gw}" height="${H-pt-pb}" class="hit"/>${barra(cx-bw/2,m.entradas,"b-in up",i)}${barra(cx-bw/2,-m.saidas,"b-out dn",i)}${(W>=560||i%2===1)?`<text x="${cx}" y="${H-8}" class="ax${cur?" axc":""}" text-anchor="middle">${nomeMes(m.mes,true)}</text>`:""}</g>`});
+  g+=`<line x1="${pl}" x2="${W-pr}" y1="${meio}" y2="${meio}" class="base"/>`;
+  g+=`<polyline class="saldo" points="${pts.map(p=>p.map(n=>n.toFixed(1)).join(",")).join(" ")}" pathLength="1"/>${pts.map(([px,py],i)=>`<circle class="saldo-p${s[i].mes===finMes?" cur":""}" cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${s[i].mes===finMes?4:2.5}"/>`).join("")}`;
+  $("#finChart").classList.toggle("anima",anima);
+  $("#finChart").innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Entradas, saídas e saldo dos últimos 12 meses">${g}</svg>`;
   $("#finTable").innerHTML=`<table class="mini"><thead><tr><th>Mês</th><th class="n">Entradas</th><th class="n">Saídas</th><th class="n">Saldo</th><th class="n">Lucro vendas</th></tr></thead><tbody>${s.slice().reverse().map(m=>`<tr><td>${nomeMes(m.mes)}</td><td class="n">${brl(m.entradas)}</td><td class="n">${brl(m.saidas)}</td><td class="n">${brl(m.entradas-m.saidas)}</td><td class="n">${brl(m.lucroVendas)}</td></tr>`).join("")}</tbody></table>`;
 }
 const tip=$("#finTip");
