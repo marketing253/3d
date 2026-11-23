@@ -80,6 +80,13 @@ body:not(.sem3d) .hero .vitrine{display:none!important}
 .busca svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);width:18px;height:18px;fill:none;stroke:var(--suave);stroke-width:2}
 .busca input{width:100%;border:1px solid var(--linha);background:#fff;border-radius:999px;padding:12px 16px 12px 42px;font-size:15px;outline:none}
 .busca input:focus{border-color:var(--verde);box-shadow:0 0 0 3px rgba(18,151,122,.15)}
+.buscalinha{display:flex;gap:10px;align-items:center}
+.buscalinha .busca{flex:1;min-width:0}
+.ordem{position:relative;display:flex;align-items:center;flex:none}
+.ordem span{position:absolute;left:16px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--suave);pointer-events:none}
+.ordem select{appearance:none;-webkit-appearance:none;border:1px solid var(--linha);background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%235a6878' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 12px center/16px;border-radius:999px;padding:12px 38px 12px 80px;font:500 14.5px Inter,system-ui,sans-serif;color:var(--tinta);cursor:pointer;outline:none}
+.ordem select:focus-visible{border-color:var(--verde);box-shadow:0 0 0 3px rgba(18,151,122,.15)}
+@media (max-width:560px){.ordem span{display:none}.ordem select{padding-left:14px;max-width:150px}}
 .cats{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
 .cats::-webkit-scrollbar{display:none}
 .chip{border:1px solid var(--linha);background:#fff;border-radius:999px;padding:6px 14px;font-weight:500;font-size:14px;cursor:pointer;white-space:nowrap;transition:background-color .15s,border-color .15s}
@@ -407,7 +414,8 @@ dialog::backdrop{background:rgba(8,12,16,.55);backdrop-filter:blur(2px)}
 
 <div class="barra" id="produtos">
   <div class="wrap">
-    <label class="busca"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="busca" type="search" placeholder="Buscar produto…" aria-label="Buscar produto"></label>
+    <div class="buscalinha"><label class="busca"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="busca" type="search" placeholder="Buscar produto" aria-label="Buscar produto"></label>
+      <label class="ordem"><span>Ordenar</span><select id="ordem" aria-label="Ordenar produtos"><option value="vendidos">Mais vendidos</option><option value="az">Nome (A a Z)</option><option value="menor">Menor preço</option><option value="maior">Maior preço</option></select></label></div>
     <div class="cats" id="cats"></div>
   </div>
 </div>

@@ -8,6 +8,9 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const brl=v=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 const sem=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
 let dados=null, cat="Todos", busca="", carrinho={}, cupom=null;
+// ordem da vitrine: "vendidos" (como vem do servidor), "az", "menor", "maior"; lembra a escolha do cliente
+let ordem="vendidos"; try{ ordem=localStorage.getItem("cat3d.ordem")||"vendidos" }catch(e){}
+const ORDENA={az:(a,b)=>a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"}),menor:(a,b)=>a.preco-b.preco||a.nome.localeCompare(b.nome,"pt-BR"),maior:(a,b)=>b.preco-a.preco||a.nome.localeCompare(b.nome,"pt-BR")};
 let foco=new URLSearchParams(location.search).get("p")||(()=>{ const m=location.pathname.match(/^\/produto\/([^/]+)/); try{ return m?decodeURIComponent(m[1]):null }catch(e){ return null } })();
 const focoCurto=(location.pathname.match(/^\/c\/([^/]+)/)||[])[1]||""; // link curto /c/<código>: vira o id quando o catálogo carregar
 let cli={nome:"",whatsapp:""};
@@ -117,6 +120,8 @@ function render(){
   $("#cats").innerHTML=cats.length>2?cats.map(c=>`<button class="chip${c===cat?" on":""}" type="button" data-c="${esc(c)}">${esc(c)}</button>`).join(""):"";
   const b=sem(busca).trim();
   const lst=ps.filter(p=>(cat==="Todos"||p.categoria===cat)&&(!b||sem(p.nome+" "+p.descricao+" "+p.categoria).includes(b)));
+  if(ORDENA[ordem]) lst.sort(ORDENA[ordem]); // "mais vendidos" mantém a ordem do servidor
+  if($("#ordem")) $("#ordem").value=ordem;
   const ks=cat==="Todos"&&!b?dados.kits:[];
   $("#kits").hidden=!ks.length;
   $("#kitGrid").innerHTML=ks.map(k=>card(item("kit:"+k.id))).join("");
@@ -398,6 +403,7 @@ document.addEventListener("input",e=>{
   const p=e.target.closest("[data-pers]"); if(p){ const id=p.dataset.pers; if(carrinho[id]){ carrinho[id].pers=p.value; salva() } else if(item(id)) carrinho[id]={q:0,pers:p.value}; return }
 });
 $("#busca").addEventListener("input",e=>{ busca=e.target.value; render() });
+$("#ordem").addEventListener("change",e=>{ ordem=e.target.value; try{localStorage.setItem("cat3d.ordem",ordem)}catch(x){} render() });
 $("#cAplicar").addEventListener("click",aplicaCupom);
 $("#cCupom").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); aplicaCupom() } });
 carrega();
