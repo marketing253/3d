@@ -167,8 +167,23 @@ function renderRankCanal(){
   sel.innerHTML=cfg.canais.map(c=>`<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join("");
   if(cfg.canais.some(c=>c.id===cur)) sel.value=cur;
 }
+/* filtro da lista de produtos: busca + categoria (lembra a última escolha) */
+let prodCat=""; try{ prodCat=localStorage.getItem("prec3d.prodCat")||"" }catch(e){}
+const SEM_CAT="__sem", NO_CAT="__catalogo";
+function renderProdCats(){
+  const conta=new Map(); let sem=0, noCat=0;
+  for(const p of produtos){ const c=(p.categoria||"").trim(); if(c) conta.set(c,(conta.get(c)||0)+1); else sem++; if(p.catalogo) noCat++ }
+  const cats=[...conta.keys()].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  if(prodCat&&prodCat!==SEM_CAT&&prodCat!==NO_CAT&&!conta.has(prodCat)) prodCat="";
+  if(prodCat===SEM_CAT&&!sem) prodCat="";
+  const chip=(v,t,n)=>`<button type="button" class="chip${prodCat===v?" on":""}" data-pc="${esc(v)}" aria-pressed="${prodCat===v}">${esc(t)}<b>${n}</b></button>`;
+  $("#prodCats").innerHTML=chip("","Todos",produtos.length)+(noCat?chip(NO_CAT,"No catálogo",noCat):"")+cats.map(c=>chip(c,c,conta.get(c))).join("")+(sem?chip(SEM_CAT,"Sem categoria",sem):"");
+  $("#prodCats").closest(".prodfiltro").hidden=!produtos.length;
+}
+$("#prodCats").addEventListener("click",e=>{ const b=e.target.closest("[data-pc]"); if(!b) return; prodCat=b.dataset.pc; try{localStorage.setItem("prec3d.prodCat",prodCat)}catch(x){} renderLista(); b.scrollIntoView?.({block:"nearest",inline:"nearest"}) });
+$("#prodBusca").addEventListener("input",()=>renderLista());
 function renderLista(){
-  renderRankCanal();
+  renderRankCanal(); renderProdCats();
   const box=$("#lista");
   if(!produtos.length){
     box.innerHTML=`<div class="card empty"><h2>${!carregado?"Carregando seus produtos…":"Nenhum produto cadastrado ainda"}</h2>
@@ -178,11 +193,17 @@ function renderLista(){
   }
   const canalId=$("#rankCanal").value||cfg.canais[0]?.id;
   const sort=$("#sortBy").value;
-  const rows=produtos.map(p=>{const r=calc(p);const ch=r.canais.find(c=>c.id===canalId)||r.canais[0];return {p,r,ch}});
+  const busca=semAc($("#prodBusca").value.trim());
+  const visiveis=produtos.filter(p=>(prodCat===""||(prodCat===NO_CAT?p.catalogo:prodCat===SEM_CAT?!(p.categoria||"").trim():(p.categoria||"").trim()===prodCat))
+    &&(!busca||semAc(p.nome+" "+(p.categoria||"")+" "+(p.descricaoCatalogo||"")).includes(busca)));
+  const catReal=prodCat&&prodCat!==NO_CAT&&prodCat!==SEM_CAT;
+  const topo=`<div class="prodinfo"><span>${visiveis.length===produtos.length?`${produtos.length} produtos`:`${visiveis.length} de ${produtos.length} produtos`}</span>${catReal&&podeEditar()?`<button type="button" class="linkbtn" data-act="rencat">Renomear categoria</button>`:""}${prodCat||busca?`<button type="button" class="linkbtn" data-act="limpafiltro">Limpar filtro</button>`:""}</div>`;
+  if(!visiveis.length){ box.innerHTML=topo+`<div class="card empty"><h2>Nenhum produto ${busca?"nessa busca":"nessa categoria"}</h2><p>Tente outra palavra ou escolha outra categoria.</p></div>`; return }
+  const rows=visiveis.map(p=>{const r=calc(p);const ch=r.canais.find(c=>c.id===canalId)||r.canais[0];return {p,r,ch}});
   const key={lucroH:x=>-(x.ch?.lucroH??-1e9),lucro:x=>-(x.ch?.lucro??-1e9),margem:x=>-(x.ch?.margem??-1e9),custo:x=>x.r.custo,nome:x=>x.p.nome.toLowerCase()}[sort];
   rows.sort((a,b)=>{const A=key(a),B=key(b);return A<B?-1:A>B?1:0});
   const maxLH=Math.max(...rows.map(x=>x.ch?.lucroH||0),1);
-  box.innerHTML=`<div class="tablewrap"><table class="ajusta prods"><thead><tr>
+  box.innerHTML=topo+`<div class="tablewrap"><table class="ajusta prods"><thead><tr>
     <th>Produto</th><th class="n">Custo</th><th class="n">Preço</th><th class="n">Lucro</th><th class="n">Lucro/h</th><th></th></tr></thead><tbody>
     ${rows.map((x,i)=>{const {p,r,ch}=x;const lh=ch?.lucroH;
       const mCls=ch?.margem==null?"":ch.margem<0.15?"bad":ch.margem>=0.3?"good":"";
@@ -208,6 +229,14 @@ $("#lista").addEventListener("click",async e=>{
   const b=e.target.closest("button[data-act]"); if(!b) return;
   const act=b.dataset.act; b.closest("details.mais")?.removeAttribute("open");
   if(act==="novo"){startForm(null);setTab("novo");return}
+  if(act==="limpafiltro"){ prodCat=""; $("#prodBusca").value=""; try{localStorage.setItem("prec3d.prodCat","")}catch(x){} renderLista(); return }
+  if(act==="rencat"){
+    const velho=prodCat, novo=(prompt(`Novo nome para a categoria "${velho}":`,velho)||"").trim();
+    if(!novo||novo===velho) return;
+    const lista=produtos.filter(p=>(p.categoria||"").trim()===velho); b.disabled=true; let ok=0;
+    for(const p of lista){ try{ const body=clone(p); delete body.id; delete body.atualizadoPor; body.categoria=novo; const r=await api("PUT","/api/produtos/"+encodeURIComponent(p.id),body); const i=produtos.findIndex(x=>x.id===p.id); if(i>=0) produtos[i]={...produtos[i],...r}; ok++ }catch(err){ toast(err.message); break } }
+    prodCat=novo; try{localStorage.setItem("prec3d.prodCat",novo)}catch(x){} renderLista(); toast(`${ok} ${ok===1?"produto movido":"produtos movidos"} para "${novo}"`); return
+  }
   const id=b.closest("[data-id]")?.dataset.id; const p=produtos.find(x=>x.id===id); if(!p) return;
   if(act==="edit"){startForm(p);setTab("novo")}
   if(act==="vender"){setTab("financeiro");abreForm("venda",{produto_id:p.id});return}
@@ -226,7 +255,12 @@ $("#lista").addEventListener("click",async e=>{
 $("#sortBy").addEventListener("change",()=>{try{localStorage.setItem("prec3d.sort",$("#sortBy").value)}catch(e){};renderLista()});
 $("#rankCanal").addEventListener("change",renderLista);
 // link do produto no catálogo com cara de página (/produto/<id>/<nome>), igual ao do servidor
-function linkProdutoCat(p){ const s=String(p.nome||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,70)||"produto"; return location.origin+"/produto/"+encodeURIComponent(p.id)+"/"+s }
+function linkProdutoCat(p){ // link curto /c/<começo do id>, igual ao do catálogo
+  const ids=produtos.filter(x=>x.catalogo&&num(x.precoCatalogo)>0).map(x=>x.id);
+  for(let k=5;k<p.id.length;k++){ const c=p.id.slice(0,k); if(!ids.some(o=>o!==p.id&&o.startsWith(c))) return location.origin+"/c/"+encodeURIComponent(c) }
+  return linkProdutoLongo(p);
+}
+function linkProdutoLongo(p){ const s=String(p.nome||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,70)||"produto"; return location.origin+"/produto/"+encodeURIComponent(p.id)+"/"+s }
 /* ---------- exportar para Shopee / Mercado Livre ---------- */
 let exp=null;
 const expProds=()=>produtos.filter(p=>p.catalogo&&num(p.precoCatalogo)>0).sort((a,b)=>(a.categoria||"~").localeCompare(b.categoria||"~")||a.nome.localeCompare(b.nome));
