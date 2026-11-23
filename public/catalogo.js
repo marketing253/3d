@@ -102,7 +102,7 @@ function card(x){
   const q=carrinho[x.id]?.q||0;
   return `<article class="prod" data-ver="${esc(x.id)}">
     <div class="ph">${x.foto?`<img src="${esc(x.foto)}" alt="${esc(x.nome)}" loading="lazy">`:x.kit?"KIT":"3D"}
-      ${x.fotos?.length>1?`<span class="nfotos" aria-label="${x.fotos.length} fotos">📷 ${x.fotos.length}</span>`:""}<div class="selos-ph">${x.maisVendido?'<span class="tag mv">🔥 Mais vendido</span>':""}${x.prontaEntrega?'<span class="tag pe">Pronta entrega</span>':""}${x.personalizavel&&!x.kit?'<span class="tag">Personalizável</span>':""}</div></div>
+      ${x.fotos?.length>1?`<span class="nfotos" aria-label="${x.fotos.length} fotos">${x.fotos.length} fotos</span>`:""}<div class="selos-ph">${x.maisVendido?'<span class="tag mv">Mais vendido</span>':""}${x.prontaEntrega?'<span class="tag pe">Pronta entrega</span>':""}${x.personalizavel&&!x.kit?'<span class="tag">Personalizável</span>':""}</div></div>
     <div class="bd">${x.categoria?`<span class="cat">${esc(x.categoria)}</span>`:""}<h3>${esc(x.nome)}</h3>${x.descricao?`<p>${esc(x.descricao)}</p>`:""}
       <div class="ft"><span>${x.avulso>x.preco?`<span class="de">${brl(x.avulso)}</span>`:""}<span class="preco">${brl(x.preco)}</span></span>${qtdHtml(x.id,q)}</div></div>
   </article>`;
@@ -301,8 +301,8 @@ $("#dcPe").addEventListener("submit",async e=>{
     // preço fechado: vai direto para a tela de pagamento do pedido (100% ou entrada, Pix ou cartão)
     if(j.direto&&j.link){ saindo=true; btn.textContent="Abrindo o pagamento…"; location.href=j.link; return }
     const wa=waLoja(), msg=`Olá! Acabei de fazer o pedido #${j.numero} pelo catálogo.`;
-    $("#dcCorpo").innerHTML=`<div class="ok"><div class="ic" aria-hidden="true">✓</div><h2 class="titulo">Pedido #${j.numero} recebido!</h2>
-      <p>Obrigado, ${esc(cli.nome.split(" ")[0])}! No link do pedido você confere os itens, aprova e paga${dados.loja.cartao?" por Pix ou cartão":" por Pix"}. Guarde o link para acompanhar.${ent.tipo==="entrega"&&ent.combinar?" O frete para a sua cidade a gente combina pelo WhatsApp.":""}</p>
+    $("#dcCorpo").innerHTML=`<div class="ok"><div class="ic" aria-hidden="true">✓</div><h2 class="titulo">Pedido #${j.numero} recebido</h2>
+      <p>Obrigado, ${esc(cli.nome.split(" ")[0])}. No link do pedido você confere os itens, aprova e paga${dados.loja.cartao?" por Pix ou cartão":" por Pix"}. Guarde o link para acompanhar.${ent.tipo==="entrega"&&ent.combinar?" O frete para a sua cidade a gente combina pelo WhatsApp.":""}</p>
       ${j.link?`<a class="grande" href="${esc(j.link)}">Ver meu pedido e pagar</a>`:""}
       ${wa?`<a class="sec" href="https://wa.me/${wa}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Falar com a loja no WhatsApp</a>`:""}</div>`;
     $("#dcPe").hidden=true;

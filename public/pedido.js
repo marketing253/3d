@@ -10,6 +10,9 @@ const dataBR=s=>s?s.split("-").reverse().join("/"):"";
 const quando=iso=>iso?new Date(iso).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"";
 const token=location.pathname.split("/").filter(Boolean)[1]||"";
 const V=v=>"V"+String(v).padStart(2,"0");
+// ícones de traço (no lugar dos emojis)
+const IC={loja:'<path d="M4 10v9h16v-9M3 7l2-4h14l2 4v1a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0z"/>',caminhao:'<path d="M3 6h11v10H3zM14 10h4l3 3v3h-7"/><circle cx="7.5" cy="18" r="1.6"/><circle cx="17.5" cy="18" r="1.6"/>',caixa:'<path d="M3 7.5L12 3l9 4.5-9 4.5-9-4.5zm0 0v9L12 21l9-4.5v-9M12 12v9"/>',repetir:'<path d="M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6M18 3v4h-4M6 21v-4h4"/>'};
+const ic=k=>`<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${IC[k]}</svg>`;
 function toast(m){const t=$("#toast");t.textContent=m;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,2600)}
 async function copia(txt,msg){try{await navigator.clipboard.writeText(txt);toast(msg)}catch(e){toast("Selecione o texto e copie")}}
 async function envia(url,body){
@@ -33,11 +36,11 @@ const pagHtml=d=>!d.cartao?pixHtml(d):`<div class="formas" role="tablist">
   <div data-forma="pix">${pixHtml(d)}</div>
   <div data-forma="cartao" class="fecha"><div id="cardBrick"></div><p class="exp">Parcele em até ${d.cartao.parcelas}x: depois de digitar o número do cartão, escolha as parcelas. Os juros do parcelamento aparecem antes de você confirmar. Cada parcela tem um valor mínimo, então valores pequenos ficam só à vista.</p></div>`;
 // Caixa de "Pagamento aprovado" (cartão ou Pix), com o que acontece a seguir.
-const PROXIMO={arte:"Agora preparamos a sua arte. Ela aparece aqui para você aprovar.",producao:"Seu pedido já foi para a produção.",pronto:"Pedido quitado! Combine a retirada ou a entrega com a loja.",entregue:"Pedido quitado. Obrigado!"};
+const PROXIMO={arte:"Agora preparamos a sua arte. Ela aparece aqui para você aprovar.",producao:"Seu pedido já foi para a produção.",pronto:"Pedido quitado. Combine a retirada ou a entrega com a loja.",entregue:"Pedido quitado. Obrigado pela compra."};
 async function aprovado(detalhe){
   await carrega();
   const n=carrega.d, z=document.createElement("div"); z.className="ok-pag"; z.setAttribute("role","dialog"); z.setAttribute("aria-modal","true");
-  z.innerHTML=`<div class="ok-box"><div class="ok-ic" aria-hidden="true">✓</div><h2>Pagamento aprovado!</h2><p>${esc(detalhe)}</p>${n&&PROXIMO[n.etapa]?`<p class="ok-prox">${PROXIMO[n.etapa]}</p>`:""}<button class="btn pri" type="button">Ver meu pedido</button></div>`;
+  z.innerHTML=`<div class="ok-box"><div class="ok-ic" aria-hidden="true">✓</div><h2>Pagamento aprovado</h2><p>${esc(detalhe)}</p>${n&&PROXIMO[n.etapa]?`<p class="ok-prox">${PROXIMO[n.etapa]}</p>`:""}<button class="btn pri" type="button">Ver meu pedido</button></div>`;
   const fecha=()=>{ z.remove(); document.querySelector(".passo .agora")?.scrollIntoView({behavior:"smooth",block:"start"}) };
   z.addEventListener("click",ev=>{ if(ev.target===z||ev.target.closest("button")) fecha() });
   document.body.appendChild(z); z.querySelector("button").focus();
@@ -92,15 +95,15 @@ function pagoHtml(d){
 // avaliação depois da entrega: estrelas + comentário (uma vez por pedido)
 let avalNota=0;
 function avalHtml(d){
-  if(d.avaliacao) return `<div class="aval feito"><b>Obrigado pela avaliação!</b><span class="estrelas">${"★".repeat(d.avaliacao.nota)}<i>${"★".repeat(5-d.avaliacao.nota)}</i></span></div>`;
+  if(d.avaliacao) return `<div class="aval feito"><b>Obrigado pela avaliação</b><span class="estrelas">${"★".repeat(d.avaliacao.nota)}<i>${"★".repeat(5-d.avaliacao.nota)}</i></span></div>`;
   return `<div class="aval" id="aval"><b>Como foi a sua experiência?</b><div class="estrelas sel">${[1,2,3,4,5].map(n=>`<button type="button" data-a="estrela" data-n="${n}" aria-label="${n} estrela${n>1?"s":""}">★</button>`).join("")}</div>
     <textarea id="avalTxt" rows="3" maxlength="400" placeholder="Conte o que achou da peça (opcional)"></textarea>
     <div class="acoes"><button class="btn pri" type="button" data-a="avaliar">Enviar avaliação</button><span class="exp" id="avalMsg"></span></div></div>`;
 }
 // retirada ou entrega, com o frete (pedidos do catálogo)
 function entHtml(d){ const e=d.entrega; if(!e) return d.frete>0?`<div class="ent"><span>Frete</span><b>${brl(d.frete)}</b></div>`:"";
-  if(e.tipo==="retirada") return `<div class="ent"><span>🏬 Retirar pessoalmente${e.retiradaTxt?`<small>${esc(e.retiradaTxt)}</small>`:""}</span><b>Sem frete</b></div>`;
-  return `<div class="ent"><span>🚚 Entregar<small>${esc(e.rua)}, ${esc(e.numero)}${e.complemento?" ("+esc(e.complemento)+")":""} · ${esc(e.bairro?e.bairro+", ":"")}${esc(e.cidade)}/${esc(e.uf)}${e.km!=null?" · "+String(e.km).replace(".",",")+" km":""}</small></span><b>${d.frete>0?brl(d.frete):e.combinar?"A combinar":"Grátis"}</b></div>` }
+  if(e.tipo==="retirada") return `<div class="ent"><span><span class="etq">${ic("loja")}Retirar pessoalmente</span>${e.retiradaTxt?`<small>${esc(e.retiradaTxt)}</small>`:""}</span><b>Sem frete</b></div>`;
+  return `<div class="ent"><span><span class="etq">${ic("caminhao")}Entregar</span><small>${esc(e.rua)}, ${esc(e.numero)}${e.complemento?" ("+esc(e.complemento)+")":""} · ${esc(e.bairro?e.bairro+", ":"")}${esc(e.cidade)}/${esc(e.uf)}${e.km!=null?" · "+String(e.km).replace(".",",")+" km":""}</small></span><b>${d.frete>0?brl(d.frete):e.combinar?"A combinar":"Grátis"}</b></div>` }
 async function carrega(){
   let d;
   try{const r=await fetch("/api/publico/pedido/"+encodeURIComponent(token));if(!r.ok)throw new Error(r.status);d=await r.json()}
@@ -176,9 +179,9 @@ async function carrega(){
       </div>`;
   corpo.producao=`<div class="aviso"><b>Seu pedido está em produção</b><span>${d.prazo?`Previsão: pronto até <b>${dataBR(d.prazo)}</b>. `:""}Avisamos assim que ficar pronto.</span></div>`;
   corpo.pronto=d.pix
-    ?`<p class="exp">Seu pedido está pronto! Falta pagar o restante${d.pix.auto?" (a confirmação é automática)":""}:</p><div class="valor">${brl(d.pix.valor)}</div>${pagHtml(d)}
+    ?`<p class="exp">Seu pedido está pronto. Falta pagar o restante${d.pix.auto?" (a confirmação é automática)":""}:</p><div class="valor">${brl(d.pix.valor)}</div>${pagHtml(d)}
       ${wa(`Olá! Paguei o restante do pedido #${d.numero}. Como combinamos a retirada ou entrega?`)?`<a class="btn" href="${esc(wa(`Olá! Paguei o restante do pedido #${d.numero}. Como combinamos a retirada ou entrega?`))}" target="_blank" rel="noopener">Combinar a entrega no WhatsApp</a>`:""}`
-    :`<div class="aviso"><b>Seu pedido está pronto!</b><span>Combine a retirada ou a entrega com a loja.</span></div>
+    :`<div class="aviso"><b>Seu pedido está pronto</b><span>Combine a retirada ou a entrega com a loja.</span></div>
       ${wa(`Olá! Sobre a entrega do pedido #${d.numero}:`)?`<a class="btn pri" href="${esc(wa(`Olá! Sobre a entrega do pedido #${d.numero}:`))}" target="_blank" rel="noopener">Combinar a entrega no WhatsApp</a>`:""}`;
 
   const recusado=et==="recusado"||et==="cancelado";
@@ -189,8 +192,8 @@ async function carrega(){
       <div class="num"><small>Pedido</small><b>#${d.numero}</b><span>${esc(d.cliente)}</span></div>
     </header>
     ${recusado?`<div class="aviso"><b>${et==="recusado"?"Você recusou este orçamento":"Pedido cancelado"}</b><span>Se mudar de ideia ou quiser outra opção, é só chamar a loja.</span></div>`
-    :et==="entregue"?`<div class="aviso ok"><b>Pedido entregue. Obrigado pela compra!</b><span>Volte sempre.</span></div>${avalHtml(d)}<a class="btn pri refazer" href="/?refazer=${encodeURIComponent(token)}">🔁 Pedir de novo</a>`:""}
-    ${d.rastreio&&!recusado?`<div class="rastreio"><span>📦 Código de rastreio<b>${esc(d.rastreio)}</b></span><button class="btn" type="button" data-a="rastreio">Copiar e rastrear</button></div>`:""}
+    :et==="entregue"?`<div class="aviso ok"><b>Pedido entregue. Obrigado pela compra</b><span>Volte sempre.</span></div>${avalHtml(d)}<a class="btn pri refazer" href="/?refazer=${encodeURIComponent(token)}">${ic("repetir")}Pedir de novo</a>`:""}
+    ${d.rastreio&&!recusado?`<div class="rastreio"><span><span class="etq">${ic("caixa")}Código de rastreio</span><b>${esc(d.rastreio)}</b></span><button class="btn" type="button" data-a="rastreio">Copiar e rastrear</button></div>`:""}
     ${recusado?"":`<ol class="passo">${passos.map(([k,t,feito],i)=>{
       const st=i<atual?"feito":i===atual?"agora":"depois";
       return `<li class="${st}"><div class="cab"><span class="n">${i<atual?"✓":i+1}</span><div><b>${esc(t)}</b>${st==="feito"?`<small>${esc(feito)}</small>`:""}</div></div>${st==="agora"?`<div class="corpo">${corpo[k]}</div>`:""}</li>`}).join("")}</ol>`}
@@ -239,10 +242,10 @@ async function carrega(){
     if(a==="voltar") return mostra("1");
     x.disabled=true;
     try{
-      if(a==="aprovar-ok"){ await envia(`/api/publico/pedido/${encodeURIComponent(token)}/resposta`,{acao:"aprovar",pagar:document.querySelector('input[name="pagar"]:checked')?.value||"total"}); toast("Orçamento aprovado!") }
+      if(a==="aprovar-ok"){ await envia(`/api/publico/pedido/${encodeURIComponent(token)}/resposta`,{acao:"aprovar",pagar:document.querySelector('input[name="pagar"]:checked')?.value||"total"}); toast("Orçamento aprovado") }
       if(a==="recusar-ok"){ await envia(`/api/publico/pedido/${encodeURIComponent(token)}/resposta`,{acao:"recusar",motivo:$("#motivo").value}); toast("Resposta enviada") }
-      if(a==="paguei"){ await envia(`/api/publico/pedido/${encodeURIComponent(token)}/paguei`); toast("Aviso enviado. Obrigado!") }
-      if(a==="arte-sim"){ await envia(`/api/publico/arte/${encodeURIComponent(token)}/resposta`,{acao:"aprovar"}); toast("Arte aprovada!") }
+      if(a==="paguei"){ await envia(`/api/publico/pedido/${encodeURIComponent(token)}/paguei`); toast("Aviso enviado") }
+      if(a==="arte-sim"){ await envia(`/api/publico/arte/${encodeURIComponent(token)}/resposta`,{acao:"aprovar"}); toast("Arte aprovada") }
       if(a==="ajuste-ok"){ await envia(`/api/publico/arte/${encodeURIComponent(token)}/resposta`,{acao:"ajuste",comentario:$("#coment").value}); toast("Pedido de ajuste enviado") }
       await carrega();
       document.querySelector(".passo .agora")?.scrollIntoView({behavior:"smooth",block:"start"});

@@ -1122,6 +1122,11 @@ function textoMsg(p,tipo){
   if(tipo==="confirmado") return `Olá, ${nome}! Pedido #${p.numero} confirmado na ${loja}.\n\n${linhas}\n\n*Total: ${brl(t.total)}*${num(p.sinal)>0?`\nSinal recebido: ${brl(num(p.sinal))}\nRestante na entrega: ${brl(t.receber)}`:""}\n${p.prazo?`Previsão: ${dataBRc(p.prazo)}`:""}\n\nAviso assim que estiver pronto!`;
   const rast=p.rastreio?`\n\n📦 Código de rastreio: *${p.rastreio}*\nAcompanhe em rastreamento.correios.com.br`:"";
   if(tipo==="pronto") return `Olá, ${nome}! Seu pedido #${p.numero} da ${loja} está pronto.\n\n${resumoItens(p)}\n${t.receber>0?`\nValor a pagar: *${brl(t.receber)}*${pag}`:"\nJá está todo pago."}${rast||"\n\nComo prefere receber: retirada ou entrega?"}`;
+  if(tipo==="lembrete"&&p.resposta?.catalogo) return `Oi, ${nome}! Tudo bem? Vi que você fez o pedido #${p.numero} no catálogo da ${loja}:
+
+${linhas}
+
+Ficou alguma dúvida? Ele está reservado para você, só falta o pagamento. Dá para pagar tudo (*${brl(t.total)}*)${entradaPed({...p,pagarTudo:false})>0&&entradaPed({...p,pagarTudo:false})<t.total?` ou só a entrada de *${brl(entradaPed({...p,pagarTudo:false}))}*`:""}, no Pix ou no cartão.`;
   if(tipo==="lembrete") return `Oi, ${nome}! Tudo bem? Seu pedido #${p.numero} da ${loja} está reservado, só falta o pagamento de *${brl(Math.max(0,entradaPed(p)-num(p.sinal)))}* para começarmos a produzir.\n\nÉ rapidinho pelo link, no Pix ou no cartão.`;
   if(tipo==="cobranca") return `Olá, ${nome}! Passando para lembrar do pedido #${p.numero} da ${loja}.\nValor em aberto: *${brl(t.receber)}*${pag}\n\nQualquer dúvida, estou à disposição.`;
   return `Olá, ${nome}! Obrigado pela compra na ${loja}. Espero que goste das peças!${rast}\n\nSe puder, deixe a sua avaliação no link do pedido. Lá também tem o botão para pedir de novo.${cfg.loja.instagram?`\nSe puder, marque a gente no Instagram: ${cfg.loja.instagram}`:""}\n\nPrecisando de mais alguma coisa, é só chamar.`;
@@ -2223,7 +2228,8 @@ function topLucro(){
 }
 // aprovado há mais de 24 h, sem pagar e sem lembrete nos últimos 2 dias
 function pixParado(p){ const H=3600e3, agora=Date.now(), ult=(p.lembretesPix||[]).at(-1);
-  return agora-Date.parse(p.resposta.em)>24*H && (!ult||agora-Date.parse(ult)>48*H) }
+  const espera=p.resposta?.catalogo?1:24; // quem fez o pedido no catálogo e saiu sem pagar: lembra já depois de 1 h
+  return agora-Date.parse(p.resposta.em)>espera*H && (!ult||agora-Date.parse(ult)>48*H) }
 const haQuanto=iso=>{ const h=Math.floor((Date.now()-Date.parse(iso))/3600e3); return h<1?"agora há pouco":h<24?`há ${h} h`:`há ${Math.floor(h/24)} dia${h>=48?"s":""}` };
 function renderHoje(){
   const box=$("#hojeBox"); if(!box) return;
@@ -2294,7 +2300,7 @@ function renderHoje(){
     if(e==="pagamento"&&p.pagInformado) tarefas.push([p,`avisou que pagou a entrada (${brl(Math.max(0,entradaPed(p)-num(p.sinal)))}) · ${quando2(p.pagInformado)}`,"entrada","Confirmar entrada"]);
     else if(e==="arte"&&(!a||a.status==="ajuste")) tarefas.push([p,a?`pediu ajuste na arte${a.comentario?`: “${a.comentario}”`:""}`:"entrada paga, falta mandar a arte","arte",a?"Enviar nova versão":"Enviar arte"]);
     else if(e==="recusado"&&p.resposta&&!p.resposta.visto) tarefas.push([p,`recusou o orçamento${p.resposta.motivo?`: “${p.resposta.motivo}”`:""}`,"ok","Ok, vi"]);
-    else if(e==="pagamento"&&p.resposta?.acao==="aprovado"&&pixParado(p)) tarefas.push([p,`aprovou ${haQuanto(p.resposta.em)} e ainda não pagou ${brl(Math.max(0,entradaPed(p)-num(p.sinal)))}${(p.lembretesPix||[]).length?` · lembrado ${haQuanto(p.lembretesPix.at(-1))}`:""}`,"lembrar","Lembrar no WhatsApp"]);
+    else if(e==="pagamento"&&p.resposta?.acao==="aprovado"&&pixParado(p)) tarefas.push([p,`${p.resposta.catalogo?"fez o pedido no catálogo":"aprovou"} ${haQuanto(p.resposta.em)} e ainda não pagou ${brl(Math.max(0,entradaPed(p)-num(p.sinal)))}${(p.lembretesPix||[]).length?` · lembrado ${haQuanto(p.lembretesPix.at(-1))}`:""}`,"lembrar","Lembrar no WhatsApp"]);
     else if(e==="pagamento"&&p.resposta?.acao==="aprovado"&&!p.resposta.visto) tarefas.push([p,`aprovou o orçamento · aguardando o Pix da entrada`,"ok","Ok, vi"]);
     else if(e==="producao"&&a&&a.status==="aprovada"&&!a.visto) tarefas.push([p,`aprovou a arte ${VV(a.v)} · já está na fila`,"okarte","Ok, vi"]);
   }
