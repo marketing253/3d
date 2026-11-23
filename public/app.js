@@ -121,6 +121,7 @@ function setTab(t){
   try{localStorage.setItem("prec3d.tab",t)}catch(e){}
   $("#pageTitle").textContent=t==="proposta"?"Proposta comercial":GRUPOS[g][0];
   document.body.classList.remove("navopen"); $("#menuBtn").setAttribute("aria-expanded","false");
+  document.querySelectorAll("#tabbar [data-go]").forEach(b=>{const go=b.dataset.go, on=go==="mais"?!["hoje","pedidos","produtos","fila"].includes(g):go===g; if(on) b.setAttribute("aria-current","page"); else b.removeAttribute("aria-current")});
   if(t==="config") renderConfig();
   if(t==="usuarios") carregaUsuarios();
   if(t==="financeiro") carregaFin();
@@ -147,7 +148,7 @@ document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("clic
 function toast(msg,ms){const t=$("#toast");t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,ms||2600)}
 const PAPEL_NOME={admin:"Administrador",editor:"Editor",leitura:"Só leitura"};
 function renderUserChip(){
-  $("#userchip").innerHTML=me?`<span>Olá, <b>${esc(me.nome)}</b> · ${PAPEL_NOME[me.papel]||""}</span><button class="btn" id="btnSair" type="button">Sair</button>`:"";
+  $("#userchip").innerHTML=me?`<span><b>${esc(me.nome)}</b> · ${PAPEL_NOME[me.papel]||""}</span><button class="btn" id="btnSair" type="button">Sair</button>`:"";
 }
 $("#userchip").addEventListener("click",async e=>{
   if(!e.target.closest("#btnSair")) return;
@@ -156,6 +157,9 @@ $("#userchip").addEventListener("click",async e=>{
 });
 
 $("#menuBtn").addEventListener("click",()=>{const o=document.body.classList.toggle("navopen");$("#menuBtn").setAttribute("aria-expanded",String(o))});
+$("#tabbar").addEventListener("click",e=>{const b=e.target.closest("[data-go]"); if(!b) return;
+  if(b.dataset.go==="mais"){const o=document.body.classList.toggle("navopen");$("#menuBtn").setAttribute("aria-expanded",String(o));return}
+  $("#tab-"+b.dataset.go)?.click()});
 $("#scrim").addEventListener("click",()=>{document.body.classList.remove("navopen");$("#menuBtn").setAttribute("aria-expanded","false")});
 /* ---------- lista / ranking ---------- */
 function renderRankCanal(){
@@ -713,17 +717,17 @@ function prazoPill(p){
   return `<span class="num">${ddmm(p.prazo)}</span> <span class="pill ${cls}">${t}</span>`;
 }
 // Atalhos que aparecem na linha de cada pedido; a lista escolhida fica na configuração (vale em todos os aparelhos).
-const ATALHOS=[["link","🔗 Link do cliente"],["ver","↗ Ver como o cliente"],["msg","WhatsApp"],["arte","Arte"],["prop","Proposta"],["etiq","Etiqueta"],["edit","Editar"]];
-const ATALHO_PADRAO=["link","ver","msg","arte"];
+const ATALHOS=[["link","Link do cliente"],["ver","Ver como o cliente"],["msg","WhatsApp"],["arte","Arte"],["prop","Proposta"],["etiq","Etiqueta"],["edit","Editar"]];
+const ATALHO_PADRAO=[]; // linha limpa: só o próximo passo e o ⋯; quem quiser marca atalhos em "Personalizar atalhos"
 let atalhosAberto=false;
 const atalhosPed=()=>Array.isArray(cfg.atalhosPedido)?cfg.atalhosPedido.filter(k=>ATALHOS.some(a=>a[0]===k)):ATALHO_PADRAO;
 function atalhoBtn(k,p,e){
   const fim=["cancelado","recusado"].includes(e);
   if(fim&&["link","ver","arte","prop"].includes(k)) return "";
   if(k==="edit"&&p.status==="entregue") return "";
-  if(k==="ver") return p.token?`<a class="btn sm" href="/pedido/${esc(p.token)}" target="_blank" rel="noopener" title="Ver como o cliente vê">↗ Ver</a>`:`<button class="btn sm" data-pa="ver" title="Ver como o cliente vê">↗ Ver</button>`;
+  if(k==="ver") return p.token?`<a class="btn sm" href="/pedido/${esc(p.token)}" target="_blank" rel="noopener" title="Ver como o cliente vê">Ver</a>`:`<button class="btn sm" data-pa="ver" title="Ver como o cliente vê">Ver</button>`;
   if(k==="etiq") return `<a class="btn sm" href="/imprimir/pedido/${encodeURIComponent(p.id)}" target="_blank" rel="noopener">Etiqueta</a>`;
-  const nome={link:"🔗 Link",msg:"WhatsApp",arte:"Arte",prop:"Proposta",edit:"Editar"}[k];
+  const nome={link:"Link",msg:"WhatsApp",arte:"Arte",prop:"Proposta",edit:"Editar"}[k];
   return `<button class="btn sm${["arte","prop","edit"].includes(k)?" edit-only":""}" data-pa="${k}"${k==="link"?' title="Copiar o link do pedido para mandar ao cliente"':""}>${nome}</button>`;
 }
 function renderPedidos(){
@@ -742,8 +746,7 @@ function renderPedidos(){
     const det=e==="pagamento"?(p.pagInformado?"cliente avisou que pagou":`falta ${brl(Math.max(0,entradaPed(p)-num(p.sinal)))}`)
       :e==="arte"?(!a?"enviar a arte":a.status==="ajuste"?"cliente pediu ajuste":`${VV(a.v)} com o cliente`)
       :e==="producao"?(p.status==="imprimindo"?"imprimindo":"na fila"):e==="pronto"&&t.receber>0?`falta ${brl(t.receber)}`:e==="recusado"&&p.resposta?.motivo?`“${p.resposta.motivo}”`:"";
-    const pago=num(p.sinal)>0&&!["pagamento","cancelado","recusado"].includes(e);
-    return `<tr data-pid="${esc(p.id)}"${pago?' class="pago"':""}><td class="num">#${p.numero}</td>
+    return `<tr data-pid="${esc(p.id)}"><td class="num">#${p.numero}</td>
       <td style="max-width:320px"><div class="pname">${esc(p.cliente)}${p.origem==="catalogo"?' <span class="pill acc">catálogo</span>':""}</div><div class="pcat clip">${esc(resumoItens(p))}${p.prazo&&!["entregue","recusado","cancelado"].includes(e)?` · até ${ddmm(p.prazo)}`:""}</div></td>
       <td class="n">${brl(t.total)}</td>
       <td><div class="etl"><span class="pill ${et[1]}">${et[0]}</span>${det?`<span class="pcat">${esc(det)}</span>`:""}</div>${num(p.sinal)>0&&!["cancelado","recusado"].includes(e)?`<div class="pagotx">✓ ${t.receber<=0.004?"Pagamento confirmado":`Entrada de ${brl(num(p.sinal))} confirmada`}${formaPag(p)?` · ${formaPag(p)}`:""}</div>`:""}</td>
@@ -752,6 +755,8 @@ function renderPedidos(){
         ${at.map(k=>atalhoBtn(k,p,e)).join("")}
         <details class="mais"><summary class="btn sm ghost" aria-label="Mais opções">⋯</summary><div class="menu">
           ${["cancelado","recusado"].includes(e)?"":'<button data-pa="link">Copiar link do cliente</button>'}
+          ${["cancelado","recusado"].includes(e)?"":p.token?`<a href="/pedido/${esc(p.token)}" target="_blank" rel="noopener">Ver como o cliente vê</a>`:'<button data-pa="ver">Ver como o cliente vê</button>'}
+          <button data-pa="msg">Abrir no WhatsApp</button>
           <button data-pa="msgEdit">Editar mensagem do WhatsApp</button>
           ${p.status!=="entregue"?'<button class="edit-only" data-pa="edit">Editar pedido</button>':""}
           <button class="edit-only" data-pa="arte">Arte</button>
@@ -803,6 +808,7 @@ $("#pedLista").addEventListener("click",async e=>{
     const tr=e.target.closest("tr[data-pid]"), p=tr&&pedidos.find(x=>x.id===tr.dataset.pid);
     if(p) return abreResumo(p);
   }
+  e.target.closest("details.mais .menu a")?.closest("details")?.removeAttribute("open");
   const b=e.target.closest("[data-pa]"); if(!b||b.tagName==="SELECT") return;
   if(b.tagName==="BUTTON") b.closest("details.mais")?.removeAttribute("open");
   if(b.dataset.pa==="novo") return abrePedido(null);
@@ -2247,7 +2253,8 @@ function renderHoje(){
   pagosLista.sort((a,b)=>String(b.x.em).localeCompare(String(a.x.em)));
   const naoVistos=new Set(pedidos.filter(p=>(p.avisosPag||[]).some(a=>!a.visto&&a.tipo==="pago")).map(p=>p.id));
   const quandoPag=iso=>{const d=new Date(iso); return (iso.slice(0,10)===hoje?"hoje":d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"}))+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})};
-  const pagosHtml=`<div class="card stack hojepag"><div class="row spread"><h3>Pagamentos recebidos <span class="pcat">últimos 7 dias</span></h3>${"Notification" in window&&Notification.permission==="default"?'<button class="btn sm" data-av="notif">Avisar também no navegador</button>':""}</div>
+  const pedeNotif="Notification" in window&&Notification.permission==="default";
+  const pagosHtml=!pagosLista.length&&!pedeNotif?"":`<div class="card stack hojepag"><div class="row spread"><h3>Pagamentos recebidos <span class="pcat">· últimos 7 dias</span></h3>${"Notification" in window&&Notification.permission==="default"?'<button class="btn sm" data-av="notif">Avisar também no navegador</button>':""}</div>
     ${pagosLista.length?`<ul class="hp-lista">${pagosLista.slice(0,8).map(({p,x})=>`<li data-pg="${esc(p.id)}" class="${naoVistos.has(p.id)?"novo":""}"><span class="hp-ok" aria-hidden="true">✓</span><span class="hp-txt"><b>#${p.numero} ${esc(p.cliente)}</b><small>${esc(x.forma)} · ${quandoPag(x.em)}${naoVistos.has(p.id)?" · novo":""}</small></span><b class="num">${brl(x.valor)}</b></li>`).join("")}</ul>`:'<p class="note" style="margin:0">Quando um cliente pagar pelo link, o pagamento aparece aqui e no canto da tela.</p>'}</div>`;
   const linhaPed=(p,extra)=>`<li data-hp="${esc(p.id)}"><span><b class="num">#${p.numero}</b> ${esc(p.cliente)} <span class="pcat">· ${esc(resumoItens(p))}</span></span><span class="row" style="gap:6px;flex-wrap:nowrap">${extra||""}</span></li>`;
 
@@ -2261,7 +2268,7 @@ function renderHoje(){
       <div class="rbar big"><i style="width:${pc}%"></i></div>
       ${falta>0?`<p style="margin:0">Faltam <b>${brl(falta)}</b> de lucro em ${diasRest} ${diasRest===1?"dia":"dias"} (${brl(falta/diasRest)} por dia). No ritmo atual, o mês fecha em <b>${brl(ritmo)}</b>.</p>
         ${top.length?`<p class="note" style="margin:0">Para bater a meta, venda mais uma destas opções (lucro na venda direta):</p><ul class="hlist">${top.map(x=>`<li><span>${esc(x.p.nome)} <span class="pcat">· ${brl(x.lucro)} de lucro cada</span></span><b class="num">${Math.ceil(falta/x.lucro)} peças</b></li>`).join("")}</ul>`:""}`
-        :`<p style="margin:0" class="pos"><b>Meta batida!</b> Você já passou ${brl(lucro-meta)} da meta.</p>`}</div>`;
+        :`<p style="margin:0" class="pos"><b>Meta batida.</b> Você já passou ${brl(lucro-meta)} da meta.</p>`}</div>`;
   } else metaHtml=`<div class="card stack"><h3>Meta do mês</h3><p class="note" style="margin:0">Defina quanto quer lucrar por mês e o sistema mostra quanto falta e quantas peças vender.</p><div><button class="btn edit-only" data-hg="config">Definir meta</button></div></div>`;
 
   // retorno do investimento
@@ -2274,7 +2281,7 @@ function renderHoje(){
     payHtml=`<div class="card stack"><div class="row spread"><h3>Retorno do investimento</h3><span class="num">${pct(rec/inv)}</span></div>
       <div class="rbar big"><i style="width:${pc}%"></i></div>
       <p style="margin:0">Você investiu <b>${brl(inv)}</b> em equipamentos e materiais e já lucrou <b>${brl(Math.max(0,rec))}</b> com vendas.</p>
-      ${falta<=0?`<p class="pos" style="margin:0"><b>Investimento pago!</b> Daqui para frente é lucro.</p>`
+      ${falta<=0?`<p class="pos" style="margin:0"><b>Investimento pago.</b> Daqui para frente é lucro.</p>`
         :meses?`<p class="note" style="margin:0">Faltam ${brl(falta)}. Com o lucro médio de ${brl(media)} por mês, o investimento se paga em cerca de <b>${meses} ${meses===1?"mês":"meses"}</b>.</p>`
         :`<p class="note" style="margin:0">Faltam ${brl(falta)}. A previsão aparece depois das primeiras vendas.</p>`}</div>`;
   } else payHtml=`<div class="card stack"><h3>Retorno do investimento</h3><p class="note" style="margin:0">Quando marcar os itens de <b>Compras e orçamento</b> como comprados, o sistema mostra quanto já voltou do que você investiu e em quantos meses se paga.</p><div><button class="btn" data-hg="compras">Abrir compras</button></div></div>`;
@@ -2293,7 +2300,7 @@ function renderHoje(){
   }
   if(tarefas.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Precisa de você <span class="pill acc">${tarefas.length}</span></h3><button class="btn sm" data-hg="pedidos">Ver pedidos</button></div><ul class="hlist">${tarefas.map(([p,txt,acao,rot])=>`<li data-hp="${esc(p.id)}"><span><b class="num">#${p.numero}</b> ${esc(p.cliente)} <span class="pcat">· ${esc(txt)}</span></span><button class="btn sm ${["ok","okarte"].includes(acao)?"":"primary"} ${["ok","okarte"].includes(acao)?"":"edit-only"}" data-hr="${acao}">${rot}</button></li>`).join("")}</ul></div>`);
   if(imps.carregado) avisos.push(`<div class="card stack"><div class="row spread"><h3>Impressoras agora</h3><button class="btn sm" data-hg="fila">Abrir painel</button></div><ul class="hlist">${impLista().map(i=>{const a=impAtiva(i.id);
-    return `<li><span><b>${esc(i.nome)}</b>${a?` · ${esc(a.descricao)}`:""}</span><span class="row" style="gap:6px;flex-wrap:nowrap">${!a?'<span class="pill good">livre</span>':a.status==="pausada"?'<span class="pill warn">pausada</span>':`<span class="num" data-cd="${esc(a.id)}">faltam ${fmtSeg(restanteS(a))}</span><span class="pcat">${restanteS(a)>0?fimTxt(restanteS(a)):""}</span>`}</span></li>`}).join("")}</ul></div>`);
+    return `<li class="${a?"impli":""}"><span><b>${esc(i.nome)}</b>${a?` · ${esc(a.descricao)}`:""}</span><span class="row" style="gap:6px;flex-wrap:nowrap">${!a?'<span class="pill good">livre</span>':a.status==="pausada"?'<span class="pill warn">pausada</span>':`<span class="num" data-cd="${esc(a.id)}">faltam ${fmtSeg(restanteS(a))}</span><span class="pcat">${restanteS(a)>0?fimTxt(restanteS(a)):""}</span>`}</span>${a?`<div class="rbar"><i data-cdbar="${esc(a.id)}" style="width:${progressoPct(a)}%"></i></div>`:""}</li>`}).join("")}</ul></div>`);
   if(novosCat.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>Pedidos novos do catálogo <span class="pill acc">${novosCat.length}</span></h3><button class="btn sm" data-hg="pedidos">Ver pedidos</button></div><ul class="hlist">${novosCat.map(p=>linhaPed(p,`<span class="num">${brl(totPed(p).total)}</span><button class="btn sm primary" data-hm="orcamento">Responder</button>`)).join("")}</ul></div>`);
   if(urgentes.length) avisos.push(`<div class="card stack"><h3>Prazo vencendo</h3><ul class="hlist">${urgentes.map(p=>linhaPed(p,`${prazoPill(p)}<span class="pill ${ST_CLS[p.status]}">${ST[p.status]}</span>`)).join("")}</ul></div>`);
   if(prontos.length) avisos.push(`<div class="card stack"><h3>Prontos para entregar</h3><ul class="hlist">${prontos.map(p=>linhaPed(p,`${totPed(p).receber>0?`<span class="num">falta ${brl(totPed(p).receber)}</span>`:""}<button class="btn sm" data-hm="pronto">Avisar cliente</button>`)).join("")}</ul></div>`);
@@ -2302,9 +2309,8 @@ function renderHoje(){
   const lemb=lembretesHtml(); if(lemb) avisos.push(lemb);
   if(contas.length) avisos.push(`<div class="card stack"><div class="row spread"><h3>A receber no mês</h3><button class="btn sm" data-hg="financeiro">Financeiro</button></div><ul class="hlist">${contas.sort((a,b)=>String(a[3]).localeCompare(String(b[3]))).map(c=>`<li><span>${esc(c[1])} <span class="pcat">· ${ddmm(c[3])}</span></span><span class="num ${c[0]==="pagar"?"neg":"pos"}">${c[0]==="pagar"?"pagar ":"receber "}${brl(c[2])}</span></li>`).join("")}</ul></div>`);
 
-  const hora=new Date().getHours(), saud=hora<12?"Bom dia":hora<18?"Boa tarde":"Boa noite";
   const resumoDia=[urgentes.length?`${urgentes.length} ${urgentes.length===1?"pedido com prazo vencendo":"pedidos com prazo vencendo"}`:"",novosCat.length?`${novosCat.length} ${novosCat.length===1?"pedido novo":"pedidos novos"} do catálogo`:"",prontos.length?`${prontos.length} para entregar`:""].filter(Boolean).join(" · ")||"Tudo tranquilo por aqui";
-  box.innerHTML=`<div class="hojehero"><div><h2>${saud}, ${esc((me?.nome||"").split(" ")[0])}!</h2><p>${esc(nomeDia)} · ${esc(resumoDia)}</p></div><div class="row" style="gap:8px"><button class="btn primary edit-only" data-hg="novoPed">+ Novo pedido</button><button class="btn edit-only" data-hg="venda">Registrar venda</button></div></div>${pagosHtml}
+  box.innerHTML=`<div class="hojehero"><div><h2>${esc(nomeDia)}</h2><p>${esc(resumoDia)}</p></div><div class="row" style="gap:8px"><button class="btn primary edit-only" data-hg="novoPed">+ Novo pedido</button><button class="btn edit-only" data-hg="venda">Registrar venda</button></div></div>${pagosHtml}
     <div class="tiles">
       <div class="tile main"><span class="tl">Lucro no mês</span><span class="tv num ${lucro<0?"neg":""}">${brl(lucro)}</span><span class="ts">${brl(bruto)} vendidos · ${pecas.toLocaleString("pt-BR")} ${pecas===1?"peça":"peças"}</span></div>
       <div class="tile"><span class="tl">Na fila</span><span class="tv num">${f.length}</span><span class="ts">${!f.length?"nenhum pedido esperando":horasFila>0?fmtH(horasFila)+" de impressão":"sem tempo informado"}</span></div>

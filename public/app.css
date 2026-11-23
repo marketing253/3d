@@ -926,3 +926,185 @@ main,.main,.content{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
 .lp-qrvis{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}.lp-qrvis>img{width:170px;height:170px;border-radius:14px;border:1px solid var(--line);background:#fff}
 .lp-chip input[type=file]{display:none}
 .lp-hh input[type=time]{width:auto!important;min-width:0;flex:none;display:inline-block;margin:0;height:auto}
+
+/* =====================================================================
+   BANCADA — acabamento final (sobrescreve o tema moderno acima)
+   Neutros de oficina, menta só no que importa, barras em camadas de 0,2 mm
+   ===================================================================== */
+:root{
+  --bg:#f6f7f6; --surface:#ffffff; --sunken:#f1f3f2; --line:#e6e9e7; --line-strong:#d5dad7;
+  --ink:#121716; --muted:#5d6765; --faint:#8a9391;
+  --accent:#0f7d66; --accent-strong:#0f7d66; --accent-fill:#12977A; --accent-ink:#ffffff; --accent-soft:#e3f2ed;
+  --good:#0f7d66; --good-soft:#e3f2ed; --warn:#a85a0c; --warn-soft:#fbf0e1; --bad:#b3401a; --bad-soft:#fbeae3;
+  --ch-in:#12977A; --ch-out:#c3cac7; --c1:#12977A; --c2:#5d6765; --c3:#a9b1ae; --c4:#d5dad7; --c5:#8a9391;
+  --side:#0E1114; --side-2:#0E1114; --side-ink:#e8eeeb; --side-muted:#8f9c97; --side-active:rgba(255,255,255,.07);
+  --r:12px; --r-sm:8px;
+  --shadow:none; --shadow-lg:0 8px 24px rgba(14,17,20,.10);
+  --ease:cubic-bezier(.2,.7,.2,1);
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E1114; --surface:#15191c; --sunken:#111417; --line:#22282c; --line-strong:#2e353a;
+  --ink:#e8eeeb; --muted:#97a39e; --faint:#6b7672;
+  --accent:#1FBE8C; --accent-strong:#1FBE8C; --accent-fill:#1FBE8C; --accent-ink:#06231b; --accent-soft:#13302a;
+  --good:#45D68C; --good-soft:#13302a; --warn:#e9a54f; --warn-soft:#2e2312; --bad:#f08a68; --bad-soft:#341c14;
+  --ch-in:#1FBE8C; --ch-out:#3a4247; --side:#0a0c0e; --side-2:#0a0c0e; --side-active:rgba(255,255,255,.06);
+  --shadow:none; --shadow-lg:0 8px 24px rgba(0,0,0,.45)}}
+:root[data-theme="dark"]{
+  --bg:#0E1114; --surface:#15191c; --sunken:#111417; --line:#22282c; --line-strong:#2e353a;
+  --ink:#e8eeeb; --muted:#97a39e; --faint:#6b7672;
+  --accent:#1FBE8C; --accent-strong:#1FBE8C; --accent-fill:#1FBE8C; --accent-ink:#06231b; --accent-soft:#13302a;
+  --good:#45D68C; --good-soft:#13302a; --warn:#e9a54f; --warn-soft:#2e2312; --bad:#f08a68; --bad-soft:#341c14;
+  --ch-in:#1FBE8C; --ch-out:#3a4247; --side:#0a0c0e; --side-2:#0a0c0e; --side-active:rgba(255,255,255,.06);
+  --shadow:none; --shadow-lg:0 8px 24px rgba(0,0,0,.45)}
+:root[data-theme="light"]{--bg:#f6f7f6;--sunken:#f1f3f2}
+html{background:var(--bg)}
+body{letter-spacing:0;font-size:14.5px}
+
+/* tipo: Archivo Black só no título da página; hierarquia por tamanho e cor */
+h1,#pageTitle{font-family:var(--titulo);font-weight:400;letter-spacing:0}
+.brand,.hojehero h2{font-family:var(--body)}
+h2{font-weight:600;letter-spacing:-.01em}
+h3,.card h3,.card > .row > h3{font:600 14px var(--body);letter-spacing:0;text-transform:none;color:var(--ink)}
+h3 .pcat,h3 .pill{font-weight:400;margin-left:4px}
+h1 small,.brand small,.navgrp,.tl,th,table.mini th,.pres-cab small,.pres-val span,.pf-total > span{text-transform:none;letter-spacing:0}
+.tl{font:500 13px var(--body);color:var(--muted)}
+th{font:500 12.5px var(--body);color:var(--muted)}
+.navgrp{font:500 12px var(--body)}
+.brand small{font:500 12px var(--body);color:var(--side-muted)}
+.tv,.chan .price,.big,.trend .faixa,.navbadge,.chip b,.avp-ic,.hp-ok,.bntam span,.appn,.passo-n,.pfi2-sub,td .pname{font-weight:600}
+.tv{font-size:26px;letter-spacing:-.015em;font-variant-numeric:tabular-nums}
+.big{letter-spacing:-.02em}
+.pill{font-weight:500}
+@media (max-width:640px){#pedLista table.ajusta td:nth-child(3),#pedLista table.ajusta td:nth-child(1){font-weight:600}}
+
+/* menu lateral chapado */
+.side{background:var(--side);gap:12px;padding-inline:12px;scrollbar-color:#2a3236 transparent}
+nav.tabs{gap:2px}
+nav.tabs button{opacity:1;color:var(--side-muted);border-radius:8px;padding:8px 12px;min-height:36px;font-weight:500;transition:background-color .15s var(--ease),color .15s var(--ease)}
+nav.tabs button svg{opacity:1}
+nav.tabs button:hover{background:rgba(255,255,255,.05);color:var(--side-ink)}
+nav.tabs button[aria-selected="true"]{background:var(--side-active);color:#fff;font-weight:500;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+nav.tabs button[aria-selected="true"] svg{color:#1FBE8C}
+nav.tabs button:focus-visible{outline-color:#1FBE8C}
+.navbadge{background:rgba(255,255,255,.1);color:var(--side-ink);font-size:11px;margin-left:auto}
+.navbadge.warnb{background:rgba(233,165,79,.18);color:#e9a54f}
+.navbadge.pago{background:rgba(31,190,140,.18);color:#45D68C}
+.temabtn{background:none;color:var(--side-muted);font-weight:500;padding:8px 12px}
+.temabtn:hover{background:rgba(255,255,255,.05);color:var(--side-ink)}
+.temabtn[aria-checked="true"] .sw2{background:#1FBE8C}
+.side .userchip{border-top:1px solid rgba(255,255,255,.08)}
+.side .userchip .btn{background:none;border-color:rgba(255,255,255,.12)}
+.side .userchip .btn:hover{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.18);color:#fff}
+.side .installbtn{background:none;border-color:rgba(255,255,255,.12);color:var(--side-ink)}
+
+/* cartões: hairline, sem sombra, sem enfeite */
+.card,.tile,.tablewrap,.trend,.rolo,.prod{box-shadow:none;border-color:var(--line);border-radius:var(--r)}
+:root[data-theme="light"] .card,:root[data-theme="light"] .tile,:root[data-theme="light"] .tablewrap{box-shadow:none}
+.card{padding:20px}
+.tile{padding:16px 20px;gap:4px}
+.tile::after,.tile.main::after{display:none}
+.tile.main{background:var(--surface);border-color:var(--line);box-shadow:none;color:var(--ink)}
+.tile.main .tl,.tile.main .ts{color:var(--muted)}
+.tile.main .tv{color:var(--accent-strong)}
+.tile.main .tv.neg{color:var(--bad)}
+.tv.neg{color:var(--ink)}
+.trend{transition:border-color .15s var(--ease)}
+.trend:hover{transform:none;box-shadow:none;border-color:var(--line-strong)}
+
+/* botões e campos */
+button.btn,a.btn,label.btn{border-radius:var(--r-sm);font-weight:500;transition:background-color .15s var(--ease),border-color .15s var(--ease),color .15s var(--ease),transform .1s var(--ease)}
+button.btn:hover,a.btn:hover,label.btn:hover{border-color:var(--faint);color:var(--ink)}
+button.btn:active,a.btn:active{transform:scale(.98)}
+button.btn.primary,a.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);box-shadow:none}
+button.btn.primary:hover,a.btn.primary:hover{background:color-mix(in srgb,var(--accent) 88%,#000);border-color:color-mix(in srgb,var(--accent) 88%,#000);color:var(--accent-ink)}
+.btn.sm,a.btn.sm{border-radius:8px}
+input,select,textarea{border-radius:var(--r-sm);font-weight:400}
+input:focus,select:focus,textarea:focus{box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)}
+.chip{transition:background-color .15s var(--ease),border-color .15s var(--ease),color .15s var(--ease);font-weight:500}
+.chip:hover{border-color:var(--faint);color:var(--ink)}
+.chip.on,.subnav .chip.on{background:var(--ink);border-color:var(--ink);color:var(--surface);box-shadow:none}
+.chip.on b{background:color-mix(in srgb,var(--surface) 18%,transparent);color:var(--surface)}
+tbody tr:hover td{background:var(--sunken)}
+.meter b{background:var(--accent-fill)}
+.hbt i{background:var(--ch-out)}
+.cfm i{background:var(--accent-fill)}
+.toast{background:var(--ink);color:var(--bg);font-weight:500;border-radius:10px}
+.warnbox{font-weight:500}
+
+/* assinatura: progresso em camadas de 0,2 mm */
+.rbar{height:10px;border-radius:3px;background:var(--sunken);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+.rbar.big{height:12px}
+.rbar i,.rbar i.low{border-radius:0;background-color:var(--accent-fill);background-image:repeating-linear-gradient(0deg,rgba(255,255,255,.28) 0 1px,transparent 1px 3px)}
+.rbar i.low{background-color:var(--warn)}
+
+/* Hoje: ficha do dia */
+.hojehero{background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:none;padding:20px 24px;border-radius:var(--r)}
+.hojehero h2{color:var(--ink);font-size:20px;font-weight:600}
+.hojehero p{color:var(--muted);margin-top:4px}
+.hojehero .btn{background:var(--surface);border-color:var(--line-strong);color:var(--ink)}
+.hojehero .btn:hover{background:var(--sunken);color:var(--ink);border-color:var(--faint)}
+.hojehero .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);box-shadow:none}
+.hojehero .btn.primary:hover{background:color-mix(in srgb,var(--accent) 88%,#000);color:var(--accent-ink)}
+.hojepag{border-left:1px solid var(--line)}
+.hp-lista li.novo{background:var(--accent-soft)}
+.hp-lista li.novo .hp-ok{background:var(--accent-fill)}
+.hlist li.impli{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;align-items:center}
+.hlist li.impli .rbar{grid-column:1/-1}
+
+/* caixas do pedido e login sem degradê */
+.pres-cab{background:#0E1114}
+.pres-cab small{font-size:12px;font-weight:500;color:#8f9c97}
+.pres-val span,.pf-total > span{font-size:12.5px;font-weight:500}
+.pres-obs{border-left:1px solid var(--line-strong)}
+.avp{border-left:1px solid var(--line);box-shadow:var(--shadow-lg)}
+.auth{background:#0E1114}
+.auth-box{box-shadow:none;border:1px solid rgba(255,255,255,.08);border-radius:16px}
+.auth-marca,.auth-topo{background:#0E1114}
+.auth-marca{border-right:1px solid rgba(255,255,255,.08)}
+.auth-marca li::before{box-shadow:none;width:6px;height:6px}
+.auth .card{box-shadow:none}
+
+/* pedidos: linha calma, pago vira só o texto verde */
+tr.pago td,tr.pago:hover td{background:inherit}
+#pedLista table.ajusta tr.pago{background:var(--surface);border-color:var(--line)}
+.pagotx{font-weight:500}
+details.mais .menu a{display:block;color:var(--ink);text-decoration:none;padding:8px 10px;border-radius:6px}
+details.mais .menu a:hover{background:var(--sunken)}
+.pedtopo{flex-wrap:nowrap;gap:8px}
+.pedtopo #pedBusca{max-width:320px;flex:1 1 auto}
+.pedtopo #btnNovoPed{flex:none}
+
+/* celular: topo chapado e barra de abas embaixo */
+.tabbar{display:none}
+@media (max-width:900px){
+  header.top{background:var(--bg);backdrop-filter:none;-webkit-backdrop-filter:none;border-bottom:1px solid var(--line)}
+  button.btn.menubtn{display:none}
+  .tabbar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));position:fixed;left:0;right:0;bottom:0;z-index:35;background:var(--surface);border-top:1px solid var(--line);padding:4px 4px calc(4px + env(safe-area-inset-bottom,0px))}
+  .tabbar button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:52px;background:none;border:0;border-radius:8px;color:var(--muted);font:500 11px var(--body);cursor:pointer;transition:color .15s var(--ease)}
+  .tabbar button svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+  .tabbar button[aria-current="page"]{color:var(--ink)}
+  .tabbar button[aria-current="page"] svg{color:var(--accent-fill)}
+  .tabbar button:active{transform:scale(.96)}
+  .main{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+  .toast{bottom:calc(76px + env(safe-area-inset-bottom,0px))}
+  #avisosPag{bottom:calc(76px + env(safe-area-inset-bottom,0px))}
+  .salvabar{bottom:calc(64px + env(safe-area-inset-bottom,0px))}
+  .lp-barra{bottom:calc(72px + env(safe-area-inset-bottom,0px))}
+  .side{z-index:40}
+  body.navopen .scrim{z-index:38}
+  .subnav{padding-top:12px}
+  .pedtopo #pedBusca{max-width:none}
+  .pedtopo #btnNovoPed{width:44px;min-height:44px;padding:0;font-size:20px;font-weight:400}
+  .pedtopo #btnNovoPed .lbl{display:none}
+  .chips.faixa{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-inline:-14px;padding-inline:14px;scroll-padding-inline:14px}
+  .chips.faixa::-webkit-scrollbar{display:none}
+  .chips.faixa .chip{flex:none;white-space:nowrap}
+  #pedLista details.mais .menu{z-index:80;bottom:calc(8px + env(safe-area-inset-bottom,0px))}
+  .tile{padding:14px 16px}
+  .tv{font-size:22px}
+  .ts{font-size:12px}
+  .hojehero{padding:16px}
+  .hojehero h2{font-size:18px}
+  .card{padding:16px}
+}
+@media (prefers-reduced-motion:reduce){.tabbar button,nav.tabs button,.btn,.chip{transition:none}}

@@ -88,6 +88,13 @@
     <div class="userchip" id="userchip"></div>
   </aside>
   <div class="scrim" id="scrim"></div>
+  <nav class="tabbar" id="tabbar" aria-label="Atalhos">
+    <button type="button" data-go="hoje" aria-current="page"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 9l7-6 7 6v8H3V9zm5 8v-5h4v5"/></svg>Hoje</button>
+    <button type="button" data-go="pedidos"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h10v14l-2.5-1.5L10 17l-2.5-1.5L5 17V3zm3 4h4m-4 3h4"/></svg>Pedidos</button>
+    <button type="button" data-go="produtos"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6l7-3 7 3-7 3-7-3zm0 0v8l7 3 7-3V6M10 9v8"/></svg>Produtos</button>
+    <button type="button" data-go="fila"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 3h13v14h-13zM3.5 6h13M7 6v4h6V6M6.5 14.5h7"/></svg>Impressoras</button>
+    <button type="button" data-go="mais" aria-controls="side"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg>Mais</button>
+  </nav>
   <div class="main">
   <header class="top">
     <button class="btn menubtn" id="menuBtn" type="button" aria-label="Abrir menu" aria-controls="side" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg></button>
@@ -128,11 +135,11 @@
   <!-- PEDIDOS -->
   <section class="panel" id="p-pedidos" hidden>
     <div class="stack">
-      <div class="row spread">
-        <input id="pedBusca" type="search" placeholder="Buscar cliente, nº ou produto" style="max-width:320px">
-        <button class="btn primary edit-only" id="btnNovoPed">+ Novo pedido</button>
+      <div class="row spread pedtopo">
+        <input id="pedBusca" type="search" placeholder="Buscar cliente, nº ou produto" aria-label="Buscar pedido">
+        <button class="btn primary edit-only" id="btnNovoPed" aria-label="Novo pedido">+<span class="lbl"> Novo pedido</span></button>
       </div>
-      <div class="row chips" id="pedChips"></div>
+      <div class="row chips faixa" id="pedChips"></div>
       <dialog class="pres pform" id="pedForm"></dialog>
       <dialog class="pres pform" id="expDlg"></dialog>
       <div class="card stack" id="pedMsgBox" hidden></div>
