@@ -43,11 +43,10 @@ async function carrega(){
     [ICONES.pag,L.cartao?"Pix ou cartão em até 12x":"Pagamento por Pix",L.pagamento||"Pelo link do pedido, com confirmação automática"],
     [ICONES.arte,"Personalize do seu jeito","Nomes, cores e textos aprovados antes de imprimir"],
   ].filter(Boolean).map(([i,t,s])=>`<div class="selo">${i}<div><b>${esc(t)}</b><span>${esc(s)}</span></div></div>`).join("");
-  // vitrine do topo: até 3 produtos com foto (pronta entrega primeiro); sem foto nenhuma, o texto ocupa a largura toda
-  const comFoto=dados.produtos.filter(p=>p.foto).sort((a,b)=>(b.prontaEntrega?1:0)-(a.prontaEntrega?1:0)).slice(0,3);
-  const vit=$("#vitrine"); vit.hidden=!comFoto.length; vit.classList.toggle("um",comFoto.length===1);
-  vit.innerHTML=comFoto.map(p=>`<button class="vt" type="button" data-ver="${esc(p.id)}" aria-label="Ver ${esc(p.nome)}"><img src="${esc(p.foto)}" alt="${esc(p.nome)}"><span>${esc(p.nome)}<b>${brl(p.preco)}</b></span></button>`).join("");
-  if(!comFoto.length&&document.body.classList.contains("sem3d")) document.querySelector(".hero .wrap").style.gridTemplateColumns="1fr";
+  heroProdutos();
+  duoCards();
+  if(L.cartao) document.querySelectorAll(".ncartao").forEach(s=>s.textContent=" ou cartão em até 12x");
+  if(L.prazoDias) $("#fqPrazo").textContent=`Peças à pronta entrega saem logo. As sob encomenda ficam prontas em até ${L.prazoDias} dias depois da arte aprovada.`;
   const wa=waLoja(), ig=String(L.instagram||"").replace(/^@/,"");
   if(wa){ $("#zap").href=`https://wa.me/${wa}?text=${encodeURIComponent(`Olá! Vim pelo catálogo da ${L.nome} e queria tirar uma dúvida.`)}`; $("#zap").hidden=false } // botão flutuante
   if(L.site){ const url=/^https?:/i.test(L.site)?L.site:"https://"+L.site; $("#lkSite").href=url; $("#lkSite").hidden=false }
@@ -122,6 +121,7 @@ function render(){
   const lst=ps.filter(p=>(cat==="Todos"||p.categoria===cat)&&(!b||sem(p.nome+" "+p.descricao+" "+p.categoria).includes(b)));
   if(ORDENA[ordem]) lst.sort(ORDENA[ordem]); // "mais vendidos" mantém a ordem do servidor
   if($("#ordem")) $("#ordem").value=ordem;
+  vitrineTopo(cats,cat==="Todos"&&!b);
   const ks=cat==="Todos"&&!b?dados.kits:[];
   $("#kits").hidden=!ks.length;
   $("#kitGrid").innerHTML=ks.map(k=>card(item("kit:"+k.id))).join("");
@@ -173,6 +173,61 @@ function bnAbre(alvo){
   if(alvo.startsWith("p:")){ const id=alvo.slice(2); if(item(id)) abreProduto(id); return }
   if(alvo.startsWith("kit:")){ if(item(alvo)) abreProduto(alvo); return }
   if(/^https:\/\//i.test(alvo)) window.open(alvo,"_blank","noopener");
+}
+
+/* banner do topo com os produtos: troca sozinho a cada 5,5 s e para enquanto o cliente mexe */
+function heroProdutos(){
+  const ps=dados.produtos.filter(p=>p.foto)
+    .map((p,i)=>({p,i,peso:(p.maisVendido?2:0)+(p.prontaEntrega?1:0)}))
+    .sort((a,b)=>b.peso-a.peso||a.i-b.i).slice(0,6).map(x=>x.p);
+  if(!ps.length) return; // fica o slide de boas-vindas
+  const sobre=dados.loja.sobre||"Peça impressa em 3D, feita para você.";
+  $("#hTrilho").innerHTML=ps.map((p,i)=>{ const T=i?"h2":"h1";
+    return `<div class="hs${i?"":" on"}" role="group" aria-roledescription="slide" aria-label="${i+1} de ${ps.length}">
+      <div class="htx"><small>${esc(p.categoria||"Impressão 3D")}</small><${T} class="titulo hn">${esc(p.nome)}</${T}><p>${esc(p.descricao||sobre)}</p>
+        <div class="hac"><div class="hpr"><small>${p.personalizavel?"Personalizável":p.prontaEntrega?"Pronta entrega":"Sob encomenda"}</small><b>${brl(p.preco)}</b></div>
+          <button type="button" class="cta" data-ver="${esc(p.id)}">Ver produto</button><button type="button" class="cta sec" data-id="${esc(p.id)}" data-d="1">Adicionar</button></div></div>
+      <button type="button" class="hft" data-ver="${esc(p.id)}" aria-label="Ver ${esc(p.nome)}" tabindex="-1"><img src="${esc(p.foto)}" alt="${esc(p.nome)}" ${i?'loading="lazy"':'fetchpriority="high"'}>${p.maisVendido?'<span class="tg">Mais vendido</span>':p.prontaEntrega?'<span class="tg">Pronta entrega</span>':""}</button>
+    </div>` }).join("");
+  const um=ps.length<2; document.querySelectorAll(".hseta").forEach(b=>b.hidden=um);
+  $("#hPontos").innerHTML=um?"":ps.map((p,i)=>`<button type="button" data-hp="${i}" class="${i?"":"on"}" aria-label="Ver ${esc(p.nome)}"></button>`).join("");
+  const t=$("#hTrilho");
+  // enquanto a rolagem suave anda (seta, bolinha ou troca automática), o slide de destino já fica ativo
+  t.addEventListener("scroll",()=>{ if(hAlvo!=null&&hAtual()!==hAlvo) return; hAlvo=null; hMarca(hAtual()) },{passive:true});
+  t.addEventListener("touchstart",()=>{ hAlvo=null },{passive:true});
+  if(um||matchMedia("(prefers-reduced-motion:reduce)").matches) return;
+  let parado=false; const box=$(".hbox");
+  for(const [ev,v] of [["mouseenter",true],["mouseleave",false],["touchstart",true],["touchend",false],["focusin",true],["focusout",false]]) box.addEventListener(ev,()=>{ parado=v; if(!v) tempo() },{passive:true});
+  function tempo(){ clearTimeout(heroProdutos._t); heroProdutos._t=setTimeout(()=>{ if(!parado&&!document.hidden&&!$("#dProd").open) hVai(hAtual()+1); tempo() },5500) }
+  tempo();
+}
+let hAlvo=null;
+const hAtual=()=>{ const t=$("#hTrilho"); return Math.round(t.scrollLeft/Math.max(1,t.clientWidth)) };
+const hMarca=i=>{ [...$("#hTrilho").children].forEach((s,k)=>s.classList.toggle("on",k===i)); document.querySelectorAll("#hPontos button").forEach((b,k)=>b.classList.toggle("on",k===i)) };
+function hVai(i){ const t=$("#hTrilho"), n=t.children.length; if(!n) return; i=(i+n)%n; hAlvo=i; hMarca(i); t.scrollTo({left:i*t.clientWidth,behavior:"smooth"}) }
+/* dois caminhos: peças para você e brindes para empresa (com foto dos próprios produtos) */
+const catBrinde=()=>[...new Set(dados.produtos.map(p=>p.categoria).filter(Boolean))].find(c=>/brinde|empresa|corporativ/i.test(sem(c)));
+function duoCards(){
+  const ps=dados.produtos; $("#duo").hidden=!ps.length; if(!ps.length) return;
+  const cb=catBrinde(), foto=p=>p?`<img src="${esc(p.foto)}" alt="" loading="lazy">`:"";
+  const a=ps.find(p=>p.foto&&p.categoria!==cb), b=(cb&&ps.find(p=>p.foto&&p.categoria===cb))||ps.filter(p=>p.foto&&p!==a)[1]||ps.find(p=>p.foto&&p!==a);
+  $("#duoA").innerHTML=foto(a); $("#duoB").innerHTML=foto(b);
+  $("#duoBt").textContent=cb?"Ver brindes":"Pedir orçamento";
+}
+$("#duoBt").addEventListener("click",()=>{
+  const cb=catBrinde(); if(cb){ cat=cb; busca=""; $("#busca").value=""; render(); return vaiProdutos() }
+  const wa=waLoja(); if(wa) return window.open(`https://wa.me/${wa}?text=${encodeURIComponent("Olá! Queria um orçamento de brindes impressos em 3D com a logo da minha empresa.")}`,"_blank","noopener");
+  vaiProdutos();
+});
+/* categorias em bolinhas e os mais pedidos (só na vitrine inteira, sem busca) */
+function vitrineTopo(cats,inteira){
+  const ps=dados.produtos, cs=cats.slice(1);
+  $("#catsSec").hidden=cs.length<2; $("#lkCats").hidden=cs.length<2;
+  $("#bolCats").innerHTML=cs.map(c=>{ const its=ps.filter(p=>p.categoria===c), f=its.find(p=>p.foto);
+    return `<button type="button" class="bolcat" data-c="${esc(c)}"><i>${f?`<img src="${esc(f.foto)}" alt="" loading="lazy">`:esc(c.slice(0,1))}</i>${esc(c)}<small>${its.length} ${its.length===1?"peça":"peças"}</small></button>` }).join("");
+  const top=ps.map((p,i)=>({p,i,peso:(p.maisVendido?2:0)+(p.prontaEntrega?1:0)})).sort((a,b)=>b.peso-a.peso||a.i-b.i).slice(0,8).map(x=>x.p);
+  $("#topSec").hidden=!inteira||ps.length<5;
+  $("#topGrid").innerHTML=$("#topSec").hidden?"":top.map(card).join("");
 }
 
 /* janela do produto */
@@ -389,6 +444,8 @@ document.addEventListener("click",e=>{
   const oc=e.target.closest("[data-orc]"); if(oc) return abreOrcamento(oc.dataset.orc);
   if(e.target.closest("[data-fecha]")){ e.target.closest("dialog").close(); return }
   const c=e.target.closest("[data-c]"); if(c){ cat=c.dataset.c; render(); if(!c.closest("#cats")||scrollY>$("#produtos").offsetTop) vaiProdutos(); return }
+  const hv=e.target.closest("[data-hv]"); if(hv) return hVai((hAlvo??hAtual())+Number(hv.dataset.hv));
+  const hp=e.target.closest("[data-hp]"); if(hp) return hVai(Number(hp.dataset.hp));
   const bn=e.target.closest("[data-bn]"); if(bn) return bnVai(bnAtual()+Number(bn.dataset.bn));
   const bp=e.target.closest("[data-bnp]"); if(bp) return bnVai(Number(bp.dataset.bnp));
   const ba=e.target.closest("[data-alvo]"); if(ba) return bnAbre(ba.dataset.alvo);
