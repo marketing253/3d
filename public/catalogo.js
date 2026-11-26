@@ -210,7 +210,10 @@ const catBrinde=()=>[...new Set(dados.produtos.map(p=>p.categoria).filter(Boolea
 function duoCards(){
   const ps=dados.produtos; $("#duo").hidden=!ps.length; if(!ps.length) return;
   const cb=catBrinde(), foto=p=>p?`<img src="${esc(p.foto)}" alt="" loading="lazy">`:"";
-  const a=ps.find(p=>p.foto&&p.categoria!==cb), b=(cb&&ps.find(p=>p.foto&&p.categoria===cb))||ps.filter(p=>p.foto&&p!==a)[1]||ps.find(p=>p.foto&&p!==a);
+  // foto dos brindes: o chaveiro primeiro, depois a categoria de brindes, depois algo com logo/empresa; nunca peça de Natal
+  const cf=ps.filter(p=>p.foto), nome=p=>sem(p.nome+" "+p.descricao), natal=p=>/natal/.test(sem(p.categoria+" "+p.nome));
+  const b=cf.find(p=>/chaveiro/.test(sem(p.nome)))||(cb&&cf.find(p=>p.categoria===cb))||cf.find(p=>/brinde|logo|empresa/.test(nome(p)))||cf.find(p=>!natal(p))||cf[0];
+  const a=cf.find(p=>p!==b&&p.categoria!==cb&&!/chaveiro/.test(sem(p.nome)))||cf.find(p=>p!==b);
   $("#duoA").innerHTML=foto(a); $("#duoB").innerHTML=foto(b);
   $("#duoBt").textContent=cb?"Ver brindes":"Pedir orçamento";
 }
